@@ -30,7 +30,7 @@ Publishing as open source (prepared 2026-11-20): `LICENSE-MIT` and `LICENSE-APAC
 - Hops grouped by network, as in the app.
 - Parity with the app in features, patterns and words: read `../ios-app/PARITY.md` (it lives only in the private app and API repos) before adding or changing anything a person sees, and update its table in the same change.
 - Sharing only for signed-in people: a run is saved to the account and the command links to its run page. Nothing is uploaded otherwise.
-- Keep README.md and this file current with every change.
+- Keep README.md, `docs/` and this file current with every change. The README is short on purpose (the user's call, 2026-11-20: "really EASY to digest"): what rvrs is, the tools, install, using it in place of the originals, privacy and links. Flags, keys, the report, files and every request rvrs makes live in `docs/` (one file per tool, `console.md`, `commands.md`, `privacy.md`). No sentence in the README explains how the installer or the binary works inside.
 - `install.sh` is the installer the site serves as `rvrs.dev/install.sh` (README, Install). It downloads `rvrs-<arch>-<os>.tar.gz` from the latest GitHub release (`x86_64`/`aarch64`, `apple-darwin`/`unknown-linux-musl`, the archive holding `rvrs` at its top level), installs to `~/.local/bin` (`RVRS_INSTALL_DIR`), and with `--link` links `traceroute`, `ping` and `mtr` next to it, never over a real file, then says when the links are shadowed on `PATH`. `RVRS_INSTALL_ARCHIVE=<file>` installs a local archive, which is how it is tested. No release exists yet, so a release workflow that builds those four archives comes before the site may show the command as working.
 
 ## Commands
