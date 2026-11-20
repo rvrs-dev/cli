@@ -4,21 +4,7 @@ See what the network is doing, from the terminal.
 
 traceroute, ping, MTR, dig and BGP in one binary, with the flags you already know.
 
-```
-$ rvrs traceroute 1.1.1.1
-
-// traceroute one.one.one.one  1.1.1.1 · IPv4 · this device
-
-      AS64500 Example Net · Frankfurt, DE
-  1 │ 192.168.1.1                                       3.2    4.1    3.0 ms
-  2 │ lo0.edge1.fra.example.net 198.51.100.1            8.2   16.1   10.1 ms
-  3 │ ae1.core2.fra.example.net 198.51.100.9           10.9   10.1   13.6 ms
-      AS13335 Cloudflare, Inc. · Frankfurt, DE
-  4 │ 203.0.113.9                                      16.2   24.5   10.6 ms
-  5 ● one.one.one.one 1.1.1.1                          10.4   10.3   10.2 ms
-
-Reached 1.1.1.1 · 5 hops · 10.3 ms · 2 networks · 0.2 s
-```
+![rvrs mtr he.net on a terminal](docs/images/mtr.webp)
 
 ## Tools
 
@@ -58,6 +44,12 @@ To switch back:
 ```bash
 rm ~/.local/bin/traceroute ~/.local/bin/ping ~/.local/bin/mtr ~/.local/bin/dig
 ```
+
+## Screenshots
+
+The Console, during an MTR to he.net:
+
+![The rvrs Console running an MTR to he.net](docs/images/console-mtr.webp)
 
 ## Privacy
 
