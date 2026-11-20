@@ -3,11 +3,11 @@
 `rvrs` on its own opens the Console: the target field on top, Recent below it, and the result once a run starts.
 
 ```
- Origin:  this device                     ● traceroute   <↑↓>    Hop              __ __
- Source:  192.168.1.20                    ○ mtr          <↵>     Details         / // /  _____   _______  _____
- Target:  github.com                      ○ ping         <c>     Copy Address   / // /  / ___/ | / / ___/ / ___/
- Address: 140.82.121.3 · IPv4             ○ dig          <R>     Run Again     / // /  / /   | |/ / /    (__  )
- Network: AS36459 GitHub, Inc.            ○ bgp          <r>     Run Tool     /_//_/  /_/    |___/_/    /____/
+ Origin:  this device                     ● traceroute   <↑↓>    Hop
+ Source:  192.168.1.20                    ○ mtr          <↵>     Details
+ Target:  github.com                      ○ ping         <c>     Copy Address
+ Address: 140.82.121.3 · IPv4             ○ dig          <R>     Run Again
+ Network: AS36459 GitHub, Inc.            ○ bgp          <r>     Run Tool
  Status:  Reached 140.82.121.3 · 7 hops · 20.4 ms · 2 networks
 ┌──────────────────────────────── Traceroute(github.com)[7] ─────────────────────────────────┐
 │ HOP↑ HOST                            ADDRESS        NETWORK               LOSS    AVG  ...  │

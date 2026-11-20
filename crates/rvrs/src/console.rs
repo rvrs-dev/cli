@@ -44,13 +44,66 @@ const KEY: Color = Color::Blue;
 const ACCENT: Color = Color::Cyan;
 const TOOL: Color = Color::Magenta;
 
-const LOGO: [&str; 5] = [
-    r"    __ __",
-    r"   / // /  _____   _______  _____",
-    r"  / // /  / ___/ | / / ___/ / ___/",
-    r" / // /  / /   | |/ / /    (__  )",
-    r"/_//_/  /_/    |___/_/    /____/",
+/// The mark at the top right, the try shell's art (the user's design). Each row has a mask of the
+/// same width that colors it: w the mark and "networking" in bold white, g "rvrs" in green, m the
+/// rules and the signature in gray, d the dots in dim gray. A narrower header shows the first
+/// [`LOGO_CUT`] columns, the mark and the rules, and a narrow one none of it.
+const LOGO: [&str; 6] = [
+    r"  _____       __                 :           :",
+    r"__\_  /___ __(_/__ _ ____        .           .                .",
+    "\\  /  .  /   .   \\      \\-\u{00BB}     rvrs        \u{00B7}:\u{00B7}\u{00B7} \u{00B7}            : snp!",
+    r"/__\     \  ____  \   _\ \   networking     .:.....:..........:.. .   .",
+    "===/__/__/========______/==============\u{00BB} ....:.....:.         :",
+    "                                    :         :          \u{00B7}",
 ];
+
+const LOGO_MASK: [&str; 6] = [
+    "  wwwww       ww                 d           d",
+    "wwww  wwww wwwwwww w wwww        d           d                d",
+    "w  w  w  w   w   w      www     gggg        dddd d            d mmmm",
+    "wwww     w  wwww  w   ww w   wwwwwwwwww     ddddddddddddddddddddd d   d",
+    "mmmwwwwwwwmmmmmmmmwwwwwwwmmmmmmmmmmmmmmm dddddddddddd         d",
+    "                                    d         d          d",
+];
+
+/// The columns of the mark, "networking" and the rules, cut before the dots.
+const LOGO_CUT: usize = 40;
+
+/// The logo's rows in at most `columns` columns, colored by its mask.
+fn logo_lines(columns: usize) -> Vec<Line<'static>> {
+    LOGO.iter()
+        .zip(LOGO_MASK)
+        .map(|(row, mask)| {
+            let mask: Vec<char> = mask.chars().collect();
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for (index, character) in row.chars().take(columns).enumerate() {
+                let paint = match mask.get(index) {
+                    _ if character == ' ' => Paint::new(),
+                    Some('w') => Paint::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Some('g') => Paint::new()
+                        .fg(Color::Indexed(149))
+                        .add_modifier(Modifier::BOLD),
+                    Some('m') => Paint::new().fg(Color::Indexed(246)),
+                    Some('d') => Paint::new().fg(Color::Indexed(240)),
+                    _ => Paint::new(),
+                };
+                match spans.last_mut() {
+                    Some(last) if last.style == paint => last.content.to_mut().push(character),
+                    _ => spans.push(Span::styled(character.to_string(), paint)),
+                }
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+/// The logo's full width.
+fn logo_width() -> usize {
+    LOGO.iter()
+        .map(|row| row.chars().count())
+        .max()
+        .unwrap_or(0)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pane {
@@ -1915,7 +1968,7 @@ impl App {
     fn draw_header(&self, frame: &mut Frame, area: Rect) {
         let dim = Paint::new().add_modifier(Modifier::DIM);
         let columns = usize::from(area.width);
-        let logo_width = LOGO.iter().map(|line| line.len()).max().unwrap_or(0);
+
         // The keys sit in columns of four, as k9s lays its own out. A narrow terminal gets
         // fewer, taller columns, then loses the logo, then the tools.
         let keys = self.keys();
@@ -1935,7 +1988,16 @@ impl App {
             .max(needed.min(room / key_width))
             .max(1);
         let keys_width = key_columns * key_width;
-        let show_logo = columns >= 42 + tools_width + keys_width + logo_width + 2;
+        // The whole logo where it fits, the mark and the rules where that fits, else none.
+        let free = columns.saturating_sub(42 + tools_width + keys_width + 2);
+        let logo_width = if free >= logo_width() {
+            logo_width()
+        } else if free >= LOGO_CUT {
+            LOGO_CUT
+        } else {
+            0
+        };
+        let show_logo = logo_width > 0;
         let taken = usize::from(show_tools) * tools_width
             + usize::from(show_keys) * keys_width
             + usize::from(show_logo) * (logo_width + 2);
@@ -2009,11 +2071,7 @@ impl App {
                 width: logo_width as u16 + 1,
                 height: area.height,
             };
-            let logo: Vec<Line> = LOGO
-                .iter()
-                .map(|line| Line::styled(*line, Paint::new().fg(LABEL)))
-                .collect();
-            frame.render_widget(Paragraph::new(logo), rect);
+            frame.render_widget(Paragraph::new(logo_lines(logo_width)), rect);
         }
     }
 
@@ -4400,7 +4458,7 @@ mod tests {
         assert!(text.contains("Recent(all)[0]"));
         assert!(text.contains("No runs yet"));
         assert!(text.contains("<tab>   Tool"));
-        assert!(text.contains("/_//_/"));
+        assert!(text.contains("===/__/__/"), "{text}");
         assert!(text.contains("\u{21E7}1 Console") && text.contains("\u{21E7}3 Cases"));
     }
 
@@ -5211,6 +5269,31 @@ mod tests {
         }
         assert_eq!(app.row, None);
         clean(&app);
+    }
+
+    #[test]
+    fn the_logo_is_whole_cut_or_gone_by_width() {
+        for (row, mask) in LOGO.iter().zip(LOGO_MASK) {
+            assert!(
+                row.chars().count() >= mask.trim_end().chars().count(),
+                "{row}"
+            );
+        }
+        assert_eq!(logo_width(), 71);
+        let text = |width: u16| screen(&mut app_with(Vec::new()), width, 30).join("\n");
+        let wide = text(200);
+        assert!(
+            wide.contains("rvrs        \u{00B7}:\u{00B7}\u{00B7} \u{00B7}            : snp!"),
+            "{wide}"
+        );
+        assert!(wide.contains("/__\\     \\  ____  \\   _\\ \\   networking"));
+        let cut = text(140);
+        assert!(
+            cut.contains("===/__/__/========______/==============\u{00BB}"),
+            "{cut}"
+        );
+        assert!(!cut.contains("snp!"));
+        assert!(!text(120).contains("networking"));
     }
 
     #[test]

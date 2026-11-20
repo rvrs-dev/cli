@@ -81,7 +81,7 @@ With Homebrew's rustup, `/opt/homebrew/opt/rustup/bin` must be on PATH. To see t
 - rvrs's own flags are long only, so they never collide with a tool's short flags.
 - An unsupported flag is an error that names it. Never ignore a flag when ignoring it changes the result.
 - Data goes to stdout. Errors go to stderr as `rvrs: <one sentence>`. Exit 0 for a run that was made, 1 for one that couldn't be, 2 for usage. ping keeps its own codes: 0 answered, 1 no reply, 2 couldn't run.
-- Color is the terminal's sixteen colors plus bold and dim, so it follows the person's theme. Never state something by color alone. Green for a reached destination, yellow for no reply, red for errors, blue for data (bars, spinner).
+- Color is the terminal's sixteen colors plus bold and dim, so it follows the person's theme. The one exception is the logo at the Console's top right (`LOGO`, `LOGO_MASK`, `logo_lines`): the try shell's art in its own colors (the user's design, 2026-11-20), whole where the header has room, cut to the mark and the rules (`LOGO_CUT`) where it doesn't, hidden on a narrow terminal. Never state something by color alone. Green for a reached destination, yellow for no reply, red for errors, blue for data (bars, spinner).
 - No call to a system network tool, ever. `pbcopy`, `wl-copy`, `xclip` and `open` are used for the clipboard and the browser only.
 - Every string follows `.claude/skills/rvrs-voice/SKILL.md`, and every term `GLOSSARY.md`. Both are copies of the app's; edit there and copy.
 - A networking change comes with a parsing or model test. A live trace against a public host is the integration check.
