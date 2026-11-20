@@ -1,0 +1,135 @@
+name: Release
+
+# A tag v<VERSION>.<patch> on main releases that commit: four static binaries, a .deb and an
+# .rpm for each Linux architecture, SHA256SUMS and install.sh, then the Homebrew formula.
+# Actions > Release > Run workflow tags and releases the newest commit on main.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        # The same count crates/rvrs/build.rs makes: VERSION plus the commits since it changed.
+        run: |
+          base="$(cat VERSION)"
+          since="$(git log -1 --format=%H -- VERSION)"
+          patch="$(git rev-list --count "$since..HEAD")"
+          version="$base.$patch"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag $GITHUB_REF_NAME is on a commit whose version is $version." >&2
+            exit 1
+          fi
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            deb: amd64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            deb: arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      CC_aarch64_unknown_linux_musl: musl-gcc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Check the version
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: |
+          printed="$(target/${{ matrix.target }}/release/rvrs --version)"
+          echo "$printed"
+          case "$printed" in "rvrs $VERSION "*) ;; *) echo "Expected rvrs $VERSION." >&2; exit 1 ;; esac
+      - run: |
+          mkdir -p dist
+          tar -czf dist/rvrs-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release rvrs
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          cargo install cargo-deb cargo-generate-rpm --locked
+          cargo deb -p rvrs --no-build --target ${{ matrix.target }} --deb-version "$VERSION" --output dist/
+          sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
+          cargo generate-rpm -p crates/rvrs --target ${{ matrix.target }} --output dist/
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rvrs-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: |
+          mkdir -p dist
+          cp artifacts/* install.sh dist/
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        run: |
+          if ! git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            git tag "v$VERSION" && git push origin "v$VERSION"
+          fi
+          gh release create "v$VERSION" dist/* --title "rvrs $VERSION" --generate-notes --verify-tag
+
+  homebrew:
+    needs: [version, release]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update the formula in rvrs-dev/homebrew-tap
+        if: env.TAP_TOKEN != ''
+        run: |
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v$VERSION/SHA256SUMS" -o SHA256SUMS
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/rvrs-dev/homebrew-tap.git" tap
+          sh scripts/formula.sh "$VERSION" SHA256SUMS > tap/Formula/rvrs.rb
+          cd tap
+          git config user.name "rvrs release"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/rvrs.rb
+          git commit -m "rvrs $VERSION" && git push
+      - if: env.TAP_TOKEN == ''
+        run: echo "TAP_TOKEN isn't set, so the Homebrew formula stays as it was."

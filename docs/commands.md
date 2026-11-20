@@ -72,7 +72,9 @@ rvrs last --json | jq .sentence
 
 ## Updates
 
-`rvrs update` updates rvrs the way it was installed: the newest release for an installed binary, `git pull` and `cargo build` for a checkout, `brew upgrade rvrs` for Homebrew. `rvrs update --check` only checks.
+`rvrs update` updates rvrs the way it was installed: the newest release for a binary from the installer, `git pull` and `cargo build` for a checkout. Homebrew and the `.deb` and `.rpm` packages are updated by their package managers. `rvrs update --check` only checks.
+
+A release download is checked against the release's `SHA256SUMS` before it replaces anything, by the installer and by `rvrs update` alike.
 
 Once a day rvrs checks on its own, and a result ends with one line when a newer version is out. `RVRS_UPDATE_CHECK=0` turns that off.
 

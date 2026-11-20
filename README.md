@@ -10,7 +10,7 @@
 <a href="#screenshots">Terminal UI</a> and drop-in replacement for traceroute, ping, MTR, dig and BGP in one binary.<br>
 Soon with support for remote nodes.
 
-Try it live:
+<sub>Try it live</sub>
 
 ```bash
 ssh cli.rvrs.dev
@@ -37,7 +37,11 @@ ssh cli.rvrs.dev
 curl -fsSL https://rvrs.dev/install.sh | sh
 ```
 
-Runs on macOS and Linux, without root. Update with `rvrs update`.
+```bash
+brew install rvrs-dev/tap/rvrs
+```
+
+Runs on macOS and Linux, without root. Every [release](https://github.com/rvrs-dev/cli/releases) also has a `.deb` and an `.rpm`. Update with `rvrs update`.
 
 From source, with Rust 1.82 or newer:
 

@@ -17,3 +17,23 @@ serde_json = "1"
 ratatui = "0.30"
 unicode-width = "0.2"
 ureq = "3"
+
+# Linux packages, built by .github/workflows/release.yml from the static musl binary.
+[package.metadata.deb]
+maintainer = "rvrs <https://rvrs.dev>"
+copyright = "2026 The rvrs authors"
+license-file = ["../../LICENSE-MIT", "0"]
+extended-description = "traceroute, ping, MTR, dig and BGP in one binary, with the flags of the originals and a terminal UI."
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/rvrs", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/rvrs/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+summary = "traceroute, ping, MTR, dig and BGP in one binary"
+assets = [
+    { source = "target/release/rvrs", dest = "/usr/bin/rvrs", mode = "755" },
+    { source = "../../README.md", dest = "/usr/share/doc/rvrs/README.md", mode = "644", doc = true },
+]
