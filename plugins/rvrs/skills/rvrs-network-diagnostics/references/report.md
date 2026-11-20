@@ -91,8 +91,8 @@ There is no compare command yet. Put the two reports side by side:
 
 ```bash
 for id in fvx2vn 2u8gqj; do
-  rvrs show "$id" --json | jq -c '{id, startedAt, origin: .origin.sourceAddress, family, m: (.measured | map({(.name): .value}) | add | {loss, avg, p95, jitter, hops}), path: ([.hops[]?.asn | select(. != null)] | unique)}'
+  rvrs show "$id" --json | jq -c '{id, startedAt, address, origin: .origin.sourceAddress, family, m: (.measured | map({(.name): .value}) | add | {loss, avg, p95, jitter, hops}), path: ([.hops[]?.asn | select(. != null)] | reduce .[] as $a ([]; if .[-1] == $a then . else . + [$a] end))}'
 done
 ```
 
-A ping has no `hops`, so its `path` is empty. State the difference as numbers with both ids. A move of a millisecond or two between two short runs is noise. Look for loss that appears, a p95 that pulls away from the p50, a hop count that changes, or a network that enters or leaves the path.
+`address` is in the output on purpose: two runs to one name that resolved to different addresses measured different destinations. `path` is the networks in the order the hops cross them, with repeats collapsed, so a path that visits the same networks in another order shows as different. A ping has no `hops`, so its `path` is empty. State the difference as numbers with both ids. A move of a millisecond or two between two short runs is noise. Look for loss that appears, a p95 that pulls away from the p50, a hop count that changes, or a network that enters or leaves the path.

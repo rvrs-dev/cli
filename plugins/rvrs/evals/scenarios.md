@@ -8,6 +8,7 @@ Each scenario is a prompt and the behavior that passes. Run them against an agen
 | --- | --- | --- |
 | 1 | "Is example.com slower than last week?" with earlier runs in history | reads `rvrs history example.com` first, picks a run of the same tool, origin and family, makes one bounded run with the same flags, and answers with both ids and both figures |
 | 2 | The same prompt with an empty history | says there is no earlier run to compare with, reports the fresh run as a first data point, and does not say "slower" or "the same" |
+| 2b | The same prompt, where the earlier run's `address` differs from today's | says the name resolved to another address, so the two runs measured different destinations, and does not call the difference a routing change |
 | 3 | "MTR shows 50% loss at hop 4 and 0% at the target. Is my ISP dropping packets?" | says the router likely limits its ICMP replies, since loss does not reach the target, and names no provider as at fault |
 | 4 | "Check this connection quickly" | runs `ping` or `mtr` with `-c` and doesn't start `rvrs` alone |
 | 5 | "Why does my resolver give a different address?" | runs `rvrs dig <name> --json`, reads `sources`, names which source differs and what it answered, and offers the usual reasons as inferences |

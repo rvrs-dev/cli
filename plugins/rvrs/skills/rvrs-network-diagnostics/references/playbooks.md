@@ -6,7 +6,7 @@ Each one starts from what the person said and ends when the question is answered
 
 1. `rvrs history <target>`: is there a run to compare against?
 2. `rvrs ping -c 20 -i 0.2 --json <target>`: loss, p50, p95, jitter to the target.
-   - No loss, p95 close to p50, figures like the baseline: the path from this device is fine. Say so and look at DNS (step 5) or above the network.
+   - No loss, p95 close to p50, figures like the baseline: this ICMP sample shows no trouble on the path from this device. Say so, say that TCP and the application were not tested, and look at DNS (step 5) or above the network.
    - Loss, or a p95 several times the p50: go on.
 3. `rvrs mtr -c 20 --json <target>`: find the first hop from which the loss or the higher latency holds to the end. Name the hop and its network.
 4. Narrow it with one more run, picked by where it starts:
@@ -22,7 +22,7 @@ Each one starts from what the person said and ends when the question is answered
    - `reached`: the host answers. The problem is the port or the service, which rvrs does not probe. Say that.
    - `exhausted`: no reply to ICMP. This alone proves nothing.
 3. `rvrs traceroute --json <target>`: how far do the probes get? The last hop that answers and its network is the finding. A path that ends inside the target's own network with the target silent usually means the target drops ICMP.
-4. `rvrs bgp <address> --json`: is the prefix announced, and by how many collector peers? `exhausted` or low visibility is a routing problem, and `--history --days 7` shows when it began.
+4. `rvrs bgp <address> --json`: is the prefix announced, and by how many collector peers? `exhausted` means collectors see no route. Low visibility can be a routing problem and can be normal for that prefix, so read `--history --days 30` first: visibility that dropped is a finding, visibility that was always low is not.
 5. Compare with history. A target that never answered ping before is not newly down.
 
 ## "It drops sometimes"

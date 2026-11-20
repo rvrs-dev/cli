@@ -26,9 +26,10 @@ A baseline is an earlier run that differs from the new one in time only.
 
 1. Same target, as typed. `example.com` and `www.example.com` can be different hosts.
 2. Same tool. A ping's loss and an MTR's loss at the destination are comparable. A traceroute's three probes are not.
-3. Same origin. If PUBLIC differs between two runs that both have one, the device was on another network (home, office, a tethered phone, a VPN) and the path began somewhere else. Say that before any comparison.
-4. Same IP family. `family` in the report says which was used.
-5. A similar count. A run of 5 packets is too short to set against one of 100.
+3. Same address. Compare `address` in both reports. A name behind a CDN or a load balancer can resolve to another address on another day, and then the two runs measured different destinations. Say that the address changed, and don't put the difference down to the network or to routing. `rvrs ping -c 20 --json <the earlier address>` measures the old destination again.
+4. Same origin. If PUBLIC differs between two runs that both have one, either the device was on another network (home, office, a tethered phone, a VPN) or the provider gave the line a new address. The first hops tell which: the same `hops[0].address` and the same network at the next hops is the same line. Say which it is before any comparison.
+5. Same IP family. `family` in the report says which was used.
+6. A similar count. A run of 5 packets is too short to set against one of 100.
 
 Prefer several earlier runs to one. If three runs last week sit at 11 to 12 ms and today's sits at 48 ms, that is a change. One earlier run at 11 ms is a hint.
 

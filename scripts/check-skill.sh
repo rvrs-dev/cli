@@ -25,6 +25,16 @@ description=$(printf '%s\n' "$front" | sed -n 's/^description: //p')
 [ "${#description}" -le 1024 ] || fail "description is ${#description} characters, over 1024"
 compatibility=$(printf '%s\n' "$front" | sed -n 's/^compatibility: //p')
 [ "${#compatibility}" -le 500 ] || fail "compatibility is over 500 characters"
+# The frontmatter is YAML a real parser reads, with the description as one string.
+if command -v ruby >/dev/null 2>&1; then
+  ruby -ryaml -e '
+    front = File.read(ARGV[0], encoding: "UTF-8").split(/^---$/)[1]
+    data = YAML.safe_load(front)
+    abort "name is not a string" unless data["name"].is_a?(String)
+    abort "description is not one string" unless data["description"].is_a?(String) && data["description"].length.between?(1, 1024)
+    abort "metadata values must be strings" unless data.fetch("metadata", {}).values.all? { |value| value.is_a?(String) }
+  ' "$file" || fail "the frontmatter does not parse as YAML"
+fi
 lines=$(wc -l <"$file")
 [ "$lines" -le 500 ] || fail "SKILL.md is $lines lines, over 500"
 

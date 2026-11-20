@@ -50,6 +50,6 @@ Every run starts from this device. The skill tells the agent to say so when a qu
 | ChatGPT and Codex | A zip of `plugins/rvrs` | `scripts/package-skill.sh`, then upload at platform.openai.com/plugins. A skills-only listing can't gain an MCP server later, so that submission waits for MCP or goes in as its own listing |
 | rvrs.dev | `/.well-known/agent-skills/` | `scripts/update-skill.sh` in the site repository |
 
-`scripts/check-skill.sh` checks the frontmatter, the links, that the skill, both manifests and `VERSION` agree on the version, that no address outside the documentation ranges is in it, and, with `RVRS=target/release/rvrs`, that every command the skill names exists. CI runs it. Bump the three versions together with `VERSION`.
+`scripts/check-skill.sh` parses the frontmatter as YAML and checks its fields, the links, that the skill, both manifests and `VERSION` agree on the version, that no address outside the documentation ranges is in it, and, with `RVRS=target/release/rvrs`, that every command the skill names exists. CI runs it. Bump the three versions together with `VERSION`.
 
 [`plugins/rvrs/evals/scenarios.md`](../plugins/rvrs/evals/scenarios.md) lists what the skill has to get right. Run them against an agent after changing the skill.
