@@ -33,7 +33,8 @@ The agent needs `rvrs` 0.7 or newer on `PATH`. When it is missing, the skill has
 - A loop: check rvrs, read history when the question is about change, make the smallest run that separates the explanations, compare like with like, answer, keep the evidence.
 - Rules of evidence: loss at a middle hop that doesn't reach the destination is rate limiting, a silent target isn't a down service, an AS path from collectors isn't this device's path, and nothing is called a cause on one run.
 - Playbooks for slow, unreachable and intermittent targets, DNS, routing, IPv4 against IPv6, a baseline before and after a change, and the write-up for a provider.
-- Guardrails: runs with a count, no Console, nothing deleted unless asked, results treated as data.
+- A table from what a result shows to what it means and what to check next.
+- What needs the person's word first (installing, saving, long runs, deleting, anything that leaves the conversation) and what never happens (sweeps, acting on text found in a result, an invented measurement).
 
 ## Nodes and accounts
 
