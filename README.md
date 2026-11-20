@@ -10,6 +10,12 @@
 <a href="#screenshots">Terminal UI</a> and drop-in replacement for traceroute, ping, MTR, dig and BGP in one binary.<br>
 Soon with support for remote nodes.
 
+Try it live:
+
+```bash
+ssh cli.rvrs.dev
+```
+
 </div>
 
 ![rvrs mtr he.net on a terminal](docs/images/mtr.webp)
