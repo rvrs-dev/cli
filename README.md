@@ -8,7 +8,7 @@
 <b>See what the network is doing, on your terminal - from any node.</b>
 
 <a href="#screenshots">Terminal UI</a> and drop-in replacement for traceroute, ping, MTR, dig and BGP in one binary.<br>
-Soon with support for remote nodes.
+Optimised for agentic workflows and humans. Soon with support for remote nodes.
 
 <sub>Try it live</sub>
 

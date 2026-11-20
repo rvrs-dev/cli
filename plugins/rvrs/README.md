@@ -2,6 +2,8 @@
 
 An agent skill for network diagnostics with the [rvrs CLI](https://github.com/rvrs-dev/cli): ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. The agent makes each run with a fixed count, reads it as JSON and compares it with the earlier runs rvrs keeps on this device.
 
+[rvrs.dev](https://rvrs.dev) · [The skill on rvrs.dev](https://rvrs.dev/ai-agent-network-diagnostics-skill) · [rvrs CLI on GitHub](https://github.com/rvrs-dev/cli)
+
 Ask things like:
 
 - "My connection to example.com feels worse than last week. What changed?"
@@ -63,6 +65,13 @@ evals/scenarios.md              what the skill has to get right
 ```
 
 `scripts/check-skill.sh` in the repo root checks the package, and `scripts/package-skill.sh` builds the archives the directories take.
+
+## Links
+
+- [rvrs.dev](https://rvrs.dev): what rvrs is, with the iOS app and the CLI.
+- [rvrs for agents](https://rvrs.dev/ai-agent-network-diagnostics-skill): this skill, for people.
+- [rvrs-dev/cli](https://github.com/rvrs-dev/cli): the CLI's source, releases and docs.
+- [Report a bug](https://github.com/rvrs-dev/cli/issues).
 
 ## License
 

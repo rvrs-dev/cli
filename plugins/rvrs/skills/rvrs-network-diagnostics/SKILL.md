@@ -11,7 +11,7 @@ metadata:
 
 # Network diagnostics with rvrs
 
-rvrs is one binary with traceroute, ping, MTR, dig and BGP. Every run prints a JSON report and stays in a history on this device. That history is what you have over a bare `ping`: you can say what changed, since when, and show the runs that prove it.
+[rvrs](https://rvrs.dev) is one open source binary ([rvrs-dev/cli](https://github.com/rvrs-dev/cli)) with traceroute, ping, MTR, dig and BGP. Every run prints a JSON report and stays in a history on this device. That history is what you have over a bare `ping`: you can say what changed, since when, and show the runs that prove it.
 
 Your job is to answer the person's question with measurements. Say what you measured, show the evidence, name what you infer, and stop.
 
@@ -148,3 +148,4 @@ When a question needs another origin, say in one sentence that this run can't se
 - [Playbooks](references/playbooks.md): slow, unreachable, intermittent, DNS, routing, IPv4 against IPv6, before and after a change, writing the ticket.
 - [History and cases](references/history.md): baselines, comparisons, evidence.
 - [Nodes and accounts](references/nodes.md): what changes when they ship.
+- [rvrs.dev](https://rvrs.dev) is the site, and [github.com/rvrs-dev/cli](https://github.com/rvrs-dev/cli) has the source, the releases and the docs for every command.
