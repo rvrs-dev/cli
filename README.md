@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
-  <img src="docs/images/logo-light.svg" alt="rvrs networking" width="683">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/mark-dark.svg">
+  <img src="docs/images/mark-light.svg" alt="rvrs" width="200">
 </picture>
 
 <b>See what the network is doing, on your terminal - from any node.</b>
