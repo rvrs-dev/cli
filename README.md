@@ -43,6 +43,12 @@ brew install rvrs-dev/tap/rvrs
 
 Runs on macOS and Linux, without root. Every [release](https://github.com/rvrs-dev/cli/releases) also has a `.deb` and an `.rpm`. Update with `rvrs update`.
 
+For your agent, the [skill](docs/agents.md) that teaches it to diagnose a network with rvrs:
+
+```bash
+npx skills add rvrs-dev/cli
+```
+
 From source, with Rust 1.82 or newer:
 
 ```bash
@@ -68,14 +74,6 @@ rm ~/.local/bin/traceroute ~/.local/bin/ping ~/.local/bin/mtr ~/.local/bin/dig
 The Console, during an MTR to he.net:
 
 ![The rvrs Console running an MTR to he.net](docs/images/console-mtr.webp)
-
-## For agents
-
-```bash
-npx skills add rvrs-dev/cli
-```
-
-A skill that teaches an AI agent to diagnose a network with rvrs: runs with a fixed count read as JSON, compared with the history rvrs keeps. [rvrs for agents](docs/agents.md) has the Claude Code plugin and what the skill does.
 
 ## Privacy
 
