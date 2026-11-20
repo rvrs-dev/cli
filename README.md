@@ -1,8 +1,15 @@
-# rvrs
+<div align="center">
 
-See what the network is doing, from the terminal.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+  <img src="docs/images/logo-light.svg" alt="rvrs networking" width="683">
+</picture>
 
-traceroute, ping, MTR, dig and BGP in one binary, with the flags you already know.
+<b>See what the network is doing, on your terminal - from any node.</b>
+
+Terminal UI and drop-in replacement for traceroute, ping, MTR, dig and BGP in one binary. Support for remote nodes.
+
+</div>
 
 ![rvrs mtr he.net on a terminal](docs/images/mtr.webp)
 
