@@ -20,7 +20,7 @@ rvrs is split into repos by who may read them (decided 2026-11-15). All five liv
 - A new repo only where visibility or release cadence differs.
 - `api-2024` and `web` are 2024 prototypes outside git. Never commit them.
 
-Publishing as open source (prepared 2026-11-20): `LICENSE-MIT` and `LICENSE-APACHE` are in the root, the tests use documentation addresses only, and the history was squashed into one commit authored with a GitHub noreply address, so neither `PARITY.md` nor a real home-line address nor a personal email is in it. The old history is kept outside the repo as a git bundle. What is left is the GitHub visibility switch, which is the owner's. Keep it that way: no real public address in tests or docs, no personal data, and commits authored with the noreply address (`git config user.email` is set in this clone).
+Publishing as open source (prepared 2026-11-20): `LICENSE-MIT` and `LICENSE-APACHE` are in the root, the tests use documentation addresses only, and the history was squashed into one commit authored with a GitHub noreply address, so neither `PARITY.md` nor a real home-line address nor a personal email is in it. The old history is kept outside the repo as a git bundle. The license stays MIT OR Apache-2.0 (the user's decision, 2026-11-20, after weighing AGPL and FSL): adoption and packaging come first, and the business lives in the private repos. The name and the mark are protected as trademarks, in the README's License section, not by the code license. What is left is the GitHub visibility switch, which is the owner's. Keep it that way: no real public address in tests or docs, no personal data, and commits authored with the noreply address (`git config user.email` is set in this clone).
 
 ## What the user wants
 
