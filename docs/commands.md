@@ -16,7 +16,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs bgp glass` | Lists your looking glasses. `glass add`, `glass remove` and `glass test` manage them |
 | `rvrs last` | Shows the newest run |
 | `rvrs show <id>` | Shows a run from history. The first characters of the id are enough |
-| `rvrs history` | Lists the runs on this device. `rvrs history clear` deletes them |
+| `rvrs history [tool] [target]` | Lists the runs on this device, all of them or those of a tool, a target or both: `rvrs history mtr example.com`. A target matches on any part of it. `rvrs history clear` deletes them |
 | `rvrs save [id] [--case <name>]` | Saves the newest run, or the one named, into the case used last or the one named |
 | `rvrs saved` | Lists saved runs. `rvrs saved remove <id>` takes one out |
 | `rvrs case` | Lists the cases |
@@ -48,12 +48,28 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 
 ## The report
 
-`--json` prints the same `RunReport` the iOS app returns to Shortcuts. `measured`, `hops`, `records` (a DNS lookup's reference answer) and `outcome` hold what was measured (for a BGP lookup: the collector peers that see the prefix, the distinct paths and the origin AS number), `interpretation` what it likely means, and `sentence` the run in one line.
+`--json` prints the same `RunReport` the iOS app returns to Shortcuts. `rvrs last`, `rvrs show <id>`, `rvrs history`, `rvrs saved` and `rvrs case <name>` take it too, a list as an array.
+
+| Field | Holds |
+| --- | --- |
+| `id` | The run's id in history, which `rvrs show` and `rvrs save` take |
+| `tool`, `target`, `address`, `family`, `startedAt` | What ran, against what, and when (UTC) |
+| `origin` | Where the run was made from: `node` (`null` is this device), `sourceAddress` and `publicAddress` |
+| `outcome` | `reached`, `exhausted`, `stopped` or `failed`, with the reason in `error` |
+| `measured` | What was measured, as `name`, `value` and `unit`. For a BGP lookup: the collector peers that see the prefix, the distinct paths and the origin AS number |
+| `hops` | Traceroute and MTR: each hop's address, name, network, loss and average |
+| `records` | DNS: the reference answer |
+| `sources` | DNS: what each source answered (`addresses`), how long it took and whether it matches the reference (`match`, `differs`, `error`) |
+| `interpretation` | What it likely means. Inferences only, each worded as one |
+| `summary`, `sentence` | The run in one line of facts, and as one plain sentence |
 
 ```bash
 rvrs traceroute --json example.com | jq '.hops[] | {ttl, hostname, asn, avgMilliseconds}'
+rvrs dig example.com --json | jq '.sources[] | select(.status != "match")'
 rvrs last --json | jq .sentence
 ```
+
+A report prints whatever the outcome, and the error goes to stderr. [rvrs for agents](agents.md) has more on reading it from a script or an agent.
 
 ## Files
 

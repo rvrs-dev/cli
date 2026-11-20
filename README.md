@@ -69,6 +69,14 @@ The Console, during an MTR to he.net:
 
 ![The rvrs Console running an MTR to he.net](docs/images/console-mtr.webp)
 
+## For agents
+
+```bash
+npx skills add rvrs-dev/cli
+```
+
+A skill that teaches an AI agent to diagnose a network with rvrs: runs with a fixed count read as JSON, compared with the history rvrs keeps. [rvrs for agents](docs/agents.md) has the Claude Code plugin and what the skill does.
+
 ## Privacy
 
 rvrs has no account and sends no usage data. [Privacy](docs/privacy.md) lists every request it makes.
@@ -78,6 +86,7 @@ rvrs has no account and sends no usage data. [Privacy](docs/privacy.md) lists ev
 - [traceroute](docs/traceroute.md), [ping](docs/ping.md), [mtr](docs/mtr.md), [dig](docs/dig.md), [bgp](docs/bgp.md)
 - [The Console](docs/console.md)
 - [Commands](docs/commands.md), including history, saved runs and `--json`
+- [rvrs for agents](docs/agents.md)
 - [Privacy](docs/privacy.md)
 
 ## License

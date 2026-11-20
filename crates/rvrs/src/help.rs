@@ -114,7 +114,10 @@ pub fn main(style: Style) -> String {
         &[
             ("last", "Show the newest run again"),
             ("show <id>", "Show a run from history"),
-            ("history", "List the runs kept on this device"),
+            (
+                "history [tool] [target]",
+                "List the runs kept on this device, all or those of a tool or a target",
+            ),
             (
                 "save [id] [--case <name>]",
                 "Save the newest run, or the one named, into the case used last or the one named",

@@ -118,30 +118,61 @@ pub fn history(arguments: &[String]) -> ExitCode {
                 Err(error) => fail(&format!("Couldn't clear history ({error}).")),
             }
         }
-        Some("--json") => {
-            let reports: Vec<Report> = history.runs.iter().map(Report::of).collect();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&reports).unwrap_or_else(|_| "[]".into())
-            );
-            ExitCode::SUCCESS
-        }
-        Some(other) => usage(&format!(
-            "rvrs history takes clear or --json, and \u{201C}{other}\u{201D} is neither."
-        )),
-        None => {
+        _ => {
+            let mut json = false;
+            let mut words: Vec<&str> = Vec::new();
+            for argument in arguments {
+                match argument.as_str() {
+                    "--json" => json = true,
+                    flag if flag.starts_with('-') => {
+                        return usage(&format!(
+                            "rvrs history has no flag {flag}. It takes a tool, a target, --json or clear."
+                        ))
+                    }
+                    word => words.push(word),
+                }
+            }
+            let runs: Vec<Run> = history
+                .runs
+                .iter()
+                .filter(|run| matches_filter(run, &words))
+                .cloned()
+                .collect();
+            if json {
+                let reports: Vec<Report> = runs.iter().map(Report::of).collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&reports).unwrap_or_else(|_| "[]".into())
+                );
+                return ExitCode::SUCCESS;
+            }
             if history.runs.is_empty() {
                 println!("No runs yet. Start one with rvrs traceroute 1.1.1.1.");
                 return ExitCode::SUCCESS;
             }
+            if runs.is_empty() {
+                println!("No runs match \u{201C}{}\u{201D}.", words.join(" "));
+                return ExitCode::SUCCESS;
+            }
             let style = Style::detect(ColorChoice::Auto);
             let columns = list_columns();
-            for line in history_lines(&history.runs, style, columns, format::now()) {
+            for line in history_lines(&runs, style, columns, format::now()) {
                 println!("{line}");
             }
             ExitCode::SUCCESS
         }
     }
+}
+
+/// The Console's filter, for `rvrs history <words>`: every word must be the run's tool or appear
+/// in its target, whatever the case. `dns` finds dig runs, since `rvrs dns` is the same command.
+pub fn matches_filter(run: &Run, words: &[&str]) -> bool {
+    let target = run.target.to_lowercase();
+    let tool = run.tool.command();
+    words.iter().all(|word| {
+        let word = word.to_lowercase();
+        word == tool || (word == "dns" && tool == "dig") || target.contains(&word)
+    })
 }
 
 /// One line per run under a header: id, tool, target, summary, where it was made from, age.
@@ -952,5 +983,21 @@ mod tests {
         let narrow = history_lines(&[run], Style::PLAIN, 70, 1000 + 5 * 3600);
         assert!(!narrow[0].contains("SOURCE"));
         assert!(narrow[1].ends_with("4 hops \u{00B7} 12.4 ms  5h ago"));
+    }
+
+    #[test]
+    fn history_is_filtered_by_tool_and_target() {
+        use rvrs_core::{model::Tool, FamilyChoice};
+        let mtr = Run::new(Tool::Mtr, "api.Example.com", FamilyChoice::Auto, 1, 30);
+        let dig = Run::new(Tool::Dns, "example.net", FamilyChoice::Auto, 0, 0);
+        assert!(matches_filter(&mtr, &[]));
+        assert!(matches_filter(&mtr, &["mtr"]));
+        assert!(matches_filter(&mtr, &["example.com"]));
+        assert!(matches_filter(&mtr, &["MTR", "api"]));
+        assert!(!matches_filter(&mtr, &["ping"]));
+        assert!(!matches_filter(&mtr, &["mtr", "example.net"]));
+        // dig runs answer to both of the command's names.
+        assert!(matches_filter(&dig, &["dig"]));
+        assert!(matches_filter(&dig, &["dns", "example"]));
     }
 }

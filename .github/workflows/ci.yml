@@ -23,3 +23,5 @@ jobs:
       - run: cargo clippy --all-targets --locked
       - run: cargo test --locked
       - run: sh -n install.sh
+      - run: cargo build --locked
+      - run: RVRS=target/debug/rvrs sh scripts/check-skill.sh

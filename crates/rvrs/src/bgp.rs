@@ -347,6 +347,35 @@ pub fn run(args: BgpArgs) -> ExitCode {
         Look::Classic => {
             if let Some(bgp) = &run.bgp {
                 println!("{}", bgp.export(&run.target, run.started_at));
+                // The export is the app's Copy Results. A part asked for by flag is what a
+                // script or an agent wants, so a pipe gets it too, as plain text.
+                let plain = Style::detect(ColorChoice::Never);
+                let parts = args.parts;
+                let now = format::now();
+                let width = 100;
+                let mut sections: Vec<Vec<String>> = Vec::new();
+                if parts.rpki || parts.all {
+                    for origin in &bgp.origins {
+                        if let Some(validation) = bgp.validation_for(origin.asn) {
+                            sections.push(validation_lines(validation, plain, width, now));
+                        }
+                    }
+                }
+                if (parts.neighbors || parts.all) && bgp.is_network() {
+                    sections.extend(neighbors_part(bgp, run, plain, width));
+                }
+                if parts.prefixes || parts.all {
+                    sections.extend(prefixes_part(bgp, run, plain, width));
+                }
+                if (parts.history || parts.all) && !bgp.is_network() && bgp.prefix.is_some() {
+                    sections.extend(history_part(bgp, run, args.days, now, plain, width));
+                }
+                for section in sections {
+                    println!();
+                    for line in section {
+                        println!("{}", line.trim_end());
+                    }
+                }
             }
         }
     }

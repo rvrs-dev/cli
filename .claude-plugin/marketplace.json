@@ -1,0 +1,46 @@
+{
+  "name": "rvrs",
+  "owner": {
+    "name": "rvrs",
+    "url": "https://rvrs.dev"
+  },
+  "metadata": {
+    "description": "Agent plugins for rvrs, the network toolkit."
+  },
+  "plugins": [
+    {
+      "name": "rvrs",
+      "source": "./plugins/rvrs",
+      "description": "Network diagnostics for agents with the rvrs CLI: ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. Every run is a JSON report, compared with the history rvrs keeps, so an agent can say what changed and name the runs that show it.",
+      "category": "networking",
+      "homepage": "https://rvrs.dev/ai-agent-network-diagnostics-skill",
+      "keywords": [
+        "networking",
+        "network-diagnostics",
+        "network-troubleshooting",
+        "network-tools",
+        "ping",
+        "traceroute",
+        "mtr",
+        "dig",
+        "dns",
+        "bgp",
+        "asn",
+        "rpki",
+        "latency",
+        "packet-loss",
+        "ipv6",
+        "connectivity",
+        "looking-glass",
+        "sysadmin",
+        "devops",
+        "sre"
+      ],
+      "tags": [
+        "networking",
+        "diagnostics",
+        "troubleshooting"
+      ]
+    }
+  ]
+}

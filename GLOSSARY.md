@@ -91,6 +91,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | **app** | rvrs for iPhone and iPad. | client, mobile app |
 | **CLI** | The `rvrs` binary on macOS and Linux. | client, command-line tool (after first mention) |
 | **Console** | Where a run starts: the first tab of the app, and the screen `rvrs` opens when run without a command. | home, dashboard, TUI (in copy) |
+| **skill** | The agent skill `rvrs-network-diagnostics`: instructions that teach an AI agent with a shell to diagnose a network with the CLI and its history. It lives in the CLI repo (`plugins/rvrs`) and is also packaged as a plugin. | integration, extension, MCP (that is the server) |
 | **web app** | rvrs.dev for people: history, favorites, run pages. | dashboard, portal |
 | **site** | The public page about rvrs: what it is and where to get it. One page, with no accounts and no runs. | web app, landing page, homepage, website |
 | **try shell** | The shell at `ssh cli.rvrs.dev`: the rvrs CLI on an rvrs server, open to anyone without an account. Its runs start from that server, and their history ends with the session. | demo, sandbox, playground |
@@ -109,7 +110,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 ## Rules
 
 - A word in the "Not" column is not wrong English. It means something else here, or nothing. "Probe" is the sharpest case: RIPE Atlas calls its devices probes, rvrs calls them nodes, and a probe is always a packet.
-- "Agent" means an AI agent that uses rvrs through MCP or the CLI. A node is not an agent.
+- "Agent" means an AI agent that uses rvrs through the skill and the CLI, or later through MCP. A node is not an agent.
 - "Monitoring" describes other products. rvrs has schedules and alerts.
 - Type names in code may differ from the term for historical reasons (`TraceRun` holds a run of any tool, `RecentStore` holds history). Rename them when the code is touched for another reason. Prose, UI copy, flags, API routes and JSON fields use the glossary term from the start.
 - A new concept gets a row here before it gets a screen, a flag or a route.

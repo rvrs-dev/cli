@@ -5,6 +5,8 @@
 
 use serde::Serialize;
 
+use crate::dns::message::types;
+use crate::dns::result::Diff;
 use crate::format;
 use crate::model::{Grade, Outcome, Run, Tool, Verdict};
 
@@ -37,14 +39,58 @@ pub struct ReportRecord {
     pub value: String,
 }
 
+/// One source of a DNS lookup: the device's resolver, a public resolver or the zone's own server.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSource {
+    /// "Cloudflare", "Router", "ns1.example.net".
+    pub name: String,
+    /// device, public or authoritative.
+    pub kind: String,
+    pub server: String,
+    /// match, differs or error, against the reference answer.
+    pub status: String,
+    pub milliseconds: Option<f64>,
+    /// The A and AAAA values it answered, sorted.
+    pub addresses: Vec<String>,
+    /// Why it has no answer: a failure to ask, or the rcode by type ("A: SERVFAIL").
+    pub error: Option<String>,
+}
+
+/// Where a run was made from. A comparison only holds between runs of one origin.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportOrigin {
+    /// The node's name. `null` is this device, the only origin until nodes exist.
+    pub node: Option<String>,
+    /// The address probes left from.
+    pub source_address: Option<String>,
+    /// The address the internet saw this device as, when it was asked.
+    pub public_address: Option<String>,
+}
+
+impl ReportOrigin {
+    fn of(run: &Run) -> Self {
+        Self {
+            node: None,
+            source_address: run.source.map(|address| address.to_string()),
+            public_address: run.public_source.map(|address| address.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
+    /// The run's id in history: what `rvrs show` and `rvrs save` take.
+    pub id: String,
     pub tool: String,
     pub target: String,
     pub address: Option<String>,
     pub family: Option<String>,
     pub started_at: String,
+    /// Where the run was made from.
+    pub origin: ReportOrigin,
     /// reached, exhausted, stopped or failed.
     pub outcome: String,
     /// The run in one line of facts: "6 hops · 12.4 ms".
@@ -54,6 +100,8 @@ pub struct Report {
     pub hops: Option<Vec<ReportHop>>,
     /// DNS: the records of the reference answer.
     pub records: Option<Vec<ReportRecord>>,
+    /// DNS: what each source answered and how it compares with the reference answer.
+    pub sources: Option<Vec<ReportSource>>,
     /// Inferences only, each a sentence that says it is one.
     pub interpretation: Vec<String>,
     /// The result as one plain sentence.
@@ -159,6 +207,8 @@ impl Report {
             })
             .collect();
         Self {
+            id: run.id.clone(),
+            origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
             target: run.target.clone(),
             address: run.destination.map(|address| address.to_string()),
@@ -173,6 +223,7 @@ impl Report {
             measured,
             hops: Some(hops),
             records: None,
+            sources: None,
             interpretation,
         }
     }
@@ -229,6 +280,8 @@ impl Report {
             }
         }
         Self {
+            id: run.id.clone(),
+            origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
             target: run.target.clone(),
             address,
@@ -240,6 +293,7 @@ impl Report {
             measured,
             hops: None,
             records: None,
+            sources: None,
             interpretation,
             sentence,
         }
@@ -256,6 +310,7 @@ impl Report {
         let mut measured = Vec::new();
         let mut interpretation = Vec::new();
         let mut records = None;
+        let mut sources = None;
         let mut sentence = error
             .clone()
             .unwrap_or_else(|| format!("No answer for {}.", run.target));
@@ -278,6 +333,33 @@ impl Report {
                     unit: Some("ms".into()),
                 });
             }
+            let diff = Diff::of(dns);
+            sources = Some(
+                dns.ordered_sources()
+                    .into_iter()
+                    .map(|source| {
+                        let mut addresses = source.values(types::A);
+                        addresses.extend(source.values(types::AAAA));
+                        let failures: Vec<String> = source
+                            .failures
+                            .iter()
+                            .map(|(kind, rcode)| format!("{kind}: {rcode}"))
+                            .collect();
+                        ReportSource {
+                            name: source.label.clone(),
+                            kind: source.kind.title().to_lowercase(),
+                            server: source.server.clone(),
+                            status: diff.status(source).title().to_lowercase(),
+                            milliseconds: source.rtt_ms.map(round),
+                            addresses,
+                            error: source
+                                .error
+                                .clone()
+                                .or_else(|| (!failures.is_empty()).then(|| failures.join(", "))),
+                        }
+                    })
+                    .collect(),
+            );
             let verdict = dns.verdict();
             // The screen's verdict points at its Compare tab. A report has none.
             let detail = verdict.detail.replace(" Compare shows why.", "");
@@ -311,6 +393,8 @@ impl Report {
             }
         }
         Self {
+            id: run.id.clone(),
+            origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
             target: run.target.clone(),
             address: None,
@@ -322,6 +406,7 @@ impl Report {
             measured,
             hops: None,
             records,
+            sources,
             interpretation,
             sentence,
         }
@@ -400,6 +485,8 @@ impl Report {
             }
         }
         Self {
+            id: run.id.clone(),
+            origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
             target: run.target.clone(),
             address: run.destination.map(|address| address.to_string()),
@@ -413,6 +500,7 @@ impl Report {
             measured,
             hops: None,
             records: None,
+            sources: None,
             interpretation,
             sentence,
         }
@@ -531,9 +619,27 @@ mod tests {
             "\"interpretation\"",
             "\"sentence\"",
             "\"measured\"",
+            "\"id\"",
+            "\"origin\"",
+            "\"sourceAddress\"",
+            "\"publicAddress\"",
         ] {
             assert!(json.contains(key), "{key} missing");
         }
+    }
+
+    #[test]
+    fn a_report_names_its_run_and_where_it_was_made_from() {
+        let mut run = reached_run();
+        run.source = Some("192.0.2.7".parse().unwrap());
+        run.public_source = Some("203.0.113.9".parse().unwrap());
+        let report = Report::of(&run);
+        assert_eq!(report.id, run.id);
+        // Until nodes exist every run is made from this device.
+        assert_eq!(report.origin.node, None);
+        assert_eq!(report.origin.source_address.as_deref(), Some("192.0.2.7"));
+        assert_eq!(report.origin.public_address.as_deref(), Some("203.0.113.9"));
+        assert!(report.sources.is_none());
     }
 
     #[test]
@@ -704,6 +810,16 @@ mod tests {
         run.dns = Some(differing);
         let report = Report::of(&run);
         assert!(report.interpretation[0].ends_with("1 source answers differently."));
+        // The report says which source it is and what it answered.
+        let sources = report.sources.as_ref().unwrap();
+        let differing: Vec<&ReportSource> = sources
+            .iter()
+            .filter(|source| source.status == "differs")
+            .collect();
+        assert_eq!(differing.len(), 1);
+        assert!(differing[0].addresses.contains(&"203.0.113.5".to_string()));
+        assert!(sources.iter().any(|source| source.status == "match"));
+        assert!(report.json().contains("\"kind\": \"device\""));
     }
 
     #[test]

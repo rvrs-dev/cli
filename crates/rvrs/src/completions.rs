@@ -195,7 +195,7 @@ _rvrs() {
       _arguments '--json[print the run as a report]' '--classic[print what the original tool prints]'
       ;;
     history)
-      _arguments '--json[print the reports]' '1:action:(clear)'
+      _arguments '--json[print the reports]' '*:tool, target or clear:(clear traceroute ping mtr dig bgp)'
       ;;
     save)
       _arguments '--case=[save into this case]:case:_rvrs_cases' '1:run:_rvrs_runs'
@@ -322,7 +322,7 @@ pub const BASH: &str = r#"_rvrs() {
       fi
       ;;
     history)
-      COMPREPLY=($(compgen -W "clear --json" -- "$current"))
+      COMPREPLY=($(compgen -W "clear --json traceroute ping mtr dig bgp $(rvrs __targets 2>/dev/null)" -- "$current"))
       ;;
     completions)
       COMPREPLY=($(compgen -W "install zsh bash fish" -- "$current"))
@@ -424,6 +424,7 @@ complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l color -x -a 'aut
 complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l node -x -d 'Run from a node'
 complete -c rvrs -n '__fish_seen_subcommand_from show' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
 complete -c rvrs -n '__fish_seen_subcommand_from history' -a clear -d 'Delete every run in history'
+complete -c rvrs -n '__fish_seen_subcommand_from history' -a 'traceroute ping mtr dig bgp' -d 'Only this tool'
 complete -c rvrs -n '__fish_seen_subcommand_from completions' -a 'install zsh bash fish'
 "#;
 

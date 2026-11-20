@@ -1,0 +1,6 @@
+interface:
+  display_name: "rvrs · Network Diagnostics"
+  short_description: "Ping, traceroute, MTR, DNS and BGP diagnostics with run history"
+  default_prompt: "Use rvrs to check the path to example.com and compare it with earlier runs."
+policy:
+  allow_implicit_invocation: true

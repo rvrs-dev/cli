@@ -1,6 +1,8 @@
 ---
 name: rvrs-voice
-description: The rvrs tone of voice and copy rules. Load before writing or reviewing any text a person reads in rvrs: iOS app strings (labels, buttons, titles, results, interpretations, errors, empty states, footers, accessibility labels), the admin app, API error messages and OpenAPI descriptions, README and docs, release notes, App Store and TestFlight text, and commit-free marketing copy. Triggers on "copy", "wording", "microcopy", "error message", "empty state", "tone", "voice", "rename this", "what should this say".
+description: 'The rvrs tone of voice and copy rules. Load before writing or reviewing any text a person reads in rvrs: iOS app strings (labels, buttons, titles, results, interpretations, errors, empty states, footers, accessibility labels), the admin app, API error messages and OpenAPI descriptions, README and docs, release notes, App Store and TestFlight text, and commit-free marketing copy. Triggers on "copy", "wording", "microcopy", "error message", "empty state", "tone", "voice", "rename this", "what should this say".'
+metadata:
+  internal: "true"
 ---
 
 # rvrs voice

@@ -69,7 +69,26 @@ const COMMANDS: [&str; 28] = [
     "help",
 ];
 
+/// A reader that has what it wanted closes the pipe, as `head` does. That ends rvrs quietly with
+/// the code a shell gives a process the pipe signal ended, never with a panic message.
+fn end_quietly_on_a_closed_pipe() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        if message.contains("failed printing to stdout") {
+            std::process::exit(141);
+        }
+        default(info);
+    }));
+}
+
 fn main() -> ExitCode {
+    end_quietly_on_a_closed_pipe();
     let mut arguments: Vec<String> = std::env::args().collect();
     let invoked_as = arguments
         .first()
