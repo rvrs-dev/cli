@@ -153,6 +153,16 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
         }
     }
     session.finish_lookups(Duration::ZERO);
+    // The path MTU, asked for with --mtu: a few don't-fragment pings once the trace is done.
+    if args.mtu && term::interrupts() == 0 {
+        if let Some(destination) = session.run.destination {
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            match rvrs_core::mtu::discover(destination, Duration::from_secs(1), &stop) {
+                Ok(found) => session.run.mtu = Some(found),
+                Err(message) => eprintln!("{}", style_error(style, &message)),
+            }
+        }
+    }
     let run = &session.run;
 
     let mut history = History::open();

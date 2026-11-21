@@ -345,6 +345,9 @@ pub fn footer(view: &View) -> Vec<String> {
             networks => facts.push(format!("{networks} networks")),
         }
     }
+    if let Some(bytes) = run.mtu.as_ref().and_then(|found| found.mtu) {
+        facts.push(format!("MTU {bytes}"));
+    }
     if let Some(elapsed) = view.elapsed {
         facts.push(format!("{:.1} s", elapsed.as_secs_f64()));
     }

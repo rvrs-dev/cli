@@ -62,6 +62,17 @@ Same shape as MTR with three probes per hop by default (`-q`). Too few probes fo
 
 An MSS under 1460 over IPv4 means the path or the server announced less than a 1500-byte MTU. That alone is common (tunnels, PPPoE) and no fault. It matters when large transfers or TLS handshakes hang while small requests work.
 
+## The path MTU
+
+`rvrs traceroute --mtu <target> --json` adds:
+
+- `mtu.bytes`: the largest packet that crossed unfragmented, with its IP header. `mtu.tried` is the largest size tried, this device's own MTU.
+- `mtu.finding`: `full` (the device's own MTU crossed), `limited` (a router said packets must be smaller, and `mtu.limitedBy` is its address), `silent` (larger packets get no answer and no router says why) or `unknown` (the target answers no ping).
+- `measured`: `path mtu` in bytes.
+- `interpretation`: a sentence for `limited`, `silent` and `unknown`.
+
+`limited` is the network working as designed. `silent` is the finding that explains hangs: say that a router likely drops large packets without a message, give the size, and say that one origin can't tell which router. `unknown` is no finding. Use `-T -p <port>` and read `mss` instead.
+
 ## DNS
 
 `rvrs dig <name> --json` asks this device's resolver, Cloudflare, Google, Quad9 and the name's authoritative servers.

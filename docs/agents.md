@@ -17,7 +17,7 @@ Claude Code, as a plugin from this repository:
 /plugin install rvrs@rvrs
 ```
 
-The agent needs `rvrs` 0.8 or newer on `PATH`. When it is missing, the skill has the agent ask and then install it.
+The agent needs `rvrs` 0.9 or newer on `PATH`. When it is missing, the skill has the agent ask and then install it.
 
 ## What an agent gets from the CLI
 

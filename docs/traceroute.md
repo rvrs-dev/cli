@@ -17,6 +17,7 @@ rvrs follows the Linux traceroute.
 | `-I`, `--icmp` | ICMP echo probes | on |
 | `-T`, `--tcp` | TCP probes to a port | |
 | `-p`, `--port <n>` | The port for `-T` | 80 |
+| `--mtu` | Find the path MTU once the trace is done | |
 | `<packet length>` | Total packet size, after the target | 60 |
 
 Where it differs from Linux traceroute:
@@ -50,3 +51,22 @@ First rvrs connects to the port once. A SYN-ACK is an open port, a reset is a cl
 It needs no root. At most six SYNs are on the wire at once, and every connection that opens is reset at once. Where it differs from `traceroute -T`: rvrs completes the handshake before it resets, since an unprivileged process can't send a bare SYN, so the destination sees short connections.
 
 The iOS app has no TCP probes.
+
+## The path MTU: `--mtu`
+
+```bash
+rvrs traceroute --mtu example.com
+```
+
+After the trace, rvrs sends pings that may not be fragmented, starting at this device's own MTU, and reports the largest that crosses.
+
+| Finding | Means |
+| --- | --- |
+| `full` | A packet as large as this device's MTU crossed, so 1500 on Ethernet |
+| `limited` | A router answered that packets must be smaller and named the size. The result names that router and its hop. Path MTU discovery works on this path |
+| `silent` | Small packets cross and larger ones get no answer from anyone. A router likely drops them without saying so, and connections hang once they send full-size packets. rvrs finds the edge to the byte |
+| `unknown` | The target answered no ping of any size |
+
+`--json` adds `mtu` (`bytes`, `finding`, `limitedBy`, `tried`) to the report and `path mtu` to `measured`. On a clean path it takes well under a second. A `silent` path takes up to twenty seconds, since every size that vanishes is tried twice.
+
+It tests up to this device's own MTU and doesn't look for jumbo paths. It needs a target that answers ping. For one that doesn't, `-T -p <port>` reports the MSS of a TCP handshake. `--mtu` and `-T` work together. Linux traceroute's `--mtu` reports the MTU hop by hop; rvrs reports it for the path, with the router that limits it. The iOS app doesn't have it.

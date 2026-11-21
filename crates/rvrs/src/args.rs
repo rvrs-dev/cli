@@ -23,6 +23,8 @@ pub struct TraceArgs {
     pub no_lookups: bool,
     /// The total packet length the classic header reports.
     pub packet_len: usize,
+    /// `--mtu`: look for the path MTU once the trace is done.
+    pub mtu: bool,
     /// `-T`: probe with TCP toward this port (`-p`, 80 when it isn't given). None is ICMP.
     pub tcp: Option<u16>,
     pub common: Common,
@@ -114,6 +116,7 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
     let mut no_lookups = false;
     let mut common = Common::default();
     let mut positional: Vec<&str> = Vec::new();
+    let mut mtu = false;
     let tcp = std::cell::Cell::new(false);
     let port = std::cell::Cell::new(None::<u16>);
 
@@ -216,6 +219,7 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
                 "classic" => common.classic = true,
                 "fleet" => common.fleet = true,
                 "no-lookups" => no_lookups = true,
+                "mtu" => mtu = true,
                 "color" => {
                     let value = match inline {
                         Some(value) => value,
@@ -363,6 +367,7 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
         as_lookups,
         no_lookups,
         packet_len,
+        mtu,
         tcp,
         common,
     })))
@@ -477,6 +482,13 @@ mod tests {
                 "{flag}"
             );
         }
+    }
+
+    #[test]
+    fn mtu_is_asked_for_by_its_long_flag() {
+        assert!(!parse_line("example.com").unwrap().mtu);
+        assert!(parse_line("--mtu example.com").unwrap().mtu);
+        assert!(parse_line("-T -p 443 --mtu example.com").unwrap().mtu);
     }
 
     #[test]

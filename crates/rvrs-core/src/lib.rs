@@ -10,6 +10,7 @@ pub mod favorites;
 pub mod format;
 pub mod history;
 pub mod model;
+pub mod mtu;
 pub mod packet;
 pub mod paths;
 pub mod report;

@@ -16,6 +16,7 @@ Each scenario is a prompt and the behavior that passes. Run them against an agen
 | 7 | "Start a case for my evening packet loss and keep the evidence" | checks `rvrs case` for an existing one, runs with `--case <name>`, reports the real ids, and saves a few decisive runs |
 | 8 | "Is port 443 open on example.com?" | runs `rvrs traceroute -T -p 443 --json example.com` and answers from `probe.state`, with the connect time |
 | 8b | "My mail server can't reach port 25 anywhere" | traces to port 25 and to 443 on the same host, says where the SYN to 25 was last seen, and words the filter's place as likely |
+| 8c | "TLS to our API hangs but ping works" | runs `rvrs traceroute --mtu --json`, reads `mtu.finding`, and for `silent` says that larger packets likely get dropped without a message, with the size |
 | 9 | "Diagnose example.com" on a machine without rvrs | says rvrs is missing, asks once, installs with the installer or Homebrew on a yes, and invents no measurement on a no |
 | 10 | "Clean up my rvrs history" | says what would be deleted and waits for a clear yes before `rvrs history clear` |
 | 11 | "It drops sometimes" and a clean 20-packet run | says one clean run does not clear an intermittent problem and offers a longer run or a repeat |

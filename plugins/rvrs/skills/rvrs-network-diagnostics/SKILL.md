@@ -2,10 +2,10 @@
 name: rvrs-network-diagnostics
 description: Network diagnostics and troubleshooting with the rvrs CLI. Runs ping, traceroute, MTR, dig (DNS lookups) and BGP lookups with ASN and RPKI, reads each run as a JSON report and compares it with the history of runs rvrs keeps. Use when a host, site, API or connection is slow, unreachable or losing packets, to measure latency, packet loss or jitter, to trace a network path, to find out why a name resolves differently, to see who announces a prefix or whether a route changed, to compare IPv4 with IPv6, to answer "was it like this yesterday?", to collect evidence for a ticket to a provider, or to take a baseline before and after a network change. Installs rvrs when it is missing.
 license: MIT OR Apache-2.0
-compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.8 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
+compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.9 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
 metadata:
   author: rvrs-dev
-  version: "0.8.0"
+  version: "0.9.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -44,6 +44,7 @@ Pass a count to `ping` and `mtr`, which otherwise run until interrupted, and `--
 | Where on the path does loss or latency start? | `rvrs mtr -c 20 --json <target>` | 25 s |
 | Which networks does the path cross? | `rvrs traceroute --json <target>` | 5 to 20 s |
 | Is a TCP port open, closed or filtered, and where does a SYN stop? | `rvrs traceroute -T -p <port> --json <target>` | 1 to 10 s |
+| Do large packets cross the path, and who limits them? | `rvrs traceroute --mtu --json <target>` | 1 to 20 s |
 | Does the name resolve the same everywhere? | `rvrs dig <name> --json` | 3 s |
 | One record from one server, as dig prints it | `rvrs dig @1.1.1.1 <name> AAAA +short` | 1 s |
 | Who announces this prefix, and is the origin authorized? | `rvrs bgp <host\|address\|prefix\|ASN> --json` | 5 to 20 s |
@@ -100,6 +101,8 @@ Field by field, per tool, with jq recipes: [the report](references/report.md).
 | Latency that rises at a hop and stays high to the end | Delay added from that hop on | The networks on both sides of it in `hops[].asn`, then history for when it began |
 | `exhausted` | No reply to ICMP. The service can still be up | `rvrs traceroute` for how far probes get, and history for whether it ever answered |
 | `probe.state` is `filtered` | Nothing answered on that TCP port. `interpretation` names the last router that did | The same trace to a port known to be open, such as 443. If that reaches the target, the filter is about the port |
+| `mtu.finding` is `silent` | Small packets cross and larger ones vanish with no message | The same check from another network if there is one. Then it is worth a ticket: TLS and large transfers hang on such a path |
+| `mtu.finding` is `limited` | A router named a smaller size. That is path MTU discovery working | Nothing, unless connections hang anyway |
 | `probe.state` is `closed` | The host answered with a reset. Nothing listens there | The service, on the host itself |
 | `failed` | The run wasn't made | `error`. For a name that didn't resolve, `rvrs dig` |
 | A DNS source with `differs` | An observation, often a CDN or a cache | Whether its addresses are a subset of the authoritative ones |

@@ -95,6 +95,7 @@ _rvrs() {
         '(-I --icmp)'{-I,--icmp}'[ICMP echo probes]' \
         '(-T --tcp)'{-T,--tcp}'[TCP probes to a port]' \
         '(-p --port)'{-p,--port}'[the port for -T]:port:' \
+        '--mtu[find the path MTU]' \
         '--json[print the run as a report]' \
         '--classic[print what traceroute prints]' \
         '--no-lookups[no reverse DNS and no network lookups]' \
@@ -239,7 +240,7 @@ pub const BASH: &str = r#"_rvrs() {
   case "$command" in
     traceroute)
       if [[ "$current" == -* ]]; then
-        COMPREPLY=($(compgen -W "-m -q -w -f -z -n -A -4 -6 -I -T -p --tcp --port --max-hops --queries --wait --first --json --classic --no-lookups --color --node --case --help" -- "$current"))
+        COMPREPLY=($(compgen -W "-m -q -w -f -z -n -A -4 -6 -I -T -p --tcp --port --mtu --max-hops --queries --wait --first --json --classic --no-lookups --color --node --case --help" -- "$current"))
       elif [ "$previous" = "--case" ]; then
         local IFS=$'\n'
         COMPREPLY=($(compgen -W "$(rvrs __cases 2>/dev/null)" -- "$current"))

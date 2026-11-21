@@ -57,6 +57,21 @@ pub struct ReportSource {
     pub error: Option<String>,
 }
 
+/// The largest packet that crossed the path unfragmented, and how the search ended.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportMtu {
+    /// The largest packet seen to cross, with its IP header. None when the target was silent.
+    pub bytes: Option<u16>,
+    /// full (this device's own MTU crossed), limited (a router said packets must be smaller),
+    /// silent (larger packets vanish and no router says why) or unknown.
+    pub finding: String,
+    /// The router that said so.
+    pub limited_by: Option<String>,
+    /// The largest size tried: this device's own MTU.
+    pub tried: Option<u16>,
+}
+
 /// The probes of a run that didn't send ICMP echo.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,6 +130,8 @@ pub struct Report {
     pub sources: Option<Vec<ReportSource>>,
     /// What the probes were when they were not ICMP echo: TCP to a port, and what the port did.
     pub probe: Option<ReportProbe>,
+    /// The path MTU, when the run looked for it.
+    pub mtu: Option<ReportMtu>,
     /// Inferences only, each a sentence that says it is one.
     pub interpretation: Vec<String>,
     /// The result as one plain sentence.
@@ -197,6 +214,30 @@ impl Report {
         } else if outcome == Outcome::Exhausted && run.unreachable().is_none() {
             interpretation.push(SILENT_TARGET.to_string());
         }
+        if let Some(note) = run.mtu_note() {
+            interpretation.push(note);
+        }
+        let mtu = run.mtu.as_ref().map(|found| {
+            if let Some(bytes) = found.mtu {
+                measured.push(Measurement {
+                    name: "path mtu".into(),
+                    value: f64::from(bytes),
+                    unit: Some("bytes".into()),
+                });
+            }
+            ReportMtu {
+                bytes: found.mtu,
+                finding: match found.finding {
+                    crate::mtu::MtuFinding::Full => "full",
+                    crate::mtu::MtuFinding::Limited => "limited",
+                    crate::mtu::MtuFinding::Silent => "silent",
+                    crate::mtu::MtuFinding::Unknown => "unknown",
+                }
+                .into(),
+                limited_by: found.limited_by.map(|address| address.to_string()),
+                tried: found.tried,
+            }
+        });
         let probe = run.tcp.as_ref().map(|tcp| {
             if let Some(micros) = tcp.connect_micros {
                 measured.push(Measurement {
@@ -261,6 +302,7 @@ impl Report {
             records: None,
             sources: None,
             probe,
+            mtu,
             interpretation,
         }
     }
@@ -332,6 +374,7 @@ impl Report {
             records: None,
             sources: None,
             probe: None,
+            mtu: None,
             interpretation,
             sentence,
         }
@@ -446,6 +489,7 @@ impl Report {
             records,
             sources,
             probe: None,
+            mtu: None,
             interpretation,
             sentence,
         }
@@ -541,6 +585,7 @@ impl Report {
             records: None,
             sources: None,
             probe: None,
+            mtu: None,
             interpretation,
             sentence,
         }

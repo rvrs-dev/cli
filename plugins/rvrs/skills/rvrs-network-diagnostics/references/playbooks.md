@@ -63,7 +63,7 @@ Words: say origin AS where people say "owner", and Valid, Invalid or Not Found f
    - `filtered`: go on.
 2. The same trace to a port that is usually open on that host, such as 443. If it reaches the target, the path is fine and something drops this port. If it stops at the same hop, the path stops there for everything.
 3. Say where the SYN was last seen: the hop and its network from `interpretation`. Many access providers filter 25, 135 to 139 and 445 on purpose, so name that as the likely reason for those ports.
-4. For TLS or large transfers that hang while small requests work, read `mss` from an open port. A low value with hangs points at packets too large for the path. Compare with another network if the person has one.
+4. For TLS or large transfers that hang while small requests work, run `rvrs traceroute --mtu --json <target>`. `silent` is the answer: larger packets vanish with no message, and the result gives the size from which. `full` or `limited` clears the path. For a target that answers no ping, read `mss` from `-T -p <port>`: a low value with hangs points the same way. Compare with another network if the person has one.
 
 ## IPv4 against IPv6
 

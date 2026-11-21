@@ -406,6 +406,9 @@ pub struct Run {
     /// A traceroute that probed with TCP: the port and what it did. None is ICMP.
     #[serde(default)]
     pub tcp: Option<crate::tcp::TcpProbe>,
+    /// The path MTU, when the run looked for it (`traceroute --mtu`).
+    #[serde(default)]
+    pub mtu: Option<crate::mtu::PathMtu>,
 }
 
 impl Run {
@@ -429,6 +432,7 @@ impl Run {
             dns: None,
             bgp: None,
             tcp: None,
+            mtu: None,
         }
     }
 
@@ -824,6 +828,45 @@ impl Run {
 
     /// The hops up to the farthest one that answered. Silent hops behind it are not part of
     /// what the run learned about the path.
+    /// What the search for the path MTU means when it didn't simply find the full size: an
+    /// inference for packets that vanish, a plain statement for a router that said so.
+    pub fn mtu_note(&self) -> Option<String> {
+        use crate::mtu::MtuFinding;
+        let found = self.mtu.as_ref()?;
+        match (found.finding, found.mtu) {
+            (MtuFinding::Full, _) => None,
+            (MtuFinding::Limited, Some(mtu)) => {
+                let router = match found.limited_by {
+                    Some(address) => {
+                        let hop = self
+                            .hops
+                            .iter()
+                            .find(|hop| hop.addresses().contains(&address))
+                            .map(|hop| format!("hop {}, ", hop.ttl))
+                            .unwrap_or_default();
+                        match self.network(address) {
+                            Some(network) => {
+                                format!("{hop}{address} in {} {}", network.label(), network.name)
+                            }
+                            None => format!("{hop}{address}"),
+                        }
+                    }
+                    None => "A router".to_string(),
+                };
+                Some(format!(
+                    "The path carries packets of up to {mtu} bytes. {router} reports that larger ones don't fit, so path MTU discovery works here."
+                ))
+            }
+            (MtuFinding::Silent, Some(mtu)) => Some(format!(
+                "Packets of up to {mtu} bytes cross. Larger ones get no answer and no router says why, so a router on the path likely drops them silently. Connections then hang once they send full-size packets, which shows first in TLS handshakes and large transfers."
+            )),
+            _ => Some(
+                "The target answered no ping of any size, so the path MTU couldn't be measured. A TCP trace with -T -p reports the MSS of a handshake."
+                    .to_string(),
+            ),
+        }
+    }
+
     /// TCP: what a trace to a port that never answered found, worded as the inference it is.
     /// None for an ICMP run, and for a port that answered.
     pub fn tcp_filter_note(&self) -> Option<String> {
