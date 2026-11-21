@@ -28,7 +28,7 @@ Claude Code, as a plugin:
 /plugin install rvrs@rvrs
 ```
 
-The skill needs the `rvrs` binary, version 0.9 or newer, on macOS or Linux. When it is missing the agent asks, then installs it into `~/.local/bin` without root:
+The skill needs the `rvrs` binary, version 0.10 or newer, on macOS or Linux. When it is missing the agent asks, then installs it into `~/.local/bin` without root:
 
 ```bash
 curl -fsSL https://rvrs.dev/install.sh | sh

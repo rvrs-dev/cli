@@ -77,7 +77,7 @@ The Console, during an MTR to he.net:
 
 ## Privacy
 
-rvrs has no account and sends no usage data. [Privacy](docs/privacy.md) lists every request it makes.
+rvrs needs no account and sends no usage data. [Privacy](docs/privacy.md) lists every request it makes.
 
 ## Docs
 

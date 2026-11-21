@@ -10,4 +10,6 @@ These are the requests rvrs makes.
 - The requests of `rvrs bgp`, to stat.ripe.net: the address, prefix or AS number that was looked up (for a hostname, up to eight of the addresses it resolves to), the origin AS with up to 40 of its prefixes, and the AS numbers in the paths, for their holders' names. The prefix and the origin AS number also go to each of your looking glasses. `--no-glasses` leaves those out.
 - Once a day, a look for a newer rvrs: a request to api.github.com for the newest release, or `git fetch` in the checkout rvrs was built from. It sends nothing about you or your runs. `RVRS_UPDATE_CHECK=0` turns it off.
 
-`--no-lookups` turns off everything but the probes, the DNS questions and the requests a BGP lookup is made of. The CLI has no account and sends no usage data.
+- Only when you run `rvrs login`: this device's name and the rvrs version go to api.rvrs.dev, so you can see what you are confirming. Signed in, `rvrs status` with `RVRS_TOKEN` and `rvrs logout` ask the API about this install. No run, target or address is sent.
+
+`--no-lookups` turns off everything but the probes, the DNS questions and the requests a BGP lookup is made of. An account is optional, and the CLI sends no usage data and no runs.

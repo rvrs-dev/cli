@@ -189,10 +189,14 @@ pub fn main(style: Style) -> String {
         &[
             (
                 "login",
-                "Sign in, so your runs, nodes and schedules are in your workspace",
-                true,
+                "Sign this install in to your workspace: a code, confirmed in the browser",
+                false,
             ),
-            ("logout", "Sign out", true),
+            (
+                "logout",
+                "Sign out and revoke this install's credential",
+                false,
+            ),
             ("share [id]", "Print the share link to a run page", true),
         ],
     ));

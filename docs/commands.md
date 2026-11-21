@@ -25,7 +25,9 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs case add\|remove <name> [id]` | Puts a run in a case or takes it out |
 | `rvrs favorite <host>` | Adds a host to Favorites |
 | `rvrs favorites` | Lists favorite hosts with their newest run |
-| `rvrs status` | Checks that this device can run the tools |
+| `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
+| `rvrs logout` | Signs out and revokes this install's credential |
+| `rvrs status` | Checks that this device can run the tools, and says who is signed in |
 | `rvrs completions install` | Sets up tab completion for zsh, bash or fish |
 | `rvrs update` | Brings rvrs up to date, however it was installed |
 
@@ -42,7 +44,7 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | `rvrs nodes` | Lists the nodes in your fleet. `nodes show`, `nodes rename` and `nodes remove` manage one |
 | `rvrs schedule <tool> <target> --node <name> --every <time>` | Has a node repeat a run |
 | `rvrs schedules`, `rvrs alerts` | List the fleet's schedules and the alerts they sent |
-| `rvrs login`, `rvrs logout`, `rvrs share` | Sign in to your workspace, sign out, print a run's share link |
+| `rvrs share` | Print a run's share link |
 | `--node <name>` | Runs any tool from a node instead of this device |
 | `--fleet` | Runs it from every node in the fleet |
 
@@ -83,10 +85,23 @@ A report prints whatever the outcome, and the error goes to stderr. [rvrs for ag
 | Favorites | `~/.local/share/rvrs/favorites.json` |
 | Your looking glasses | `~/.config/rvrs/looking-glasses.json` |
 | The Console's last tool | `~/.config/rvrs/console.json` |
+| This install's credential, after `rvrs login` | `~/.config/rvrs/credentials.json` |
 | Network lookups, kept a week | `~/.cache/rvrs/networks.json` |
 | What the last look for an update found | `~/.cache/rvrs/update.json` |
 
 `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are honored. `RVRS_HOME=<dir>` puts everything in one folder. `RVRS_HISTORY=0` keeps a run out of history.
+
+## Accounts
+
+Every tool runs without an account, and runs stay in this device's history whether you sign in or not.
+
+`rvrs login` asks the rvrs API for a login, prints a code of eight characters and a link, and opens the link. Sign in at app.rvrs.dev, or make your account there, and confirm the code. The command has been asking every three seconds and now receives this install's credential, which it keeps in `~/.config/rvrs/credentials.json`, readable by you alone. The code lives ten minutes.
+
+On a device nobody sits at, make a token under Installs at app.rvrs.dev and set it as `RVRS_TOKEN`. It takes the place of the stored credential.
+
+`rvrs logout` revokes the credential at the API and removes the file. You can also revoke any install at app.rvrs.dev.
+
+`RVRS_API=<url>` points rvrs at another API, such as one you host. A stored credential is only ever sent to the API it came from.
 
 ## Updates
 

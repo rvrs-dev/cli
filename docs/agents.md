@@ -17,7 +17,7 @@ Claude Code, as a plugin from this repository:
 /plugin install rvrs@rvrs
 ```
 
-The agent needs `rvrs` 0.9 or newer on `PATH`. When it is missing, the skill has the agent ask and then install it.
+The agent needs `rvrs` 0.10 or newer on `PATH`. When it is missing, the skill has the agent ask and then install it.
 
 ## What an agent gets from the CLI
 
@@ -38,7 +38,7 @@ The agent needs `rvrs` 0.9 or newer on `PATH`. When it is missing, the skill has
 
 ## Nodes and accounts
 
-Every run starts from this device. The skill tells the agent to say so when a question needs another origin, and to use `--node`, `rvrs nodes` and `rvrs login` once `rvrs status` reports them. Until then those commands refuse and send nothing.
+Every run starts from this device. The skill tells the agent to say so when a question needs another origin, and to use `--node` and `rvrs nodes` once `rvrs status` reports them. Until then those commands refuse and send nothing. `rvrs login` exists, and the skill has the agent run it only when the person asks, leaving the browser step to them.
 
 ## Publishing the skill
 

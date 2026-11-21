@@ -1,6 +1,7 @@
 //! rvrs: see what the network is doing. One binary that takes the place of the network tools
 //! engineers already type, with their flags, and shows results that explain themselves.
 
+mod account;
 mod args;
 mod bgp;
 mod classic;
@@ -143,8 +144,9 @@ fn main() -> ExitCode {
         "update" => update::run(rest),
         "__update-check" => update::check_now(),
         "completions" => commands::completions(rest),
-        "login" | "logout" => fail("Accounts aren't available yet, so runs are kept on this device. List them with rvrs history."),
-        "share" => fail("Share links come with accounts, which aren't available yet. To send a run, print it as a report with rvrs last --json."),
+        "login" => account::login(rest),
+        "logout" => account::logout(rest),
+        "share" => fail("Share links aren't available yet. To send a run, print it as a report with rvrs last --json."),
         "node" | "nodes" => fail("Nodes aren't available yet, so runs come from this device. The waitlist is at rvrs.dev."),
         "schedule" | "schedules" | "alerts" => fail("Schedules and alerts come with nodes, which aren't available yet. The waitlist is at rvrs.dev."),
         "help" | "--help" | "-h" => {

@@ -865,10 +865,10 @@ pub fn status() -> ExitCode {
             &format!("{} ({})", crate::help::VERSION, crate::help::COMMIT),
         ),
     }
-    off(
-        "Account",
-        "not signed in \u{00B7} accounts aren't available yet",
-    );
+    match crate::account::status_line() {
+        (true, line) => ok("Account", &line),
+        (false, line) => off("Account", &line),
+    }
     off(
         "Nodes",
         "runs come from this device \u{00B7} nodes aren't available yet",

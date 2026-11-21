@@ -1296,6 +1296,7 @@ dependencies = [
  "libc",
  "ratatui",
  "rvrs-core",
+ "serde",
  "serde_json",
  "unicode-width",
  "ureq",

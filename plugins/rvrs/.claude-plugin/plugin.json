@@ -1,7 +1,7 @@
 {
   "name": "rvrs",
   "displayName": "rvrs · Network Diagnostics",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Network diagnostics for agents with the rvrs CLI: ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. Every run is a JSON report, compared with the history rvrs keeps, so an agent can say what changed and name the runs that show it.",
   "author": {
     "name": "rvrs",

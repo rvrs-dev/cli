@@ -2,10 +2,10 @@
 name: rvrs-network-diagnostics
 description: Network diagnostics and troubleshooting with the rvrs CLI. Runs ping, traceroute, MTR, dig (DNS lookups) and BGP lookups with ASN and RPKI, reads each run as a JSON report and compares it with the history of runs rvrs keeps. Use when a host, site, API or connection is slow, unreachable or losing packets, to measure latency, packet loss or jitter, to trace a network path, to find out why a name resolves differently, to see who announces a prefix or whether a route changed, to compare IPv4 with IPv6, to answer "was it like this yesterday?", to collect evidence for a ticket to a provider, or to take a baseline before and after a network change. Installs rvrs when it is missing.
 license: MIT OR Apache-2.0
-compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.9 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
+compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
 metadata:
   author: rvrs-dev
-  version: "0.9.0"
+  version: "0.10.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -163,15 +163,16 @@ A normal result stops after the evidence. Do not pad it.
 
 Every run today starts from this device. That answers "what does the network look like from here". It can't answer "is it slow for customers in Sweden" or "is it them or me", which need the same run from another network.
 
-rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. They are not released. `rvrs status` says so on its Nodes and Account lines, and `--node`, `--fleet`, `rvrs nodes`, `rvrs schedule` and `rvrs login` refuse and send nothing.
+rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. They are not released. `rvrs status` says so on its Nodes line, and `--node`, `--fleet`, `rvrs nodes` and `rvrs schedule` refuse and send nothing.
 
-When a question needs another origin, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that nodes are on the waitlist at https://rvrs.dev. Do not bring nodes up when this device answers the question. When `rvrs status` reports that accounts or nodes are available, follow [nodes and accounts](references/nodes.md).
+When a question needs another origin, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that nodes are on the waitlist at https://rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's workspace. Runs still start from this device and stay in its history, so run it only when the person asks to sign in. When `rvrs status` reports that nodes are available, follow [nodes and accounts](references/nodes.md).
 
 ## Only when asked
 
 Reading history and making a run with a count need no permission. Each of these changes something the person owns, so it needs their word first:
 
 - Installing or updating rvrs.
+- `rvrs login` and `rvrs logout`. The person confirms a login in their own browser. You never type an address, a password or a code into a page.
 - Saving a run or starting a case. A request for evidence, a ticket, a watch or a before-and-after is that word. Say what you saved.
 - A run above `-c 300`, or one left running in the background.
 - `rvrs history clear`, `rvrs saved remove`, `rvrs case delete` and `rvrs case remove`, and then only when asked for exactly that.
