@@ -238,6 +238,31 @@ impl Cases {
         Ok(count)
     }
 
+    /// Replaces the cases with what the account holds: each a name, the ids of its runs here
+    /// and when it was made. A case that keeps its name keeps its id, so the case used last
+    /// stays the case used last.
+    pub fn replace(&mut self, kept: Vec<(String, Vec<String>, u64)>) -> std::io::Result<()> {
+        let cases: Vec<Case> = kept
+            .into_iter()
+            .map(|(name, run_ids, created_at)| Case {
+                id: self.find(&name).map_or_else(new_id, |case| case.id.clone()),
+                name,
+                run_ids,
+                created_at,
+            })
+            .collect();
+        if cases == self.cases {
+            return Ok(());
+        }
+        self.cases = cases;
+        if let Some(id) = &self.last_used {
+            if self.get(id).is_none() {
+                self.last_used = None;
+            }
+        }
+        self.write()
+    }
+
     fn write(&self) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;

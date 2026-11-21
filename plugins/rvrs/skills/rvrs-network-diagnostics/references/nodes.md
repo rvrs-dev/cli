@@ -29,7 +29,9 @@ Without nodes, a second origin can still be had by hand: the person runs the sam
 
 ## Accounts
 
-The Account line of `rvrs status` says who is signed in, or "not signed in". Signing in puts this install in the person's workspace on app.rvrs.dev. Runs still start from this device and stay in its history, and the account doesn't hold them yet. Sign in only when the person asks to.
+The Account line of `rvrs status` says who is signed in, or "not signed in". Signing in puts this install in the person's workspace on app.rvrs.dev. From then on every run made on this device is also kept in their account, with its target, addresses and result, and so are their saved runs, cases and favorites. Runs from their other devices appear in `rvrs history` with the install's name under FROM and in `--json` as `origin.install`. Say this before a login, since it changes what leaves the device, and sign in only when the person asks to.
+
+Compare a run only with runs of the same origin. A run with `origin.install` set was made on another device, on another network path. `rvrs sync` sends and reads now. `RVRS_SYNC=0` keeps a signed-in install's runs on the device.
 
 1. On a yes, run `rvrs login --no-browser`. It prints a code and a link and waits up to ten minutes. Give the person both. They open the link, sign in or make their account there, and confirm the code. You never type an email address, a password or a code into a page, and you never accept terms on their behalf.
 2. The command returns once they confirmed. `rvrs status` then names the account.

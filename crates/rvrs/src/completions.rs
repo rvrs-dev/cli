@@ -72,6 +72,7 @@ _rvrs() {
     'favorites:List the favorite hosts'
     'login:Sign this install in to your workspace'
     'logout:Sign out and revoke this install'\''s credential'
+    'sync:Send runs to the account and read what is new'
     'status:Check that this device can run the tools'
     'update:Bring rvrs up to date'
     'completions:Set up tab completion'
@@ -236,7 +237,7 @@ pub const BASH: &str = r#"_rvrs() {
   previous="${COMP_WORDS[COMP_CWORD-1]}"
   command="${COMP_WORDS[1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
+    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout sync status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
     return
   fi
   case "$command" in

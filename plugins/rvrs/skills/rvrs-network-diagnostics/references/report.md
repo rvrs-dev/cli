@@ -12,7 +12,8 @@
 | `address` | What the target resolved to. `null` for DNS and for a run that failed to resolve. |
 | `family` | `IPv4` or `IPv6`. `null` for DNS and BGP. |
 | `startedAt` | UTC, ISO 8601. |
-| `origin` | `node` (`null` is this device), `sourceAddress` (the address probes left from) and `publicAddress` (what the internet saw this device as, when lookups were on). |
+| `schema` | The version of the report's shape, `1`. Fields are only added within a version. |
+| `origin` | `kind` (`device` today, `node` once nodes exist), `node` (`null` is this device), `install` (the install that made the run when the account handed it to this device, `null` for a run made here), `sourceAddress` (the address probes left from) and `publicAddress` (what the internet saw this device as, when lookups were on). |
 | `outcome` | `reached`, `exhausted`, `stopped` or `failed`. |
 | `summary` | The run in one line of facts: `6 hops · 12.4 ms`. The history list words a DNS run's summary differently from its report. |
 | `error` | The reason, when `outcome` is `failed`. |

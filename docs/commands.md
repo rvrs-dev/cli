@@ -27,6 +27,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs favorites` | Lists favorite hosts with their newest run |
 | `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
 | `rvrs logout` | Signs out and revokes this install's credential |
+| `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
 | `rvrs status` | Checks that this device can run the tools, and says who is signed in |
 | `rvrs completions install` | Sets up tab completion for zsh, bash or fish |
 | `rvrs update` | Brings rvrs up to date, however it was installed |
@@ -83,6 +84,8 @@ A report prints whatever the outcome, and the error goes to stderr. [rvrs for ag
 | Saved runs | `~/.local/share/rvrs/saved.json` |
 | Cases | `~/.local/share/rvrs/cases.json` |
 | Favorites | `~/.local/share/rvrs/favorites.json` |
+| Runs your other installs made, signed in | `~/.local/share/rvrs/account-runs.json` |
+| Runs waiting to go to your account | `~/.local/share/rvrs/outbox/` |
 | Your looking glasses | `~/.config/rvrs/looking-glasses.json` |
 | The Console's last tool | `~/.config/rvrs/console.json` |
 | This install's credential, after `rvrs login` | `~/.config/rvrs/credentials.json` |
@@ -95,11 +98,17 @@ A report prints whatever the outcome, and the error goes to stderr. [rvrs for ag
 
 Every tool runs without an account, and runs stay in this device's history whether you sign in or not.
 
+Signed in, every run you make is also kept in your account, where app.rvrs.dev lists it under Runs. Saved runs, cases and favorites are kept there too, so they are the same on every device you sign in on. A device you sign in on later gets your newest 200 runs from the other devices, every saved run, and from then on what is new. `rvrs history` names the install a run came from in a FROM column, and `--json` carries it as `origin.install`.
+
+rvrs syncs on its own: after each run, and at most every ten minutes when it starts. `rvrs sync` does it now and says what went each way. A run made offline waits on this device and goes with the next sync, for up to a week. `RVRS_SYNC=0` turns syncing off, so a signed-in install keeps its runs to itself.
+
+An install that signs in with `RVRS_TOKEN` only sends its runs. It reads nothing from the account.
+
 `rvrs login` asks the rvrs API for a login, prints a code of eight characters and a link, and opens the link. Sign in at app.rvrs.dev, or make your account there, and confirm the code. The command has been asking every three seconds and now receives this install's credential, which it keeps in `~/.config/rvrs/credentials.json`, readable by you alone. The code lives ten minutes.
 
 On a device nobody sits at, make a token under Installs at app.rvrs.dev and set it as `RVRS_TOKEN`. It takes the place of the stored credential.
 
-`rvrs logout` revokes the credential at the API and removes the file. You can also revoke any install at app.rvrs.dev.
+`rvrs logout` revokes the credential at the API, removes the file and removes the runs your other installs made from this device. Runs made here, saved runs, cases and favorites stay. You can also revoke any install at app.rvrs.dev.
 
 `RVRS_API=<url>` points rvrs at another API, such as one you host. A stored credential is only ever sent to the API it came from.
 

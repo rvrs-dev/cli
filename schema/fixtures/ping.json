@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "5xb7j3",
+  "tool": "Ping",
+  "target": "example.com",
+  "address": "172.66.147.243",
+  "family": "IPv4",
+  "startedAt": "2026-11-21T18:50:58Z",
+  "origin": {
+    "kind": "device",
+    "node": null,
+    "install": null,
+    "sourceAddress": "192.0.2.10",
+    "publicAddress": "203.0.113.7"
+  },
+  "outcome": "reached",
+  "summary": "3 pkt · 0.0% loss · 11.4 ms avg",
+  "error": null,
+  "measured": [
+    {
+      "name": "sent",
+      "value": 3.0,
+      "unit": null
+    },
+    {
+      "name": "received",
+      "value": 3.0,
+      "unit": null
+    },
+    {
+      "name": "loss",
+      "value": 0.0,
+      "unit": "%"
+    },
+    {
+      "name": "min",
+      "value": 11.0,
+      "unit": "ms"
+    },
+    {
+      "name": "avg",
+      "value": 11.4,
+      "unit": "ms"
+    },
+    {
+      "name": "max",
+      "value": 11.7,
+      "unit": "ms"
+    },
+    {
+      "name": "jitter",
+      "value": 0.6,
+      "unit": "ms"
+    },
+    {
+      "name": "p50",
+      "value": 11.6,
+      "unit": "ms"
+    },
+    {
+      "name": "p95",
+      "value": 11.7,
+      "unit": "ms"
+    }
+  ],
+  "hops": null,
+  "records": null,
+  "sources": null,
+  "probe": null,
+  "mtu": null,
+  "interpretation": [],
+  "sentence": "3 packets to 172.66.147.243, 0.0% loss, 11.4 ms average."
+}

@@ -15,22 +15,73 @@ pub struct History {
     path: PathBuf,
     limit: usize,
     pub runs: Vec<Run>,
+    /// Where the runs the account handed this device are kept, when this is the history and
+    /// not the saved runs. They are listed with the runs made here and written apart from them.
+    account: Option<PathBuf>,
+}
+
+fn read_runs(path: &Path) -> Vec<Run> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|data| serde_json::from_slice(&data).ok())
+        .unwrap_or_default()
+}
+
+fn write_runs(path: &Path, runs: &[&Run]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let data = serde_json::to_vec(runs).map_err(std::io::Error::other)?;
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, data)?;
+    std::fs::rename(&temporary, path)
+}
+
+/// The file with the runs other installs of the account made, newest first.
+pub fn account_runs_path() -> PathBuf {
+    paths::data_dir().join("account-runs.json")
+}
+
+/// The runs other installs of the account made, as the last sync left them.
+pub fn account_runs() -> Vec<Run> {
+    read_runs(&account_runs_path())
+}
+
+/// Replaces them, newest first and [`LIMIT`] at most. Only the sync writes this file.
+pub fn write_account_runs(mut runs: Vec<Run>) -> std::io::Result<()> {
+    runs.sort_by_key(|run| std::cmp::Reverse(run.started_at));
+    runs.truncate(LIMIT);
+    write_runs(&account_runs_path(), &runs.iter().collect::<Vec<_>>())
 }
 
 impl History {
+    /// The runs made here together with the ones the account handed this device.
     pub fn open() -> Self {
-        Self::at(paths::data_dir().join("history.json"))
+        Self::with_account(paths::data_dir().join("history.json"), account_runs_path())
+    }
+
+    pub fn with_account(path: PathBuf, account: PathBuf) -> Self {
+        let mut history = Self::at(path);
+        let mine: Vec<String> = history.runs.iter().map(|run| run.id.clone()).collect();
+        let others = read_runs(&account)
+            .into_iter()
+            .filter(|run| run.from.is_some() && !mine.contains(&run.id));
+        history.runs.extend(others);
+        // Stable, so runs of one second stay in the order they were kept.
+        history
+            .runs
+            .sort_by_key(|run| std::cmp::Reverse(run.started_at));
+        history.account = Some(account);
+        history
     }
 
     pub fn at(path: PathBuf) -> Self {
-        let runs = std::fs::read(&path)
-            .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok())
-            .unwrap_or_default();
+        let runs = read_runs(&path);
         Self {
             path,
             limit: LIMIT,
             runs,
+            account: None,
         }
     }
 
@@ -65,6 +116,7 @@ impl History {
         if self.runs.len() == before {
             return Ok(false);
         }
+        self.write_account()?;
         self.write().map(|()| true)
     }
 
@@ -76,12 +128,15 @@ impl History {
     pub fn save(&mut self, run: &Run) -> std::io::Result<()> {
         self.runs.retain(|saved| saved.id != run.id);
         self.runs.insert(0, run.clone());
-        self.runs.truncate(self.limit);
+        if self.account.is_none() {
+            self.runs.truncate(self.limit);
+        }
         self.write()
     }
 
     pub fn clear(&mut self) -> std::io::Result<()> {
         self.runs.clear();
+        self.write_account()?;
         self.write()
     }
 
@@ -134,14 +189,31 @@ impl History {
         seen
     }
 
+    /// Writes the runs this file holds. In the history those are the runs made here, the
+    /// newest [`LIMIT`]: the account's runs have a file of their own that the sync writes.
     fn write(&self) -> std::io::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
+        let kept: Vec<&Run> = match self.account {
+            Some(_) => self
+                .runs
+                .iter()
+                .filter(|run| run.from.is_none())
+                .take(self.limit)
+                .collect(),
+            None => self.runs.iter().collect(),
+        };
+        write_runs(&self.path, &kept)
+    }
+
+    /// Writes the account's runs after one was removed here or history was cleared.
+    fn write_account(&self) -> std::io::Result<()> {
+        let Some(path) = &self.account else {
+            return Ok(());
+        };
+        if !path.exists() {
+            return Ok(());
         }
-        let data = serde_json::to_vec(&self.runs).map_err(std::io::Error::other)?;
-        let temporary = self.path.with_extension("json.tmp");
-        std::fs::write(&temporary, data)?;
-        std::fs::rename(&temporary, &self.path)
+        let kept: Vec<&Run> = self.runs.iter().filter(|run| run.from.is_some()).collect();
+        write_runs(path, &kept)
     }
 }
 

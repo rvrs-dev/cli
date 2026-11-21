@@ -1,0 +1,254 @@
+{
+  "schema": 1,
+  "id": "5ee45r",
+  "tool": "DNS",
+  "target": "example.com",
+  "address": null,
+  "family": null,
+  "startedAt": "2026-11-21T18:50:58Z",
+  "origin": {
+    "kind": "device",
+    "node": null,
+    "install": null,
+    "sourceAddress": "192.0.2.10",
+    "publicAddress": "203.0.113.7"
+  },
+  "outcome": "reached",
+  "summary": "Resolved · 6 ms · answers differ · signed",
+  "error": null,
+  "measured": [
+    {
+      "name": "addresses",
+      "value": 4.0,
+      "unit": null
+    },
+    {
+      "name": "sources",
+      "value": 5.0,
+      "unit": null
+    },
+    {
+      "name": "fastest",
+      "value": 5.6,
+      "unit": "ms"
+    }
+  ],
+  "hops": null,
+  "records": [
+    {
+      "type": "A",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "172.66.147.243"
+    },
+    {
+      "type": "A",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "104.20.23.154"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "A 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "NS",
+      "name": "example.com",
+      "ttl": 86400,
+      "value": "elliott.ns.cloudflare.com"
+    },
+    {
+      "type": "NS",
+      "name": "example.com",
+      "ttl": 86400,
+      "value": "hera.ns.cloudflare.com"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 86400,
+      "value": "NS 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "SOA",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "elliott.ns.cloudflare.com dns.cloudflare.com 2420077714 10000 2400 604800 1800"
+    },
+    {
+      "type": "TYPE47",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "0100076578616d706c6503636f6d000009620d800c540b8d1cc00101c0"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "SOA 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "TYPE47 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "SOA",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "elliott.ns.cloudflare.com dns.cloudflare.com 2420077714 10000 2400 604800 1800"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "SOA 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "MX",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "0 "
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "MX 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "TXT",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "\"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9\""
+    },
+    {
+      "type": "TXT",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "\"v=spf1 -all\""
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "TXT 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "AAAA",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "2606:4700:10::ac42:93f3"
+    },
+    {
+      "type": "AAAA",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "2606:4700:10::6814:179a"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "AAAA 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "HTTPS",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "1 . alpn=\"h3,h2\" ipv4hint=104.20.23.154,172.66.147.243 ipv6hint=2606:4700:10::6814:179a,2606:4700:10::ac42:93f3"
+    },
+    {
+      "type": "RRSIG",
+      "name": "example.com",
+      "ttl": 300,
+      "value": "HTTPS 13 example.com 2026-11-20–2026-11-22"
+    },
+    {
+      "type": "TYPE47",
+      "name": "example.com",
+      "ttl": 1800,
+      "value": "0100076578616d706c6503636f6d000009620d800c540b8d1cc0010180"
+    }
+  ],
+  "sources": [
+    {
+      "name": "Router",
+      "kind": "device",
+      "server": "192.0.2.1",
+      "status": "differs",
+      "milliseconds": 5.6,
+      "addresses": [
+        "172.66.147.243",
+        "2606:4700:10::6814:179a",
+        "2606:4700:10::ac42:93f3"
+      ],
+      "error": null
+    },
+    {
+      "name": "Cloudflare",
+      "kind": "public",
+      "server": "1.1.1.1",
+      "status": "match",
+      "milliseconds": 13.3,
+      "addresses": [
+        "104.20.23.154",
+        "172.66.147.243",
+        "2606:4700:10::6814:179a",
+        "2606:4700:10::ac42:93f3"
+      ],
+      "error": null
+    },
+    {
+      "name": "Quad9",
+      "kind": "public",
+      "server": "9.9.9.9",
+      "status": "match",
+      "milliseconds": 20.7,
+      "addresses": [
+        "104.20.23.154",
+        "172.66.147.243",
+        "2606:4700:10::6814:179a",
+        "2606:4700:10::ac42:93f3"
+      ],
+      "error": null
+    },
+    {
+      "name": "Google",
+      "kind": "public",
+      "server": "8.8.8.8",
+      "status": "match",
+      "milliseconds": 27.6,
+      "addresses": [
+        "104.20.23.154",
+        "172.66.147.243",
+        "2606:4700:10::6814:179a",
+        "2606:4700:10::ac42:93f3"
+      ],
+      "error": null
+    },
+    {
+      "name": "hera.ns.cloudflare.com",
+      "kind": "authoritative",
+      "server": "108.162.192.162",
+      "status": "match",
+      "milliseconds": 11.8,
+      "addresses": [
+        "104.20.23.154",
+        "172.66.147.243",
+        "2606:4700:10::6814:179a",
+        "2606:4700:10::ac42:93f3"
+      ],
+      "error": null
+    }
+  ],
+  "probe": null,
+  "mtu": null,
+  "interpretation": [
+    "Answers differ. Resolves to 4 addresses, zone served by cloudflare.com. DNSSEC records are present from the root down. 1 source answers differently."
+  ],
+  "sentence": "Answers differ. Resolves to 4 addresses, zone served by cloudflare.com."
+}

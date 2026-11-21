@@ -197,6 +197,11 @@ pub fn main(style: Style) -> String {
                 "Sign out and revoke this install's credential",
                 false,
             ),
+            (
+                "sync",
+                "Send this device's runs to the account and read what is new, now",
+                false,
+            ),
             ("share [id]", "Print the share link to a run page", true),
         ],
     ));

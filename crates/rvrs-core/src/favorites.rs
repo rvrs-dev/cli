@@ -55,6 +55,15 @@ impl Favorites {
         self.write().map(|()| true)
     }
 
+    /// Replaces the favorites with what the account holds.
+    pub fn set(&mut self, hosts: Vec<String>) -> std::io::Result<()> {
+        if self.hosts == hosts {
+            return Ok(());
+        }
+        self.hosts = hosts;
+        self.write()
+    }
+
     /// Adds the host, or removes it when it is a favorite. Returns whether it is one now.
     pub fn toggle(&mut self, host: &str) -> std::io::Result<bool> {
         if self.contains(host) {

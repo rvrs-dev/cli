@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rvrs.dev/schema/run-report.schema.json",
+  "title": "Run report",
+  "description": "One run as data: what rvrs --json prints and what an account stores. Fields are only added within a schema version, and a reader ignores the ones it doesn't know.",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "tool",
+    "target",
+    "startedAt",
+    "origin",
+    "outcome",
+    "summary",
+    "measured",
+    "interpretation",
+    "sentence"
+  ],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The version of this shape. A change that breaks a reader raises it."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "The run's id, unique on the install that made it."
+    },
+    "tool": {
+      "type": "string",
+      "description": "Traceroute, MTR, Ping, DNS, BGP or iPerf3. A reader keeps a tool it doesn't know as it is."
+    },
+    "target": {
+      "type": "string",
+      "description": "What the person typed."
+    },
+    "address": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "family": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "IPv4 or IPv6."
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "origin": {
+      "type": "object",
+      "description": "Where the run was made from. A comparison only holds between runs of one origin.",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "device or node. A reader treats a kind it doesn't know as somewhere else."
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The node's name. null is the device itself."
+        },
+        "install": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The install that made the run, when the account handed it to this device. null is a run made here."
+        },
+        "sourceAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "description": "reached, exhausted, stopped or failed."
+    },
+    "summary": {
+      "type": "string",
+      "description": "The run in one line of facts."
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "measured": {
+      "type": "array",
+      "description": "Every figure is optional. A reader shows the ones it finds.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "hops": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "ttl"
+        ],
+        "properties": {
+          "ttl": {
+            "type": "integer"
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "network": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lossPercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "avgMilliseconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "records": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "DNS: the records of the reference answer.",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "value"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "DNS: what each source answered against the reference answer.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "device, public or authoritative."
+          },
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "match, differs or error."
+          },
+          "milliseconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What the probes were when they were not ICMP echo.",
+      "properties": {
+        "protocol": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "open, closed or filtered."
+        }
+      }
+    },
+    "mtu": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The path MTU, when the run looked for it.",
+      "properties": {
+        "bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finding": {
+          "type": "string",
+          "description": "full, limited, silent or unknown."
+        },
+        "limitedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tried": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "interpretation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Inferences only, each a sentence that says it is one."
+    },
+    "sentence": {
+      "type": "string",
+      "description": "The result as one plain sentence."
+    }
+  }
+}

@@ -304,6 +304,8 @@ pub struct App {
     account: account_view::Account,
     /// Hosts kept on purpose. The app's Favorites.
     favorites: Favorites,
+    /// When a sync last changed what this device keeps, as far as the Console has seen.
+    synced: Option<std::time::SystemTime>,
     section: Section,
     input: String,
     /// The tool the field runs: the highlighted chip.
@@ -430,6 +432,13 @@ fn keep_tool(path: &std::path::Path, tool: Tool) {
     let _ = std::fs::write(path, serde_json::json!({ "tool": tool }).to_string());
 }
 
+/// When the sync last changed what this device keeps.
+fn sync_mark() -> Option<std::time::SystemTime> {
+    std::fs::metadata(crate::sync::changed_path())
+        .and_then(|file| file.modified())
+        .ok()
+}
+
 impl App {
     pub fn new(history: History, saved: History, cases: Cases, favorites: Favorites) -> Self {
         Self {
@@ -441,6 +450,7 @@ impl App {
             launcher: None,
             account: account_view::Account::load(),
             favorites,
+            synced: sync_mark(),
             section: Section::Console,
             input: String::new(),
             tool: Tool::Traceroute,
@@ -861,6 +871,7 @@ impl App {
             session.finish_lookups(Duration::ZERO);
             let run = session.run.clone();
             crate::pulse::count_run(run.tool);
+            crate::sync::queue(&run);
             let _ = self.history.save(&run);
         }
     }
@@ -894,8 +905,32 @@ impl App {
     }
 
     /// Folds in what the run learned since the last frame and saves it once it has ended.
+    /// Reads history, saved runs, cases and favorites again after a sync changed them, so what
+    /// another device made or kept shows without leaving the Console.
+    fn take_in_sync(&mut self) {
+        let mark = sync_mark();
+        if mark == self.synced || self.picker.is_some() {
+            return;
+        }
+        self.synced = mark;
+        self.history = History::open();
+        self.saved = History::saved();
+        self.cases = Cases::open(&self.saved);
+        self.favorites = Favorites::open();
+        if let Some(Scope::Case(open)) = &self.case {
+            if self.cases.get(open).is_none() {
+                self.case = None;
+            }
+        }
+        self.clamp_row();
+    }
+
     pub fn tick(&mut self) {
         self.frame += 1;
+        // About twice a second.
+        if self.frame.is_multiple_of(8) {
+            self.take_in_sync();
+        }
         if let Some(sentence) = self.account.tick() {
             self.toast(sentence);
         }
@@ -936,6 +971,7 @@ impl App {
             if !matches!(session.run.outcome, Some(Outcome::Failed(_))) && !unanswered {
                 let run = session.run.clone();
                 crate::pulse::count_run(run.tool);
+                crate::sync::queue(&run);
                 if let Err(error) = self.history.save(&run) {
                     self.toast = Some((
                         format!("Couldn't save this run to history ({error})."),

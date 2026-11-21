@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
 metadata:
   author: rvrs-dev
-  version: "0.11.0"
+  version: "0.12.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -64,13 +64,14 @@ Ping and MTR send ICMP echo. Traceroute sends ICMP echo, or TCP SYNs to a port w
 
 ```json
 {
+  "schema": 1,
   "id": "b864cg",
   "tool": "MTR",
   "target": "example.com",
   "address": "192.0.2.10",
   "family": "IPv4",
   "startedAt": "2026-11-20T16:23:07Z",
-  "origin": { "node": null, "sourceAddress": "198.51.100.7", "publicAddress": "203.0.113.9" },
+  "origin": { "kind": "device", "node": null, "install": null, "sourceAddress": "198.51.100.7", "publicAddress": "203.0.113.9" },
   "outcome": "reached",
   "summary": "20 pkt · 0.0% loss · 10.8 ms avg",
   "measured": [{ "name": "loss", "value": 0.0, "unit": "%" }],

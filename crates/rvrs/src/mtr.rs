@@ -454,6 +454,7 @@ pub fn run(mut args: MtrArgs, multicall: bool) -> ExitCode {
     if keep && measured {
         let mut history = History::open();
         crate::pulse::count_run(run.tool);
+        crate::sync::queue(run);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

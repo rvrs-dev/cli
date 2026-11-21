@@ -15,6 +15,7 @@ mod ping;
 mod pretty;
 mod pulse;
 mod style;
+mod sync;
 mod term;
 mod trace;
 mod update;
@@ -40,7 +41,8 @@ pub fn usage(message: &str) -> ExitCode {
     ExitCode::from(EXIT_USAGE)
 }
 
-const COMMANDS: [&str; 28] = [
+const COMMANDS: [&str; 29] = [
+    "sync",
     "update",
     "favorite",
     "favorites",
@@ -104,6 +106,13 @@ fn main() -> ExitCode {
         .is_some_and(|command| command.starts_with("__"))
     {
         pulse::count_open();
+        // The account commands sync themselves, or end what a sync would need.
+        let own_sync = arguments
+            .first()
+            .is_some_and(|command| matches!(command.as_str(), "sync" | "login" | "logout"));
+        if !own_sync {
+            sync::when_due();
+        }
     }
 
     // Invoked under the original's name (a `traceroute` symlink to rvrs), it is the original.
@@ -152,6 +161,8 @@ fn main() -> ExitCode {
         "update" => update::run(rest),
         "__update-check" => update::check_now(),
         "__pulse" => pulse::send_now(),
+        "__sync" => sync::run_quietly(),
+        "sync" => sync::run(rest),
         "completions" => commands::completions(rest),
         "login" => account::login(rest),
         "logout" => account::logout(rest),

@@ -222,6 +222,11 @@ pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Ve
         ));
     }
     header.push_str("  AGE");
+    // Runs the account handed this device name the install that made them.
+    let from_elsewhere = runs.iter().any(|run| run.from.is_some());
+    if from_elsewhere {
+        header.push_str("       FROM");
+    }
     let mut out = vec![style.bold(&header)];
     for run in runs {
         let target = truncate_middle(&run.target, target_width);
@@ -247,10 +252,16 @@ pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Ve
                 pad(&address(run.public_source), public_width)
             ));
         }
-        line.push_str(&format!(
-            "  {}",
-            style.dim(&format::relative(run.started_at, now))
-        ));
+        let age = format::relative(run.started_at, now);
+        line.push_str(&format!("  {}", style.dim(&age)));
+        if from_elsewhere {
+            let from = run.from.as_deref().unwrap_or("this device");
+            line.push_str(&format!(
+                "{}  {}",
+                " ".repeat(8usize.saturating_sub(width(&age))),
+                style.dim(from)
+            ));
+        }
         out.push(line);
     }
     out

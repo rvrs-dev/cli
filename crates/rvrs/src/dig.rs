@@ -799,6 +799,7 @@ fn lookup(args: &DigArgs, look: Look) -> ExitCode {
     let previous = history.previous_dns(run).cloned();
     if keep && found {
         crate::pulse::count_run(run.tool);
+        crate::sync::queue(run);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

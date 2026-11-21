@@ -155,6 +155,7 @@ impl Account {
             }
             Message::SignedIn(credential) => {
                 self.finish();
+                crate::sync::start();
                 let toast = format!("Signed in as {}", credential.email);
                 self.state = State::SignedIn {
                     email: credential.email,
@@ -224,7 +225,7 @@ impl Account {
                 lines.push(fact("Account", "not signed in".into(), dim));
                 lines.push(Line::raw(""));
                 lines.push(Line::styled(
-                    "  Signing in puts this install in your workspace at app.rvrs.dev. Runs stay on this device.",
+                    "  Signing in keeps your runs, saved runs, cases and favorites in your account at app.rvrs.dev, the same on every device you sign in on.",
                     dim,
                 ));
             }

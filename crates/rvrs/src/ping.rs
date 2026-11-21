@@ -344,6 +344,7 @@ pub fn run(args: PingArgs, multicall: bool) -> ExitCode {
     if keep && !run.packets().is_empty() {
         let mut history = History::open();
         crate::pulse::count_run(run.tool);
+        crate::sync::queue(run);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

@@ -71,11 +71,12 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 
 | Term | Meaning | Not |
 | --- | --- | --- |
-| **history** | Every run kept, newest first: on the device today, in the account once there is one. The Console's Recent section shows the newest of it. | log, recents (as the name of the store), archive |
+| **history** | Every run kept, newest first: on the device, and for a person who is signed in also in their account, where it holds the runs of all their installs. The Console's Recent section shows the newest of it. | log, recents (as the name of the store), archive |
 | **Recent** | The Console section that lists the newest runs in history. A section title, not a second store. | history (for the section) |
 | **saved run** | A run kept on purpose, in a case or on its own. Saved runs do not expire with history. To save. | bookmark, pin, favorite |
 | **case** | A named set of saved runs, from any tool and any origin, collected to look into one question: read together, stepped through, compared. A saved run can sit in several cases or in none, and a case holds any number of runs. | bookmark, group, folder, collection, investigation, incident, ticket, tag (a tag labels any run) |
 | **favorite** | A host kept on purpose. A favorite is a host and never a run. | saved target, saved run |
+| **library** | What a person keeps on purpose, as their account holds it: favorites, saved runs and cases. The same on every device they sign in on. A word of the API and the docs; a screen says Favorites, Saved or Cases. | collection, bookmarks, sync data |
 | **tag** | A short label a person puts on a run to find it again or group it ("before-migration"). | label, category, folder |
 | **comparison** | Two or more runs of the same tool side by side, often from one case: the same target from different origins, or the same origin at different times. | diff (a diff is what a comparison shows), benchmark |
 | **account** | A person's rvrs identity. Accounts are optional and never needed to run a tool on this device. | profile, user (in copy) |

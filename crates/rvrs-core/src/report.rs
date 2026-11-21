@@ -87,8 +87,14 @@ pub struct ReportProbe {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportOrigin {
+    /// What made the run: `device` (a person's own install) today, `node` once nodes exist.
+    /// A reader that meets a kind it doesn't know treats the run as from somewhere else.
+    pub kind: String,
     /// The node's name. `null` is this device, the only origin until nodes exist.
     pub node: Option<String>,
+    /// The install that made the run, when the account handed it to this device. `null` is a
+    /// run made here.
+    pub install: Option<String>,
     /// The address probes left from.
     pub source_address: Option<String>,
     /// The address the internet saw this device as, when it was asked.
@@ -98,7 +104,9 @@ pub struct ReportOrigin {
 impl ReportOrigin {
     fn of(run: &Run) -> Self {
         Self {
+            kind: "device".into(),
             node: None,
+            install: run.from.clone(),
             source_address: run.source.map(|address| address.to_string()),
             public_address: run.public_source.map(|address| address.to_string()),
         }
@@ -108,7 +116,11 @@ impl ReportOrigin {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
-    /// The run's id in history: what `rvrs show` and `rvrs save` take.
+    /// The version of this shape. Fields are only ever added within a version, and a reader
+    /// ignores the ones it doesn't know. A change that breaks a reader raises the number.
+    pub schema: u32,
+    /// The run's id in history: what `rvrs show` and `rvrs save` take. Unique on the install
+    /// that made the run, which is what an account tells runs apart by.
     pub id: String,
     pub tool: String,
     pub target: String,
@@ -137,6 +149,9 @@ pub struct Report {
     /// The result as one plain sentence.
     pub sentence: String,
 }
+
+/// The report's shape version. See `schema/run-report.schema.json`.
+pub const SCHEMA: u32 = 1;
 
 pub const SILENT_TARGET: &str =
     "The target sent no reply. It may drop ICMP, so a silent target isn't necessarily down.";
@@ -284,6 +299,7 @@ impl Report {
             })
             .collect();
         Self {
+            schema: SCHEMA,
             id: run.id.clone(),
             origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
@@ -359,6 +375,7 @@ impl Report {
             }
         }
         Self {
+            schema: SCHEMA,
             id: run.id.clone(),
             origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
@@ -474,6 +491,7 @@ impl Report {
             }
         }
         Self {
+            schema: SCHEMA,
             id: run.id.clone(),
             origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
@@ -568,6 +586,7 @@ impl Report {
             }
         }
         Self {
+            schema: SCHEMA,
             id: run.id.clone(),
             origin: ReportOrigin::of(run),
             tool: run.tool.title().to_string(),
@@ -708,6 +727,57 @@ mod tests {
         assert_eq!(hops[2].avg_milliseconds, Some(12.5));
     }
 
+    /// Every key of `value` is one the schema names, all the way down.
+    fn named_by_schema(value: &serde_json::Value, schema: &serde_json::Value, path: &str) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                for (key, inner) in fields {
+                    let known = &schema["properties"][key];
+                    assert!(known.is_object(), "the schema doesn't name {path}{key}");
+                    named_by_schema(inner, known, &format!("{path}{key}."));
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    named_by_schema(item, &schema["items"], path);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_schema_names_every_field_of_a_report_and_of_the_fixtures() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema");
+        let read = |path: std::path::PathBuf| -> serde_json::Value {
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap()
+        };
+        let schema = read(folder.join("run-report.schema.json"));
+        let mut run = reached_run();
+        run.id = "tr4c3a".into();
+        run.started_at = 1_794_735_000;
+        run.source = Some("192.0.2.10".parse().unwrap());
+        let traceroute: serde_json::Value = serde_json::from_str(&Report::of(&run).json()).unwrap();
+        let fixture = folder.join("fixtures/traceroute.json");
+        if std::env::var("RVRS_WRITE_FIXTURES").is_ok() {
+            std::fs::write(&fixture, Report::of(&run).json() + "\n").unwrap();
+        }
+        // The traceroute fixture is this very report, so the two can't drift apart.
+        assert_eq!(read(fixture), traceroute);
+        let required = schema["required"].as_array().unwrap();
+        for name in ["traceroute", "ping", "dns"] {
+            let report = read(folder.join(format!("fixtures/{name}.json")));
+            named_by_schema(&report, &schema, "");
+            for key in required {
+                assert!(
+                    !report[key.as_str().unwrap()].is_null(),
+                    "{name} lacks {key}"
+                );
+            }
+            assert_eq!(report["schema"], SCHEMA);
+        }
+    }
+
     #[test]
     fn the_json_uses_the_apps_field_names() {
         let json = Report::of(&reached_run()).json();
@@ -735,7 +805,9 @@ mod tests {
         let report = Report::of(&run);
         assert_eq!(report.id, run.id);
         // Until nodes exist every run is made from this device.
+        assert_eq!(report.origin.kind, "device");
         assert_eq!(report.origin.node, None);
+        assert_eq!(report.schema, 1);
         assert_eq!(report.origin.source_address.as_deref(), Some("192.0.2.7"));
         assert_eq!(report.origin.public_address.as_deref(), Some("203.0.113.9"));
         assert!(report.sources.is_none());

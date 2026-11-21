@@ -393,6 +393,10 @@ pub struct Run {
     /// The address the internet saw this device as, when lookups are on and it could be asked.
     #[serde(default)]
     pub public_source: Option<IpAddr>,
+    /// The install that made the run, when it wasn't this one: a run the account handed this
+    /// device. None is a run made here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
     /// MTR only: how many rounds have been dropped from the front of every hop. A long run keeps
     /// its newest [`Run::MAX_ROUNDS`] rounds, so history stays small.
     #[serde(default)]
@@ -428,6 +432,7 @@ impl Run {
             networks: BTreeMap::new(),
             source: None,
             public_source: None,
+            from: None,
             first_round: 0,
             dns: None,
             bgp: None,

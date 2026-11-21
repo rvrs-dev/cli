@@ -84,9 +84,7 @@ impl Credential {
     }
 }
 
-/// The token requests are made with: `RVRS_TOKEN` first, then what `rvrs login` stored. Nothing
-/// sends a run yet, so nothing calls this until runs are kept in the account.
-#[allow(dead_code)]
+/// The token requests are made with: `RVRS_TOKEN` first, then what `rvrs login` stored.
 pub fn token() -> Option<String> {
     std::env::var("RVRS_TOKEN")
         .ok()
@@ -120,8 +118,13 @@ fn request(
         |error: ureq::Error| format!("Couldn't reach the rvrs API at {} ({error}).", api_base());
     let bearer = token.map(|token| format!("Bearer {token}"));
     let mut response = match (method, body) {
-        ("POST", Some(body)) => {
-            let mut call = agent.post(&url).header("content-type", "application/json");
+        ("POST" | "PUT", Some(body)) => {
+            let call = if method == "PUT" {
+                agent.put(&url)
+            } else {
+                agent.post(&url)
+            };
+            let mut call = call.header("content-type", "application/json");
             if let Some(bearer) = &bearer {
                 call = call.header("authorization", bearer);
             }
@@ -146,6 +149,17 @@ fn request(
     let text = response.body_mut().read_to_string().unwrap_or_default();
     let body = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
     Ok(Answer { status, body })
+}
+
+/// A request as this install: the status and the body as JSON. An error is the API out of reach.
+pub fn call(
+    method: &str,
+    path: &str,
+    body: Option<&serde_json::Value>,
+    seconds: u64,
+) -> Result<(u16, serde_json::Value), String> {
+    let token = token().ok_or_else(|| "Not signed in. rvrs login signs in.".to_string())?;
+    request(method, path, Some(&token), body, seconds).map(|answer| (answer.status, answer.body))
 }
 
 /// The sentence of an error envelope, or one that names the status when there is none.
@@ -333,6 +347,7 @@ pub fn sign_out() -> Option<String> {
         8,
     );
     Credential::forget();
+    crate::sync::forget();
     Some(match revoked {
         Ok(answer) if answer.status == 204 || answer.status == 401 => {
             format!("Signed out {}.", credential.email)
@@ -422,12 +437,17 @@ pub fn login(arguments: &[String]) -> ExitCode {
                     credential.email,
                     credential.workspace
                 );
+                println!("{}", style.dim(KEPT_IN_ACCOUNT));
+                crate::sync::start();
                 return ExitCode::SUCCESS;
             }
             Poll::Failed(message) => return fail(&message),
         }
     }
 }
+
+/// What signing in changes, said once when it happens.
+pub const KEPT_IN_ACCOUNT: &str = "Runs you make while signed in are kept in your account, with your saved runs, cases and favorites. RVRS_SYNC=0 keeps them on this device.";
 
 /// `rvrs logout`: revoke this install's credential at the API and forget it here.
 pub fn logout(arguments: &[String]) -> ExitCode {
