@@ -984,8 +984,10 @@ impl App {
     fn account_key(&mut self, key: KeyEvent) {
         use account_view::State;
         match (key.code, &self.account.state) {
-            (KeyCode::Enter, State::SignedOut | State::Failed(_)) => self.account.sign_in(),
-            (KeyCode::Enter, State::SignedIn { .. }) => self.account.sign_out(),
+            (KeyCode::Char('s' | 'S'), State::SignedOut | State::Failed(_)) => {
+                self.account.sign_in()
+            }
+            (KeyCode::Char('q' | 'Q'), State::SignedIn { .. }) => self.account.sign_out(),
             (KeyCode::Char('o'), State::Waiting { link, .. }) => {
                 let link = link.clone();
                 if !account::open_link(&link) {
@@ -4545,7 +4547,7 @@ mod tests {
         let text = screen(&mut app, 150, 30).join("\n");
         assert!(text.contains("Account(this install)"), "{text}");
         assert!(text.contains("Account:  not signed in"));
-        assert!(text.contains("<\u{21B5}>     Sign In"));
+        assert!(text.contains("<s>     Sign In"), "{text}");
         assert!(text.contains("\u{21E7}4 Account"));
         // No field in this section: letters go nowhere.
         type_text(&mut app, "abc");
@@ -4559,7 +4561,7 @@ mod tests {
         let text = screen(&mut app, 150, 30).join("\n");
         assert!(text.contains("Account:  ada@example.com \u{00B7} Ada\u{2019}s workspace"));
         assert!(text.contains("Signed in  ada@example.com"));
-        assert!(text.contains("<\u{21B5}>     Sign Out"));
+        assert!(text.contains("<q>     Sign Out"), "{text}");
 
         app.account.state = State::Waiting {
             code: "BKDF-7QXM".into(),

@@ -197,8 +197,8 @@ impl Account {
     /// The keys that work in the section now.
     pub fn keys(&self) -> Vec<(&'static str, &'static str)> {
         match self.state {
-            State::SignedOut | State::Failed(_) => vec![("\u{21B5}", "Sign In")],
-            State::SignedIn { .. } => vec![("\u{21B5}", "Sign Out")],
+            State::SignedOut | State::Failed(_) => vec![("s", "Sign In")],
+            State::SignedIn { .. } => vec![("q", "Sign Out")],
             State::Waiting { .. } => {
                 vec![("o", "Open Link"), ("c", "Copy Link"), ("esc", "Cancel")]
             }
