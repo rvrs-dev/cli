@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
+use rvrs_core::asn::Cache;
 use rvrs_core::cases::Cases;
 use rvrs_core::favorites::Favorites;
 use rvrs_core::history::{self, History};
@@ -148,8 +149,26 @@ pub fn forget() {
     let _ = std::fs::write(changed_path(), b"");
 }
 
+/// A run with the networks of its hops filled in from the lookup cache where the run has none.
+/// The Console keeps a run before its lookups end, so a saved run can know only some of them.
+fn with_networks(run: &Run, cache: &Cache) -> Run {
+    let mut run = run.clone();
+    let addresses: Vec<std::net::IpAddr> =
+        run.hops.iter().flat_map(|hop| hop.addresses()).collect();
+    for address in addresses {
+        if rvrs_core::is_private(address) || run.network(address).is_some() {
+            continue;
+        }
+        if let Some(Some(network)) = cache.get(address) {
+            run.networks.insert(address, Some(network));
+        }
+    }
+    run
+}
+
 /// The body of `POST /v1/runs` for a run: its report, and the run as this CLI keeps it.
-fn body_of(run: &Run) -> String {
+fn body_of(run: &Run, cache: &Cache) -> String {
+    let run = &with_networks(run, cache);
     let report = serde_json::to_value(Report::of(run)).unwrap_or(Value::Null);
     let whole = json!({ "report": report, "detail": { "format": FORMAT, "run": run } }).to_string();
     if whole.len() <= LARGEST_BODY {
@@ -158,12 +177,12 @@ fn body_of(run: &Run) -> String {
     json!({ "report": report }).to_string()
 }
 
-fn put_in_outbox(run: &Run) -> bool {
+fn put_in_outbox(run: &Run, cache: &Cache) -> bool {
     let folder = outbox();
     if std::fs::create_dir_all(&folder).is_err() {
         return false;
     }
-    std::fs::write(folder.join(format!("{}.json", run.id)), body_of(run)).is_ok()
+    std::fs::write(folder.join(format!("{}.json", run.id)), body_of(run, cache)).is_ok()
 }
 
 /// Starts `rvrs __sync` and returns at once.
@@ -186,7 +205,7 @@ pub fn queue(run: &Run) {
     if !enabled() || run.from.is_some() || account::token().is_none() {
         return;
     }
-    if put_in_outbox(run) {
+    if put_in_outbox(run, &Cache::open()) {
         start();
     }
 }
@@ -649,11 +668,12 @@ fn sync_library(state: &mut State) -> Result<bool, String> {
 /// Saved runs made here that the account doesn't have go into the outbox, so what a person
 /// kept before they signed in follows them.
 fn queue_saved(state: &State) {
+    let cache = Cache::open();
     for run in &History::saved().runs {
         if run.from.is_none() && !state.ids.contains_key(&run.id) {
             let waiting = outbox().join(format!("{}.json", run.id));
             if !waiting.exists() {
-                put_in_outbox(run);
+                put_in_outbox(run, &cache);
             }
         }
     }
@@ -723,13 +743,13 @@ fn sentence(done: &Done) -> String {
     }
     if done.waiting > 0 {
         parts.push(format!(
-            "{} still to send, since the rvrs API didn't take {}.",
+            "{} waiting. The rvrs API didn't take {}.",
             count(done.waiting),
             if done.waiting == 1 { "it" } else { "them" }
         ));
     }
     if parts.is_empty() {
-        parts.push("This device and your account are the same.".to_string());
+        parts.push("Nothing new to send or receive.".to_string());
     }
     parts.join(" ")
 }
@@ -864,7 +884,8 @@ mod tests {
             3,
             30,
         );
-        let body: Value = serde_json::from_str(&body_of(&run)).unwrap();
+        let cache = Cache::at(std::env::temp_dir().join("rvrs-sync-test-empty.json"));
+        let body: Value = serde_json::from_str(&body_of(&run, &cache)).unwrap();
         assert_eq!(body["report"]["id"], run.id.as_str());
         assert_eq!(body["report"]["schema"], 1);
         assert_eq!(body["detail"]["format"], "cli-run");
@@ -873,10 +894,53 @@ mod tests {
     }
 
     #[test]
+    fn a_hop_without_a_network_takes_the_cached_one() {
+        use rvrs_core::model::{Network, Slot, Tool};
+        let mut run = Run::new(
+            Tool::Mtr,
+            "example.com",
+            rvrs_core::FamilyChoice::Auto,
+            1,
+            30,
+        );
+        let public: std::net::IpAddr = "198.51.100.9".parse().unwrap();
+        let private: std::net::IpAddr = "192.168.1.1".parse().unwrap();
+        for (index, from) in [private, public].into_iter().enumerate() {
+            run.hops.push(rvrs_core::model::Hop {
+                ttl: index as u8 + 1,
+                probes: vec![Slot::Reply {
+                    from,
+                    micros: 1000,
+                    unreachable: None,
+                    ttl: None,
+                }],
+                is_destination: false,
+            });
+        }
+        let cache = Cache::at(
+            std::env::temp_dir().join(format!("rvrs-sync-test-{}.json", std::process::id())),
+        );
+        let network = Network {
+            number: 64500,
+            name: "Example Net".into(),
+            country: None,
+            city: None,
+            prefix: None,
+        };
+        cache.store(public, Some(network.clone()));
+        cache.store(private, Some(network.clone()));
+        let filled = with_networks(&run, &cache);
+        assert_eq!(filled.network(public), Some(&network));
+        // A private address is never looked up, so a cached entry for one is ignored.
+        assert_eq!(filled.network(private), None);
+        assert!(run.networks.is_empty());
+    }
+
+    #[test]
     fn the_sentence_says_what_went_each_way() {
         assert_eq!(
             sentence(&Done::default()),
-            "This device and your account are the same."
+            "Nothing new to send or receive."
         );
         let done = Done {
             sent: 1,
@@ -885,7 +949,7 @@ mod tests {
         };
         assert_eq!(
             sentence(&done),
-            "Sent 1 run. Received 3 runs. 2 runs still to send, since the rvrs API didn't take them."
+            "Sent 1 run. Received 3 runs. 2 runs waiting. The rvrs API didn't take them."
         );
     }
 }
