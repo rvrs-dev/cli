@@ -30,13 +30,13 @@ rvrs ping -c 20 -i 0.2 --json example.com | jq '.measured | map({(.name): .value
 
 ## Ping
 
-`measured`: `sent`, `received`, `loss` (%), then `min`, `avg`, `max`, `jitter`, `p50`, `p95` (ms) when anything came back. `hops` is `null`. Jitter is the mean step between consecutive replies. With fewer than about ten packets there is no verdict in `interpretation`.
+`measured`: `sent`, `received`, `loss` (%), then `min`, `avg`, `max`, `jitter`, `p50`, `p95` (ms) when anything came back. `hops` is `null`. `samples` is the round trip of each packet in the order they were sent (the newest 600, `null` for a packet that got no reply), so you can say when in the run a loss or a spike happened. Traceroute and MTR carry the destination's `samples` the same way. Jitter is the mean step between consecutive replies. With fewer than about ten packets there is no verdict in `interpretation`.
 
 ## MTR
 
 `measured`: `hops`, then the destination's `sent`, `received`, `loss`, `min`, `avg`, `max`, `jitter`, `p50`, `p95`. `-c` counts rounds, one probe to every hop per round, one round a second.
 
-`hops`: one entry per router with `ttl`, `address`, `hostname`, `asn` (`"AS13335"`), `network`, `lossPercent` and `avgMilliseconds`. A hop that never answered has `address: null`.
+`hops`: one entry per router with `ttl`, `address`, `hostname`, `asn` (`"AS13335"`), `network`, `lossPercent`, `avgMilliseconds`, `minMilliseconds`, `maxMilliseconds`, `jitterMilliseconds`, `sent`, `received` and `samples`, the round trip of each probe to that hop in the order they were sent (the newest 120, `null` for a probe that got no reply). A hop that never answered has `address: null`.
 
 `interpretation` carries the verdict on the destination and, when middle hops drop replies that later hops deliver, the sentence that names them as rate limiting.
 
