@@ -181,6 +181,50 @@
               "number",
               "null"
             ]
+          },
+          "minMilliseconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxMilliseconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "jitterMilliseconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Probes that were answered or lost."
+          },
+          "received": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "samples": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "description": "The round trip of each probe in milliseconds, in the order they were sent, the newest 120. null in the list is a probe that got no reply."
           }
         }
       }
@@ -321,6 +365,19 @@
           ]
         }
       }
+    },
+    "samples": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "description": "The round trip of each probe to the destination in milliseconds, in the order they were sent, the newest 600. null in the list is a probe that got no reply. null for a tool that sends no probes."
     },
     "interpretation": {
       "type": "array",

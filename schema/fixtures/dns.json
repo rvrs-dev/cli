@@ -247,6 +247,7 @@
   ],
   "probe": null,
   "mtu": null,
+  "samples": null,
   "interpretation": [
     "Answers differ. Resolves to 4 addresses, zone served by cloudflare.com. DNSSEC records are present from the root down. 1 source answers differently."
   ],

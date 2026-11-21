@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "id": "5xb7j3",
+  "id": "a4pxuy",
   "tool": "Ping",
   "target": "example.com",
-  "address": "172.66.147.243",
+  "address": "104.20.23.154",
   "family": "IPv4",
-  "startedAt": "2026-11-21T18:50:58Z",
+  "startedAt": "2026-11-21T19:12:55Z",
   "origin": {
     "kind": "device",
     "node": null,
@@ -14,17 +14,17 @@
     "publicAddress": "203.0.113.7"
   },
   "outcome": "reached",
-  "summary": "3 pkt · 0.0% loss · 11.4 ms avg",
+  "summary": "5 pkt · 0.0% loss · 12.0 ms avg",
   "error": null,
   "measured": [
     {
       "name": "sent",
-      "value": 3.0,
+      "value": 5.0,
       "unit": null
     },
     {
       "name": "received",
-      "value": 3.0,
+      "value": 5.0,
       "unit": null
     },
     {
@@ -34,32 +34,32 @@
     },
     {
       "name": "min",
-      "value": 11.0,
+      "value": 11.1,
       "unit": "ms"
     },
     {
       "name": "avg",
-      "value": 11.4,
+      "value": 12.0,
       "unit": "ms"
     },
     {
       "name": "max",
-      "value": 11.7,
+      "value": 12.9,
       "unit": "ms"
     },
     {
       "name": "jitter",
-      "value": 0.6,
+      "value": 1.2,
       "unit": "ms"
     },
     {
       "name": "p50",
-      "value": 11.6,
+      "value": 11.9,
       "unit": "ms"
     },
     {
       "name": "p95",
-      "value": 11.7,
+      "value": 12.9,
       "unit": "ms"
     }
   ],
@@ -68,6 +68,13 @@
   "sources": null,
   "probe": null,
   "mtu": null,
+  "samples": [
+    11.9,
+    12.4,
+    11.1,
+    12.9,
+    11.5
+  ],
   "interpretation": [],
-  "sentence": "3 packets to 172.66.147.243, 0.0% loss, 11.4 ms average."
+  "sentence": "5 packets to 104.20.23.154, 0.0% loss, 12.0 ms average."
 }

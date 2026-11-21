@@ -27,6 +27,30 @@ pub struct ReportHop {
     pub network: Option<String>,
     pub loss_percent: f64,
     pub avg_milliseconds: Option<f64>,
+    pub min_milliseconds: Option<f64>,
+    pub max_milliseconds: Option<f64>,
+    pub jitter_milliseconds: Option<f64>,
+    /// Probes that were answered or lost. One still within its wait counts as neither.
+    pub sent: u32,
+    pub received: u32,
+    /// The round trip of each probe in the order they were sent, the newest
+    /// [`HOP_SAMPLES`]. `null` is a probe that got no reply.
+    pub samples: Vec<Option<f64>>,
+}
+
+/// How many samples a hop carries in a report: enough to draw every round of a usual MTR.
+pub const HOP_SAMPLES: usize = 120;
+/// How many samples a report carries for the destination: a ping or MTR left running.
+pub const RUN_SAMPLES: usize = 600;
+
+/// The round trips of settled probes in milliseconds, the newest `most`. `None` is a loss.
+fn samples_of(probes: &[crate::model::Slot], most: usize) -> Vec<Option<f64>> {
+    let settled: Vec<Option<f64>> = probes
+        .iter()
+        .filter(|slot| **slot != crate::model::Slot::Pending)
+        .map(|slot| slot.rtt().map(|rtt| round(format::ms_value(rtt))))
+        .collect();
+    settled[settled.len().saturating_sub(most)..].to_vec()
 }
 
 /// One DNS record of the reference answer.
@@ -144,6 +168,10 @@ pub struct Report {
     pub probe: Option<ReportProbe>,
     /// The path MTU, when the run looked for it.
     pub mtu: Option<ReportMtu>,
+    /// The round trip of each probe to the destination in the order they were sent, in
+    /// milliseconds, the newest [`RUN_SAMPLES`]. `null` in the list is a probe that got no
+    /// reply. `null` for a tool that sends no probes.
+    pub samples: Option<Vec<Option<f64>>>,
     /// Inferences only, each a sentence that says it is one.
     pub interpretation: Vec<String>,
     /// The result as one plain sentence.
@@ -295,6 +323,12 @@ impl Report {
                     network: network.map(|network| network.name.clone()),
                     loss_percent: round(stats.loss_fraction() * 100.0),
                     avg_milliseconds: stats.mean.map(|mean| round(format::ms_value(mean))),
+                    min_milliseconds: stats.min.map(|min| round(format::ms_value(min))),
+                    max_milliseconds: stats.max.map(|max| round(format::ms_value(max))),
+                    jitter_milliseconds: stats.jitter.map(|jitter| round(format::ms_value(jitter))),
+                    sent: stats.sent as u32,
+                    received: stats.received as u32,
+                    samples: samples_of(&hop.probes, HOP_SAMPLES),
                 }
             })
             .collect();
@@ -319,6 +353,9 @@ impl Report {
             sources: None,
             probe,
             mtu,
+            samples: run
+                .destination_hop()
+                .map(|hop| samples_of(&hop.probes, RUN_SAMPLES)),
             interpretation,
         }
     }
@@ -392,6 +429,7 @@ impl Report {
             sources: None,
             probe: None,
             mtu: None,
+            samples: None,
             interpretation,
             sentence,
         }
@@ -508,6 +546,7 @@ impl Report {
             sources,
             probe: None,
             mtu: None,
+            samples: None,
             interpretation,
             sentence,
         }
@@ -605,6 +644,7 @@ impl Report {
             sources: None,
             probe: None,
             mtu: None,
+            samples: Some(samples_of(run.packets(), RUN_SAMPLES)),
             interpretation,
             sentence,
         }

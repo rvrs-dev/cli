@@ -76,7 +76,16 @@
       "asn": null,
       "network": null,
       "lossPercent": 0.0,
-      "avgMilliseconds": 1.5
+      "avgMilliseconds": 1.5,
+      "minMilliseconds": 1.0,
+      "maxMilliseconds": 2.0,
+      "jitterMilliseconds": 1.0,
+      "sent": 2,
+      "received": 2,
+      "samples": [
+        1.0,
+        2.0
+      ]
     },
     {
       "ttl": 2,
@@ -85,7 +94,16 @@
       "asn": null,
       "network": null,
       "lossPercent": 100.0,
-      "avgMilliseconds": null
+      "avgMilliseconds": null,
+      "minMilliseconds": null,
+      "maxMilliseconds": null,
+      "jitterMilliseconds": null,
+      "sent": 2,
+      "received": 0,
+      "samples": [
+        null,
+        null
+      ]
     },
     {
       "ttl": 3,
@@ -94,13 +112,26 @@
       "asn": null,
       "network": null,
       "lossPercent": 0.0,
-      "avgMilliseconds": 12.5
+      "avgMilliseconds": 12.5,
+      "minMilliseconds": 12.0,
+      "maxMilliseconds": 13.0,
+      "jitterMilliseconds": 1.0,
+      "sent": 2,
+      "received": 2,
+      "samples": [
+        12.0,
+        13.0
+      ]
     }
   ],
   "records": null,
   "sources": null,
   "probe": null,
   "mtu": null,
+  "samples": [
+    12.0,
+    13.0
+  ],
   "interpretation": [],
   "sentence": "Reached 1.1.1.1 in 3 hops, 12.5 ms round trip."
 }
