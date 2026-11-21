@@ -3,6 +3,8 @@
 # for, links that resolve, one version everywhere, and no command the CLI doesn't have.
 # With a built binary (RVRS=target/release/rvrs) it also asks rvrs about each command it finds.
 set -eu
+# Running rvrs here must not count as using it.
+export RVRS_PULSE=0 RVRS_UPDATE_CHECK=0
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 plugin="$root/plugins/rvrs"

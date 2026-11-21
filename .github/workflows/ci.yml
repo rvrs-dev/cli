@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # CI runs rvrs and is not someone using it.
+  RVRS_PULSE: '0'
+  RVRS_UPDATE_CHECK: '0'
+
 jobs:
   test:
     strategy:
