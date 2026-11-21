@@ -50,7 +50,7 @@ curl -fsSL https://rvrs.dev/install.sh | sh
 
 ## Privacy
 
-rvrs has no account and sends no usage data. [What leaves this device](https://github.com/rvrs-dev/cli/blob/main/docs/privacy.md) lists every request it makes. The skill itself sends nothing.
+rvrs needs no account. [What leaves this device](https://github.com/rvrs-dev/cli/blob/main/docs/privacy.md) lists every request it makes. The skill itself sends nothing.
 
 ## Files
 

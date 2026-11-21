@@ -453,6 +453,7 @@ pub fn run(mut args: MtrArgs, multicall: bool) -> ExitCode {
     let measured = run.path_len() > 0;
     if keep && measured {
         let mut history = History::open();
+        crate::pulse::count_run(run.tool);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

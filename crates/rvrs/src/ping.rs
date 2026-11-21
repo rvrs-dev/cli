@@ -343,6 +343,7 @@ pub fn run(args: PingArgs, multicall: bool) -> ExitCode {
     let keep = std::env::var("RVRS_HISTORY").map_or(true, |value| value != "0");
     if keep && !run.packets().is_empty() {
         let mut history = History::open();
+        crate::pulse::count_run(run.tool);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

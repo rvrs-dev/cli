@@ -12,4 +12,6 @@ These are the requests rvrs makes.
 
 - Only when you run `rvrs login`: this device's name and the rvrs version go to api.rvrs.dev, so you can see what you are confirming. Signed in, `rvrs status` with `RVRS_TOKEN` and `rvrs logout` ask the API about this install. No run, target or address is sent.
 
-`--no-lookups` turns off everything but the probes, the DNS questions and the requests a BGP lookup is made of. An account is optional, and the CLI sends no usage data and no runs.
+- At most every 12 hours, to api.rvrs.dev: how often rvrs was started and how many runs each tool made, with the rvrs version, the system, the architecture, the language and a token that changes every day. Never a target, an address or a result. `RVRS_PULSE=0` or `DO_NOT_TRACK=1` turns it off.
+
+`--no-lookups` turns off everything but the probes, the DNS questions and the requests a BGP lookup is made of. An account is optional, and no run leaves this device.

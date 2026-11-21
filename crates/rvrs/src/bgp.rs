@@ -381,6 +381,7 @@ pub fn run(args: BgpArgs) -> ExitCode {
     }
     let _ = std::io::stdout().flush();
     if keep && found {
+        crate::pulse::count_run(run.tool);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }

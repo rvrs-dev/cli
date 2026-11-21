@@ -13,6 +13,7 @@ mod help;
 mod mtr;
 mod ping;
 mod pretty;
+mod pulse;
 mod style;
 mod term;
 mod trace;
@@ -97,6 +98,13 @@ fn main() -> ExitCode {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     arguments.remove(0);
+    // Every start counts as an open, as an app's launch does, except rvrs's own hidden helpers.
+    if !arguments
+        .first()
+        .is_some_and(|command| command.starts_with("__"))
+    {
+        pulse::count_open();
+    }
 
     // Invoked under the original's name (a `traceroute` symlink to rvrs), it is the original.
     if invoked_as == "traceroute" {
@@ -143,6 +151,7 @@ fn main() -> ExitCode {
         "status" => commands::status(),
         "update" => update::run(rest),
         "__update-check" => update::check_now(),
+        "__pulse" => pulse::send_now(),
         "completions" => commands::completions(rest),
         "login" => account::login(rest),
         "logout" => account::logout(rest),

@@ -62,7 +62,7 @@ Tell the person when they ask, or before a run toward something private:
 - Each public hop address is looked up at stat.ripe.net for its network. Private addresses are never sent. `--no-lookups` turns this off, and hops then carry no `asn`.
 - `rvrs dig <name>` asks this device's resolver, 1.1.1.1, 8.8.8.8, 9.9.9.9 and the name's own servers.
 - `rvrs bgp` sends the address, prefix or AS number to stat.ripe.net, and to the person's own looking glasses when they added any.
-- rvrs has no account and sends no usage data. Once a day it looks for a newer release. `RVRS_UPDATE_CHECK=0` turns that off.
+- rvrs needs no account. Once a day it looks for a newer release (`RVRS_UPDATE_CHECK=0` turns that off), and every 12 hours it counts runs per tool to api.rvrs.dev (`RVRS_PULSE=0` turns that off). No target or result is sent.
 
 ## Environment
 

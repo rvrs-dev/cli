@@ -860,6 +860,7 @@ impl App {
             *saved = true;
             session.finish_lookups(Duration::ZERO);
             let run = session.run.clone();
+            crate::pulse::count_run(run.tool);
             let _ = self.history.save(&run);
         }
     }
@@ -934,6 +935,7 @@ impl App {
                     && session.run.bgp.as_ref().is_none_or(|bgp| bgp.is_empty()));
             if !matches!(session.run.outcome, Some(Outcome::Failed(_))) && !unanswered {
                 let run = session.run.clone();
+                crate::pulse::count_run(run.tool);
                 if let Err(error) = self.history.save(&run) {
                     self.toast = Some((
                         format!("Couldn't save this run to history ({error})."),
