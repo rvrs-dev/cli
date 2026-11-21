@@ -221,6 +221,134 @@ fn fail(message: &str) -> ExitCode {
     ExitCode::from(1)
 }
 
+/// A login the API started: what to show the person and how often to ask.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Started {
+    device_code: String,
+    pub user_code: String,
+    /// The link with the code in it.
+    pub link: String,
+    pub interval: Duration,
+    pub expires_at: Instant,
+}
+
+/// What one ask about a login brought back.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Poll {
+    /// Not confirmed yet. Ask again after the interval.
+    Waiting,
+    /// Asked too fast. Ask again after a longer pause.
+    SlowDown,
+    /// Confirmed. The credential is kept on this device.
+    SignedIn(Credential),
+    /// Declined, expired, or refused: the sentence says which.
+    Failed(String),
+}
+
+/// Starts a login at the API for this device.
+pub fn start_login() -> Result<Started, String> {
+    let input = serde_json::json!({
+        "product": "cli",
+        "name": device_name(),
+        "version": VERSION,
+    });
+    let started = match request("POST", "/v1/logins", None, Some(&input), 10)? {
+        answer if answer.status == 201 => answer.body,
+        answer => return Err(error_sentence(&answer)),
+    };
+    let (Some(device_code), Some(user_code), Some(link)) = (
+        started["deviceCode"].as_str(),
+        started["userCode"].as_str(),
+        started["verificationUriComplete"].as_str(),
+    ) else {
+        return Err(
+            "The rvrs API started a login without its codes. Update rvrs and try again.".into(),
+        );
+    };
+    let expires = Duration::from_secs(started["expiresIn"].as_u64().unwrap_or(600));
+    Ok(Started {
+        device_code: device_code.to_string(),
+        user_code: user_code.to_string(),
+        link: link.to_string(),
+        interval: Duration::from_secs(started["interval"].as_u64().unwrap_or(3).clamp(1, 30)),
+        expires_at: Instant::now() + expires,
+    })
+}
+
+/// Asks once whether the person confirmed the login. A confirmed login is kept on this device
+/// before this returns.
+pub fn poll_login(started: &Started) -> Poll {
+    if Instant::now() >= started.expires_at {
+        return Poll::Failed("The code expired before it was confirmed. Start again.".into());
+    }
+    let body = serde_json::json!({ "deviceCode": started.device_code });
+    // One lost request is no reason to give up on a login that takes minutes.
+    let Ok(answer) = request("POST", "/v1/installs", None, Some(&body), 10) else {
+        return Poll::Waiting;
+    };
+    match answer.status {
+        202 => Poll::Waiting,
+        429 => Poll::SlowDown,
+        201 => {
+            let (Some(token), Some(account)) =
+                (answer.body["token"].as_str(), account_of(&answer.body))
+            else {
+                return Poll::Failed(
+                    "The rvrs API confirmed the login without a credential. Start again.".into(),
+                );
+            };
+            let credential = Credential {
+                api: api_base(),
+                token: token.to_string(),
+                email: account.email,
+                workspace: account.workspace,
+                install: account.install,
+            };
+            match credential.save() {
+                Ok(()) => Poll::SignedIn(credential),
+                Err(error) => Poll::Failed(format!(
+                    "Signed in, but couldn't keep the credential in {} ({error}).",
+                    paths::display(&credential_path())
+                )),
+            }
+        }
+        _ => Poll::Failed(error_sentence(&answer)),
+    }
+}
+
+/// Opens a link in the browser. False when there is no browser to open.
+pub fn open_link(url: &str) -> bool {
+    open_in_browser(url)
+}
+
+/// Revokes the stored credential at the API and forgets it here. The answer is the sentence to
+/// show. The credential goes from this device whatever the API says.
+pub fn sign_out() -> Option<String> {
+    let credential = Credential::stored()?;
+    let revoked = request(
+        "DELETE",
+        "/v1/installs/me",
+        Some(&credential.token),
+        None,
+        8,
+    );
+    Credential::forget();
+    Some(match revoked {
+        Ok(answer) if answer.status == 204 || answer.status == 401 => {
+            format!("Signed out {}.", credential.email)
+        }
+        _ => format!(
+            "Signed out {} on this device. The API couldn't be reached, so revoke \u{201C}{}\u{201D} in the web app too.",
+            credential.email, credential.install
+        ),
+    })
+}
+
+/// Whether `RVRS_TOKEN` is set, which takes the place of any stored credential.
+pub fn env_token() -> bool {
+    std::env::var("RVRS_TOKEN").is_ok_and(|value| !value.trim().is_empty())
+}
+
 /// `rvrs login`: start a login, show the code, wait for the person, keep the credential.
 pub fn login(arguments: &[String]) -> ExitCode {
     let mut browser = true;
@@ -233,7 +361,7 @@ pub fn login(arguments: &[String]) -> ExitCode {
             }
         }
     }
-    if std::env::var("RVRS_TOKEN").is_ok_and(|value| !value.trim().is_empty()) {
+    if env_token() {
         return fail("RVRS_TOKEN is set, so this install signs in with that token. Unset it to sign in with rvrs login.");
     }
     if let Some(credential) = Credential::stored() {
@@ -252,30 +380,18 @@ pub fn login(arguments: &[String]) -> ExitCode {
     }
 
     let style = Style::detect(ColorChoice::Auto);
-    let input = serde_json::json!({
-        "product": "cli",
-        "name": device_name(),
-        "version": VERSION,
-    });
-    let started = match request("POST", "/v1/logins", None, Some(&input), 10) {
-        Ok(answer) if answer.status == 201 => answer.body,
-        Ok(answer) => return fail(&error_sentence(&answer)),
+    let started = match start_login() {
+        Ok(started) => started,
         Err(message) => return fail(&message),
     };
-    let (Some(device_code), Some(user_code), Some(link)) = (
-        started["deviceCode"].as_str(),
-        started["userCode"].as_str(),
-        started["verificationUriComplete"].as_str(),
-    ) else {
-        return fail("The rvrs API started a login without its codes. Update rvrs and try again.");
-    };
-    let interval = Duration::from_secs(started["interval"].as_u64().unwrap_or(3).clamp(1, 30));
-    let expires = Duration::from_secs(started["expiresIn"].as_u64().unwrap_or(600));
-
     println!("{} {}\n", style.bold("//"), style.dim("login"));
-    println!("  {}  {}", style.dim("Code"), style.bold(user_code));
-    println!("  {}  {link}\n", style.dim("Open"));
-    let opened = browser && std::io::stdout().is_terminal() && open_in_browser(link);
+    println!(
+        "  {}  {}",
+        style.dim("Code"),
+        style.bold(&started.user_code)
+    );
+    println!("  {}  {}\n", style.dim("Open"), started.link);
+    let opened = browser && std::io::stdout().is_terminal() && open_in_browser(&started.link);
     println!(
         "{}",
         style.dim(if opened {
@@ -286,9 +402,7 @@ pub fn login(arguments: &[String]) -> ExitCode {
     );
 
     term::catch_interrupts();
-    let deadline = Instant::now() + expires;
-    let body = serde_json::json!({ "deviceCode": device_code });
-    let mut pause = interval;
+    let mut pause = started.interval;
     loop {
         let wake = Instant::now() + pause;
         while Instant::now() < wake {
@@ -298,46 +412,19 @@ pub fn login(arguments: &[String]) -> ExitCode {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        if Instant::now() >= deadline {
-            return fail("The code expired before it was confirmed. Run rvrs login again.");
-        }
-        let answer = match request("POST", "/v1/installs", None, Some(&body), 10) {
-            Ok(answer) => answer,
-            // One lost request is no reason to give up on a login that takes minutes.
-            Err(_) => continue,
-        };
-        match answer.status {
-            202 => {}
-            // Asked too fast: back off, as the device grant's slow_down asks.
-            429 => pause += Duration::from_secs(5),
-            201 => {
-                let (Some(token), Some(account)) =
-                    (answer.body["token"].as_str(), account_of(&answer.body))
-                else {
-                    return fail("The rvrs API confirmed the login without a credential. Run rvrs login again.");
-                };
-                let credential = Credential {
-                    api: api_base(),
-                    token: token.to_string(),
-                    email: account.email.clone(),
-                    workspace: account.workspace.clone(),
-                    install: account.install,
-                };
-                if let Err(error) = credential.save() {
-                    return fail(&format!(
-                        "Signed in, but couldn't keep the credential in {} ({error}).",
-                        paths::display(&credential_path())
-                    ));
-                }
+        match poll_login(&started) {
+            Poll::Waiting => {}
+            Poll::SlowDown => pause += Duration::from_secs(5),
+            Poll::SignedIn(credential) => {
                 println!(
                     "{} {} \u{00B7} {}",
                     style.bold_green("Signed in as"),
-                    account.email,
-                    account.workspace
+                    credential.email,
+                    credential.workspace
                 );
                 return ExitCode::SUCCESS;
             }
-            _ => return fail(&error_sentence(&answer)),
+            Poll::Failed(message) => return fail(&message),
         }
     }
 }
@@ -348,31 +435,12 @@ pub fn logout(arguments: &[String]) -> ExitCode {
         eprintln!("rvrs: rvrs logout takes nothing, and \u{201C}{other}\u{201D} is something.");
         return ExitCode::from(2);
     }
-    let Some(credential) = Credential::stored() else {
-        if std::env::var("RVRS_TOKEN").is_ok_and(|value| !value.trim().is_empty()) {
-            println!("This install signs in with RVRS_TOKEN. Unset it, and revoke the token in the web app.");
-        } else {
-            println!("Not signed in.");
-        }
-        return ExitCode::SUCCESS;
-    };
-    // The credential goes from this device whatever the API says, so signing out always works.
-    let revoked = request(
-        "DELETE",
-        "/v1/installs/me",
-        Some(&credential.token),
-        None,
-        8,
-    );
-    Credential::forget();
-    match revoked {
-        Ok(answer) if answer.status == 204 || answer.status == 401 => {
-            println!("Signed out {}.", credential.email);
-        }
-        _ => println!(
-            "Signed out {} on this device. The API couldn't be reached, so revoke \u{201C}{}\u{201D} in the web app too.",
-            credential.email, credential.install
+    match sign_out() {
+        Some(sentence) => println!("{sentence}"),
+        None if env_token() => println!(
+            "This install signs in with RVRS_TOKEN. Unset it, and revoke the token in the web app."
         ),
+        None => println!("Not signed in."),
     }
     ExitCode::SUCCESS
 }

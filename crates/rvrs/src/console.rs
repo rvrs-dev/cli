@@ -26,6 +26,8 @@ use rvrs_core::model::{groups, Grade, Hop, Outcome, Run, Slot, Tool, Verdict};
 use rvrs_core::session::{Lookups, Session};
 use rvrs_core::{format, is_private, FamilyChoice};
 
+#[path = "console_account.rs"]
+mod account_view;
 #[path = "console_bgp.rs"]
 mod bgp_view;
 #[path = "console_run.rs"]
@@ -33,6 +35,7 @@ mod run_picker;
 use bgp_view::{BgpTab, PrefixFilter};
 use run_picker::Launcher;
 
+use crate::account;
 use crate::args::normalize_target;
 use crate::pretty::{self, View};
 use crate::style::{truncate_end, truncate_middle, width, Style, SPINNER};
@@ -221,6 +224,8 @@ enum Section {
     /// Saved runs and the cases they sit in. Without a case it lists the saved runs; with
     /// cases its first level is All saved and each case.
     Cases,
+    /// Who this install is signed in as, and signing in and out.
+    Account,
 }
 
 /// Which saved runs the Cases section shows once you have gone into an entry.
@@ -240,13 +245,19 @@ struct Picker {
 }
 
 impl Section {
-    const ALL: [Section; 3] = [Section::Console, Section::Favorites, Section::Cases];
+    const ALL: [Section; 4] = [
+        Section::Console,
+        Section::Favorites,
+        Section::Cases,
+        Section::Account,
+    ];
 
     fn title(self) -> &'static str {
         match self {
             Section::Console => "Console",
             Section::Favorites => "Favorites",
             Section::Cases => "Cases",
+            Section::Account => "Account",
         }
     }
 
@@ -259,13 +270,15 @@ impl Section {
     }
 
     /// Shift and a number. Terminals send the character the layout puts on that key, so the
-    /// shifted digits of the common layouts are read: ! for 1, @ or " for 2, # or § or £ for 3.
+    /// shifted digits of the common layouts are read: ! for 1, @ or " for 2, # or § or £ for 3,
+    /// $ or ¤ for 4.
     /// None of them can be part of a target, so they work while typing too.
     fn of(key: &KeyEvent) -> Option<Section> {
         let number = match key.code {
             KeyCode::Char('!') => 1,
             KeyCode::Char('@' | '"') => 2,
             KeyCode::Char('#' | '\u{00A7}' | '\u{00A3}') => 3,
+            KeyCode::Char('$' | '\u{00A4}') => 4,
             KeyCode::Char(digit @ '1'..='9') if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 digit as usize - '0' as usize
             }
@@ -287,6 +300,8 @@ pub struct App {
     picker: Option<Picker>,
     /// Open while a tool is being picked for a host.
     launcher: Option<Launcher>,
+    /// Who this install is signed in as, and a login in progress.
+    account: account_view::Account,
     /// Hosts kept on purpose. The app's Favorites.
     favorites: Favorites,
     section: Section,
@@ -424,6 +439,7 @@ impl App {
             case: None,
             picker: None,
             launcher: None,
+            account: account_view::Account::load(),
             favorites,
             section: Section::Console,
             input: String::new(),
@@ -500,6 +516,7 @@ impl App {
                     )
                 }
             },
+            Section::Account => Rows::Hosts(Vec::new()),
             Section::Favorites => Rows::Hosts(
                 self.favorites
                     .hosts
@@ -533,6 +550,7 @@ impl App {
         match self.section {
             Section::Console => "Recent".into(),
             Section::Favorites => "Favorites".into(),
+            Section::Account => "Account".into(),
             Section::Cases if self.cases.cases.is_empty() => "Saved".into(),
             Section::Cases => match &self.case {
                 None => "Cases".into(),
@@ -877,6 +895,9 @@ impl App {
     /// Folds in what the run learned since the last frame and saves it once it has ended.
     pub fn tick(&mut self) {
         self.frame += 1;
+        if let Some(sentence) = self.account.tick() {
+            self.toast(sentence);
+        }
         if self
             .toast
             .as_ref()
@@ -949,9 +970,40 @@ impl App {
             self.go_to(section);
             return;
         }
+        if self.section == Section::Account && (self.pane == Pane::Start || self.shown.is_none()) {
+            self.account_key(key);
+            return;
+        }
         match self.pane {
             Pane::Start => self.start_key(key),
             Pane::Result => self.result_key(key),
+        }
+    }
+
+    /// The Account section takes every key: there is no field to type into there.
+    fn account_key(&mut self, key: KeyEvent) {
+        use account_view::State;
+        match (key.code, &self.account.state) {
+            (KeyCode::Enter, State::SignedOut | State::Failed(_)) => self.account.sign_in(),
+            (KeyCode::Enter, State::SignedIn { .. }) => self.account.sign_out(),
+            (KeyCode::Char('o'), State::Waiting { link, .. }) => {
+                let link = link.clone();
+                if !account::open_link(&link) {
+                    self.toast("Couldn't open a browser. Copy the link with c");
+                }
+            }
+            (KeyCode::Char('c'), State::Waiting { link, .. }) => {
+                let link = link.clone();
+                self.copy(&link);
+            }
+            (KeyCode::Esc | KeyCode::Left, _) if self.account.is_busy() => {
+                if !matches!(self.account.state, State::SigningOut) {
+                    self.account.cancel();
+                    self.toast("Login canceled");
+                }
+            }
+            (KeyCode::Esc | KeyCode::Left, _) => self.go_to(Section::Console),
+            _ => {}
         }
     }
 
@@ -1462,7 +1514,11 @@ impl App {
         // A short terminal gives the header's rows to the result.
         let header_rows = if area.height >= 22 { 6 } else { 0 };
         let on_start = self.pane == Pane::Start || self.shown.is_none();
-        let prompt_rows = if on_start { 3 } else { 0 };
+        let prompt_rows = if on_start && self.section != Section::Account {
+            3
+        } else {
+            0
+        };
         let [header, prompt, main, crumbs] = Layout::vertical([
             Constraint::Length(header_rows),
             Constraint::Length(prompt_rows),
@@ -1475,7 +1531,12 @@ impl App {
         if header_rows > 0 {
             self.draw_header(frame, header);
         }
-        if on_start {
+        if on_start && self.section == Section::Account {
+            let block = panel("Account", "this install", "");
+            let inner = block.inner(main);
+            frame.render_widget(block, main);
+            self.account.draw(frame, inner, self.frame, LABEL);
+        } else if on_start {
             self.draw_prompt(frame, prompt);
             self.draw_recent(frame, main);
         } else {
@@ -1622,6 +1683,13 @@ impl App {
                     ("\u{2190}", "Close"),
                 ]
             };
+        }
+        if self.section == Section::Account && (self.pane == Pane::Start || self.shown.is_none()) {
+            let mut keys = self.account.keys();
+            if !self.account.is_busy() {
+                keys.push(("\u{2190}", "Console"));
+            }
+            return keys;
         }
         if self.pane == Pane::Start || self.shown.is_none() {
             let rows = self.rows();
@@ -1782,10 +1850,14 @@ impl App {
                         format!("{count} runs")
                     }),
                 ),
-                (
-                    "Account",
-                    Line::styled("not signed in", Paint::new().add_modifier(Modifier::DIM)),
-                ),
+                ("Account", {
+                    let (text, signed_in) = self.account.header();
+                    if signed_in {
+                        value(text)
+                    } else {
+                        Line::styled(text, Paint::new().add_modifier(Modifier::DIM))
+                    }
+                }),
                 ("rvrs", {
                     let mut line = value(crate::help::VERSION.into());
                     // What the daily look found, if rvrs has fallen behind.
@@ -2150,6 +2222,7 @@ impl App {
                     (Section::Cases, _) if in_case => "No runs in this case",
                     (Section::Cases, _) => "No saved runs",
                     (Section::Favorites, _) => "No favorites",
+                    (Section::Account, _) => "Account",
                 };
                 let [_, middle, _] = Layout::vertical([
                     Constraint::Percentage(35),
@@ -3844,8 +3917,8 @@ impl App {
             row("a", "On a selected run: put it in cases, or make a new one"),
             row("x", "Inside a case: take the run out of it. It stays saved"),
             row(
-                "\u{21E7}1 \u{21E7}2 \u{21E7}3",
-                "Go to Console, Favorites, Cases, the tabs in the footer",
+                "\u{21E7}1 to \u{21E7}4",
+                "Go to Console, Favorites, Cases, Account, the tabs in the footer",
             ),
             row(
                 "f",
@@ -3988,7 +4061,15 @@ fn panel_with(name: &str, scope: &str, count: &str, focused: bool) -> Block<'sta
         .title(Line::from(vec![
             Span::styled(format!(" {name}"), bold.fg(ACCENT)),
             Span::styled(format!("({scope})"), bold.fg(TOOL)),
-            Span::styled(format!("[{count}] "), bold),
+            // A panel that counts nothing ends its title after the scope.
+            Span::styled(
+                if count.is_empty() {
+                    " ".to_string()
+                } else {
+                    format!("[{count}] ")
+                },
+                bold,
+            ),
         ]))
 }
 
@@ -4447,6 +4528,52 @@ mod tests {
 
     fn press(app: &mut App, code: KeyCode) {
         app.key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn the_account_section_shows_who_is_signed_in_and_takes_its_own_keys() {
+        use account_view::State;
+        let mut app = app_with(Vec::new());
+        // Shift and 4, on US and Danish layouts alike.
+        press(&mut app, KeyCode::Char('$'));
+        assert_eq!(app.section, Section::Account);
+        press(&mut app, KeyCode::Char('!'));
+        press(&mut app, KeyCode::Char('\u{00A4}'));
+        assert_eq!(app.section, Section::Account);
+
+        app.account.state = State::SignedOut;
+        let text = screen(&mut app, 150, 30).join("\n");
+        assert!(text.contains("Account(this install)"), "{text}");
+        assert!(text.contains("Account:  not signed in"));
+        assert!(text.contains("<\u{21B5}>     Sign In"));
+        assert!(text.contains("\u{21E7}4 Account"));
+        // No field in this section: letters go nowhere.
+        type_text(&mut app, "abc");
+        assert!(app.input.is_empty());
+
+        app.account.state = State::SignedIn {
+            email: "ada@example.com".into(),
+            workspace: "Ada\u{2019}s workspace".into(),
+            install: "laptop.local".into(),
+        };
+        let text = screen(&mut app, 150, 30).join("\n");
+        assert!(text.contains("Account:  ada@example.com \u{00B7} Ada\u{2019}s workspace"));
+        assert!(text.contains("Signed in  ada@example.com"));
+        assert!(text.contains("<\u{21B5}>     Sign Out"));
+
+        app.account.state = State::Waiting {
+            code: "BKDF-7QXM".into(),
+            link: "https://app.rvrs.dev/activate?code=BKDF-7QXM".into(),
+        };
+        let text = screen(&mut app, 150, 30).join("\n");
+        assert!(text.contains("Code       BKDF-7QXM"));
+        assert!(text.contains("<esc>   Cancel"));
+
+        // Out of a finished state, esc goes back to the Console.
+        app.account.state = State::SignedOut;
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.section, Section::Console);
+        clean(&app);
     }
 
     #[test]

@@ -18,7 +18,7 @@
 │    20.4 ┤        ███ ███         ███                                                        │
 │    0 ms ┤▇▇▇ ███ ███ ███ ××× ××× ███                                                        │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
-  ⇧1 Console   ⇧2 Favorites   ⇧3 Cases  ›  traceroute
+  ⇧1 Console   ⇧2 Favorites   ⇧3 Cases   ⇧4 Account  ›  traceroute
 ```
 
 Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the number always beside the color.
@@ -45,8 +45,10 @@ Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the n
 | a | Adds the run to cases |
 | f | Adds the host to Favorites or removes it |
 | x | Takes a run out of the open case |
-| ⇧1 ⇧2 ⇧3 | Console, Favorites, Cases |
+| ⇧1 ⇧2 ⇧3 ⇧4 | Console, Favorites, Cases, Account |
 | ? | Shows every key and the latency colors |
+
+⇧4 Account shows who this install is signed in as, also in the header. Return signs in: the Console shows a code and a link, opens the link, and waits while you confirm the code in the browser, as `rvrs login` does. `o` opens the link again, `c` copies it, esc cancels. Signed in, Return signs out and revokes this install's credential. With `RVRS_TOKEN` set, the token is the sign-in and the section only says so.
 
 A ping in the Console sends 20 packets a second apart, as the app does. An MTR runs until `s` stops it. Each hop shows its figures and a strip of its newest rounds, and the charts above the table show the destination's latency, jitter and loss round by round. Jitter is how far each reply moved from the one before, and loss is counted over the last 10 rounds. A hop's details chart the same for that hop. Starting another run, or quitting, stops a live run and keeps it in history. On a terminal under 22 rows the header hides and the keys move to the bottom line. The Console starts with the tool chosen last.
 
