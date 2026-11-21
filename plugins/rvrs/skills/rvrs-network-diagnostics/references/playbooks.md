@@ -19,9 +19,9 @@ Each one starts from what the person said and ends when the question is answered
 
 1. `rvrs dig <name> --json`. `failed` or no addresses: it is DNS, go to that playbook.
 2. `rvrs ping -c 5 --json <target>`.
-   - `reached`: the host answers. The problem is the port or the service, which rvrs does not probe. Say that.
+   - `reached`: the host answers. Go to step 3 with the service's port.
    - `exhausted`: no reply to ICMP. This alone proves nothing.
-3. `rvrs traceroute --json <target>`: how far do the probes get? The last hop that answers and its network is the finding. A path that ends inside the target's own network with the target silent usually means the target drops ICMP.
+3. `rvrs traceroute -T -p <port> --json <target>` when the person named a service or a port: `probe.state` says open, closed or filtered, and for a filtered port `interpretation` names the last router that answered. Without a port, `rvrs traceroute --json <target>`: how far do the probes get? The last hop that answers and its network is the finding. A path that ends inside the target's own network with the target silent usually means the target drops ICMP.
 4. `rvrs bgp <address> --json`: is the prefix announced, and by how many collector peers? `exhausted` means collectors see no route. Low visibility can be a routing problem and can be normal for that prefix, so read `--history --days 30` first: visibility that dropped is a finding, visibility that was always low is not.
 5. Compare with history. A target that never answered ping before is not newly down.
 
@@ -54,6 +54,16 @@ A short run will miss it. Say so first.
 5. To tie routing to a symptom, run `rvrs traceroute --json <host>` and compare the networks in `hops[].asn` with the AS paths. Collectors see paths from their peers. This device's path is its own.
 
 Words: say origin AS where people say "owner", and Valid, Invalid or Not Found for RPKI. Say "seen upstream of" where people say "provider of", because collectors show where a network sits in a path and nothing about contracts.
+
+## "A port is blocked" and "TLS hangs"
+
+1. `rvrs traceroute -T -p <port> --json <target>`.
+   - `open`: the port answers from this device. Read `connect` and `mss` in `measured`.
+   - `closed`: the host is there and nothing listens. That is the service or the host's firewall answering with a reset.
+   - `filtered`: go on.
+2. The same trace to a port that is usually open on that host, such as 443. If it reaches the target, the path is fine and something drops this port. If it stops at the same hop, the path stops there for everything.
+3. Say where the SYN was last seen: the hop and its network from `interpretation`. Many access providers filter 25, 135 to 139 and 445 on purpose, so name that as the likely reason for those ports.
+4. For TLS or large transfers that hang while small requests work, read `mss` from an open port. A low value with hangs points at packets too large for the path. Compare with another network if the person has one.
 
 ## IPv4 against IPv6
 

@@ -49,7 +49,7 @@ What rvrs adds to what was measured:
 
 Differences from the original:
 
-- rvrs sends ICMP echo probes only. `-u`, `-T`, `-a` and `-I` return an error.
+- MTR sends ICMP echo probes only. `-u`, `-T`, `-a` and `-I` return an error. For a TCP port, `rvrs traceroute -T -p <port>`.
 - `rvrs mtr` never opens a full-screen view, so `-t` and `-g` return an error. `rvrs` on its own opens the Console, and `mtr example.com` typed there runs an MTR.
 - `-j` and `--json` print the rvrs report. mtr's own JSON, CSV and XML are not written.
 - A long run keeps its newest 1200 rounds per hop.

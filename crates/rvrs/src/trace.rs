@@ -67,7 +67,16 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
 
     term::catch_interrupts();
     let started = Instant::now();
-    let mut session = Session::start(&args.target, args.family, args.options.clone(), lookups);
+    let mut session = match args.tcp {
+        Some(port) => Session::start_tcp(
+            &args.target,
+            args.family,
+            args.options.clone(),
+            port,
+            lookups,
+        ),
+        None => Session::start(&args.target, args.family, args.options.clone(), lookups),
+    };
     let mut live = (look == Look::Pretty).then(LiveRegion::start);
     let mut classic_printed = 0usize;
     let mut classic_header = false;

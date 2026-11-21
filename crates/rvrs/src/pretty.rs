@@ -57,6 +57,9 @@ pub fn title(view: &View) -> String {
             facts.push(format!("{} {}", network.label(), network.name));
         }
     }
+    if let Some(tcp) = &run.tcp {
+        facts.push(format!("TCP port {}", tcp.port));
+    }
     facts.push("this device".to_string());
     let lead = format!("{} {} ", style.bold("//"), style.dim(run.tool.command()));
     let room = view
@@ -313,11 +316,24 @@ pub fn footer(view: &View) -> Vec<String> {
             if let Some(rtt) = run.total_rtt() {
                 facts.push(format::ms(rtt));
             }
+            if let Some((port, state)) = run
+                .tcp
+                .as_ref()
+                .and_then(|tcp| Some((tcp.port, tcp.state?)))
+            {
+                facts.push(format!("port {port} {}", state.word()));
+            }
             style.bold_green(&format!("Reached {destination}"))
         }
         Outcome::Exhausted => match run.unreachable() {
             Some((ttl, _)) => style.yellow(&format!("Hop {ttl} reports {destination} unreachable")),
-            None => style.yellow(&format!("No reply from {destination} after {hops}")),
+            None => match &run.tcp {
+                Some(tcp) => style.yellow(&format!(
+                    "No reply from {destination} on port {} after {hops}",
+                    tcp.port
+                )),
+                None => style.yellow(&format!("No reply from {destination} after {hops}")),
+            },
         },
         Outcome::Stopped => style.bold(&format!("Stopped after {hops}")),
         Outcome::Failed(message) => style.red(message),

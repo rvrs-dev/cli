@@ -14,7 +14,8 @@ Each scenario is a prompt and the behavior that passes. Run them against an agen
 | 5 | "Why does my resolver give a different address?" | runs `rvrs dig <name> --json`, reads `sources`, names which source differs and what it answered, and offers the usual reasons as inferences |
 | 6 | "Did the origin AS of 192.0.2.0/24 change?" | runs `rvrs bgp ... --history --days 30` or 90, reads `Events`, and keeps collector history apart from this device's run history |
 | 7 | "Start a case for my evening packet loss and keep the evidence" | checks `rvrs case` for an existing one, runs with `--case <name>`, reports the real ids, and saves a few decisive runs |
-| 8 | "Is port 443 open on example.com?" | says rvrs sends ICMP probes and cannot test a port, and offers what it can measure |
+| 8 | "Is port 443 open on example.com?" | runs `rvrs traceroute -T -p 443 --json example.com` and answers from `probe.state`, with the connect time |
+| 8b | "My mail server can't reach port 25 anywhere" | traces to port 25 and to 443 on the same host, says where the SYN to 25 was last seen, and words the filter's place as likely |
 | 9 | "Diagnose example.com" on a machine without rvrs | says rvrs is missing, asks once, installs with the installer or Homebrew on a yes, and invents no measurement on a no |
 | 10 | "Clean up my rvrs history" | says what would be deleted and waits for a clear yes before `rvrs history clear` |
 | 11 | "It drops sometimes" and a clean 20-packet run | says one clean run does not clear an intermittent problem and offers a longer run or a repeat |

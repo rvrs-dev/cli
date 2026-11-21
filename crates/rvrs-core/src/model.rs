@@ -403,6 +403,9 @@ pub struct Run {
     /// BGP only: the route, its origin validation, paths, history and network.
     #[serde(default)]
     pub bgp: Option<BgpResult>,
+    /// A traceroute that probed with TCP: the port and what it did. None is ICMP.
+    #[serde(default)]
+    pub tcp: Option<crate::tcp::TcpProbe>,
 }
 
 impl Run {
@@ -425,6 +428,7 @@ impl Run {
             first_round: 0,
             dns: None,
             bgp: None,
+            tcp: None,
         }
     }
 
@@ -496,6 +500,18 @@ impl Run {
                     self.hops.truncate(usize::from(*ttl));
                 }
                 is_new.then_some(*from)
+            }
+            Event::Port {
+                state,
+                connect,
+                mss,
+            } => {
+                if let Some(tcp) = self.tcp.as_mut() {
+                    tcp.state = Some(*state);
+                    tcp.connect_micros = connect.map(|time| time.as_micros() as u64);
+                    tcp.mss = *mss;
+                }
+                None
             }
             Event::Finished(ending) => {
                 self.outcome = Some(match ending {
@@ -808,6 +824,32 @@ impl Run {
 
     /// The hops up to the farthest one that answered. Silent hops behind it are not part of
     /// what the run learned about the path.
+    /// TCP: what a trace to a port that never answered found, worded as the inference it is.
+    /// None for an ICMP run, and for a port that answered.
+    pub fn tcp_filter_note(&self) -> Option<String> {
+        let tcp = self.tcp.as_ref()?;
+        if self.outcome != Some(Outcome::Exhausted) || self.unreachable().is_some() {
+            return None;
+        }
+        let port = tcp.port;
+        let Some(hop) = self.path().last() else {
+            return Some(format!(
+                "Nothing answered on TCP port {port}, and no router on the way did either. A filter close to this device likely drops the SYN."
+            ));
+        };
+        let router = match hop.address() {
+            Some(address) => match self.network(address) {
+                Some(network) => format!("{address} in {} {}", network.label(), network.name),
+                None => address.to_string(),
+            },
+            None => "a silent router".to_string(),
+        };
+        Some(format!(
+            "Nothing answered on TCP port {port}. The last router to answer is hop {}, {router}, so a filter likely drops the SYN after it or at the destination.",
+            hop.ttl
+        ))
+    }
+
     pub fn path(&self) -> &[Hop] {
         &self.hops[..self.path_len()]
     }
@@ -907,11 +949,26 @@ impl Run {
                 _ => self.mtr_summary(),
             };
         }
+        // A TCP traceroute says what the port did.
+        let port = self
+            .tcp
+            .as_ref()
+            .and_then(|tcp| Some((tcp.port, tcp.state?)));
         match &self.outcome {
-            Some(Outcome::Reached) => match self.total_rtt() {
-                Some(rtt) => format!("{hops} \u{00B7} {}", format::ms(rtt)),
-                None => hops,
-            },
+            Some(Outcome::Reached) => {
+                let mut text = match self.total_rtt() {
+                    Some(rtt) => format!("{hops} \u{00B7} {}", format::ms(rtt)),
+                    None => hops,
+                };
+                if let Some((port, state)) = port {
+                    text.push_str(&format!(" \u{00B7} port {port} {}", state.word()));
+                }
+                text
+            }
+            Some(Outcome::Exhausted) if self.tcp.is_some() && self.unreachable().is_none() => {
+                let port = self.tcp.as_ref().map_or(0, |tcp| tcp.port);
+                format!("Port {port} filtered \u{00B7} no reply after {hops}")
+            }
             Some(Outcome::Exhausted) => format!("No reply after {hops}"),
             Some(Outcome::Stopped) => format!("Stopped after {hops}"),
             Some(Outcome::Failed(_)) => "Failed".to_string(),

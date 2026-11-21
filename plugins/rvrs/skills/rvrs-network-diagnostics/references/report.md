@@ -51,6 +51,17 @@ rvrs show <id> --json | jq '[.hops[].asn | select(. != null)] | reduce .[] as $a
 
 Same shape as MTR with three probes per hop by default (`-q`). Too few probes for loss figures to mean much: use it for the path and MTR for loss.
 
+## Traceroute to a TCP port
+
+`rvrs traceroute -T -p 443 <target> --json` is a traceroute whose report also has:
+
+- `probe`: `protocol` (`tcp`), `port`, and `state`: `open` (a SYN-ACK came back), `closed` (a reset came back) or `filtered` (nothing came back from the destination).
+- `measured`: `connect` (ms, how long the first handshake took) and `mss` (bytes, what the handshake settled on) for an open port.
+- `outcome`: `reached` for an open or a closed port, `exhausted` for a filtered one. `hops` then ends at the last router that answered.
+- `interpretation`: for a filtered port, the sentence that names that router and its network.
+
+An MSS under 1460 over IPv4 means the path or the server announced less than a 1500-byte MTU. That alone is common (tunnels, PPPoE) and no fault. It matters when large transfers or TLS handshakes hang while small requests work.
+
 ## DNS
 
 `rvrs dig <name> --json` asks this device's resolver, Cloudflare, Google, Quad9 and the name's authoritative servers.

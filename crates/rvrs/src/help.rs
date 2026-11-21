@@ -271,7 +271,15 @@ pub fn traceroute(style: Style) -> String {
                 "Show each hop's AS number in the classic output",
             ),
             ("-4, -6", "Resolve the target to IPv4 or IPv6"),
-            ("-I, --icmp", "ICMP echo probes, which rvrs always sends"),
+            (
+                "-I, --icmp",
+                "ICMP echo probes, which rvrs sends unless -T is given",
+            ),
+            (
+                "-T, --tcp",
+                "TCP probes to a port: is it open, closed or filtered, and where a SYN stops",
+            ),
+            ("-p, --port <n>", "The port for -T (default 80)"),
         ],
     ));
     out.push('\n');
@@ -303,10 +311,7 @@ pub fn traceroute(style: Style) -> String {
     out.push_str(&section(
         style,
         "Not supported yet",
-        &[(
-            "-T, -U, -p, -s, -i",
-            "TCP and UDP probes, a source address or interface",
-        )],
+        &[("-U, -s, -i", "UDP probes, a source address or interface")],
     ));
     out.push('\n');
     out.push_str(&section(
@@ -315,6 +320,7 @@ pub fn traceroute(style: Style) -> String {
         &[
             ("rvrs traceroute 1.1.1.1", ""),
             ("rvrs traceroute -6 -q 5 example.com", ""),
+            ("rvrs traceroute -T -p 443 example.com", ""),
             ("rvrs traceroute -n example.com | awk '{print $2}'", ""),
             ("rvrs traceroute --json example.com | jq .hops", ""),
         ],

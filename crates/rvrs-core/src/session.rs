@@ -82,6 +82,28 @@ impl Session {
         })
     }
 
+    /// Starts a traceroute that probes with TCP toward `port`.
+    pub fn start_tcp(
+        target: &str,
+        family: FamilyChoice,
+        options: Options,
+        port: u16,
+        lookups: Lookups,
+    ) -> Self {
+        let options = options.clamped();
+        let mut run = Run::new(
+            Tool::Traceroute,
+            target,
+            family,
+            options.queries,
+            options.max_ttl,
+        );
+        run.tcp = Some(crate::tcp::TcpProbe::new(port));
+        Self::launch(run, lookups, move |destination, events, stop| {
+            crate::tcp::trace(destination, port, options, events, stop)
+        })
+    }
+
     /// Starts a ping.
     pub fn start_ping(
         target: &str,

@@ -57,6 +57,17 @@ pub struct ReportSource {
     pub error: Option<String>,
 }
 
+/// The probes of a run that didn't send ICMP echo.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportProbe {
+    /// tcp.
+    pub protocol: String,
+    pub port: u16,
+    /// open (a SYN-ACK came back), closed (a reset came back) or filtered (nothing did).
+    pub state: Option<String>,
+}
+
 /// Where a run was made from. A comparison only holds between runs of one origin.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +113,8 @@ pub struct Report {
     pub records: Option<Vec<ReportRecord>>,
     /// DNS: what each source answered and how it compares with the reference answer.
     pub sources: Option<Vec<ReportSource>>,
+    /// What the probes were when they were not ICMP echo: TCP to a port, and what the port did.
+    pub probe: Option<ReportProbe>,
     /// Inferences only, each a sentence that says it is one.
     pub interpretation: Vec<String>,
     /// The result as one plain sentence.
@@ -179,9 +192,32 @@ impl Report {
                     interpretation.push(format!("{}. {}", verdict.title, verdict.detail));
                 }
             }
+        } else if let Some(note) = run.tcp_filter_note() {
+            interpretation.push(note);
         } else if outcome == Outcome::Exhausted && run.unreachable().is_none() {
             interpretation.push(SILENT_TARGET.to_string());
         }
+        let probe = run.tcp.as_ref().map(|tcp| {
+            if let Some(micros) = tcp.connect_micros {
+                measured.push(Measurement {
+                    name: "connect".into(),
+                    value: round(micros as f64 / 1000.0),
+                    unit: Some("ms".into()),
+                });
+            }
+            if let Some(mss) = tcp.mss {
+                measured.push(Measurement {
+                    name: "mss".into(),
+                    value: f64::from(mss),
+                    unit: Some("bytes".into()),
+                });
+            }
+            ReportProbe {
+                protocol: "tcp".into(),
+                port: tcp.port,
+                state: tcp.state.map(|state| state.word().to_string()),
+            }
+        });
         if run.tool == Tool::Mtr {
             if let Some(note) = run.rate_limit_note() {
                 interpretation.push(note);
@@ -224,6 +260,7 @@ impl Report {
             hops: Some(hops),
             records: None,
             sources: None,
+            probe,
             interpretation,
         }
     }
@@ -294,6 +331,7 @@ impl Report {
             hops: None,
             records: None,
             sources: None,
+            probe: None,
             interpretation,
             sentence,
         }
@@ -407,6 +445,7 @@ impl Report {
             hops: None,
             records,
             sources,
+            probe: None,
             interpretation,
             sentence,
         }
@@ -501,6 +540,7 @@ impl Report {
             hops: None,
             records: None,
             sources: None,
+            probe: None,
             interpretation,
             sentence,
         }
@@ -551,6 +591,20 @@ pub fn sentence(run: &Run, outcome: &Outcome) -> String {
             text.push_str(&format!(" {}.", verdict.title));
         }
         return text;
+    }
+    if let Some(tcp) = &run.tcp {
+        let port = tcp.port;
+        return match (outcome, run.total_rtt(), tcp.state) {
+            (Outcome::Exhausted, _, _) => {
+                format!("No reply from {target} on TCP port {port} after {hops}.")
+            }
+            (_, Some(rtt), Some(state)) => format!(
+                "Reached {target} on TCP port {port} in {hops}, {} round trip. The port is {}.",
+                format::ms(rtt),
+                state.word()
+            ),
+            _ => format!("Stopped after {hops}."),
+        };
     }
     match (outcome, run.total_rtt()) {
         (Outcome::Exhausted, _) => format!("No reply from {target} after {hops}."),
@@ -820,6 +874,124 @@ mod tests {
         assert!(differing[0].addresses.contains(&"203.0.113.5".to_string()));
         assert!(sources.iter().any(|source| source.status == "match"));
         assert!(report.json().contains("\"kind\": \"device\""));
+    }
+
+    /// A TCP trace of three hops whose last hop is the destination or stays silent.
+    fn tcp_run(state: crate::tcp::PortState) -> Run {
+        use crate::tcp::{PortState, TcpProbe};
+        use std::time::Duration;
+        let mut run = Run::new(Tool::Traceroute, "example.com", FamilyChoice::Auto, 1, 30);
+        run.tcp = Some(TcpProbe::new(443));
+        run.destination = Some("192.0.2.10".parse().unwrap());
+        run.apply(&Event::Port {
+            state,
+            connect: (state != PortState::Filtered).then(|| Duration::from_micros(11_300)),
+            mss: (state == PortState::Open).then_some(1460),
+        });
+        for ttl in 1..=2u8 {
+            run.apply(&Event::Sent { ttl, round: 0 });
+            run.apply(&Event::Reply {
+                ttl,
+                round: 0,
+                from: format!("198.51.100.{ttl}").parse().unwrap(),
+                rtt: Duration::from_millis(u64::from(ttl) * 4),
+                kind: ReplyKind::Intermediate,
+            });
+        }
+        run.apply(&Event::Sent { ttl: 3, round: 0 });
+        if state == PortState::Filtered {
+            run.apply(&Event::Lost { ttl: 3, round: 0 });
+            run.apply(&Event::Finished(Ending::Exhausted));
+        } else {
+            run.apply(&Event::Reply {
+                ttl: 3,
+                round: 0,
+                from: "192.0.2.10".parse().unwrap(),
+                rtt: Duration::from_millis(12),
+                kind: ReplyKind::Destination,
+            });
+            run.apply(&Event::Finished(Ending::Reached(3)));
+        }
+        run
+    }
+
+    #[test]
+    fn a_tcp_trace_reports_what_the_port_did() {
+        use crate::tcp::PortState;
+        let report = Report::of(&tcp_run(PortState::Open));
+        assert_eq!(report.outcome, "reached");
+        assert_eq!(
+            report.summary,
+            "3 hops \u{00B7} 12.0 ms \u{00B7} port 443 open"
+        );
+        assert_eq!(
+            report.sentence,
+            "Reached 192.0.2.10 on TCP port 443 in 3 hops, 12.0 ms round trip. The port is open."
+        );
+        let probe = report.probe.as_ref().unwrap();
+        assert_eq!((probe.protocol.as_str(), probe.port), ("tcp", 443));
+        assert_eq!(probe.state.as_deref(), Some("open"));
+        let figure = |name: &str| {
+            report
+                .measured
+                .iter()
+                .find(|measurement| measurement.name == name)
+                .map(|measurement| measurement.value)
+        };
+        assert_eq!(figure("connect"), Some(11.3));
+        assert_eq!(figure("mss"), Some(1460.0));
+        assert!(report.interpretation.is_empty());
+
+        // A reset is an answer: the host is there and nothing listens.
+        let closed = Report::of(&tcp_run(PortState::Closed));
+        assert_eq!(closed.outcome, "reached");
+        assert!(closed.summary.ends_with("port 443 closed"));
+        assert_eq!(figure_of(&closed, "mss"), None);
+    }
+
+    fn figure_of(report: &Report, name: &str) -> Option<f64> {
+        report
+            .measured
+            .iter()
+            .find(|measurement| measurement.name == name)
+            .map(|measurement| measurement.value)
+    }
+
+    #[test]
+    fn a_filtered_port_names_the_last_router_as_an_inference() {
+        use crate::tcp::PortState;
+        let report = Report::of(&tcp_run(PortState::Filtered));
+        assert_eq!(report.outcome, "exhausted");
+        assert_eq!(
+            report.summary,
+            "Port 443 filtered \u{00B7} no reply after 2 hops"
+        );
+        assert_eq!(
+            report.sentence,
+            "No reply from 192.0.2.10 on TCP port 443 after 2 hops."
+        );
+        assert_eq!(
+            report.probe.as_ref().unwrap().state.as_deref(),
+            Some("filtered")
+        );
+        assert_eq!(figure_of(&report, "connect"), None);
+        // The place is the last router that answered, and the filter is worded as likely.
+        assert_eq!(
+            report.interpretation,
+            vec!["Nothing answered on TCP port 443. The last router to answer is hop 2, 198.51.100.2, so a filter likely drops the SYN after it or at the destination."]
+        );
+        // An ICMP run has no probe and keeps its own sentence about a silent target.
+        assert!(Report::of(&reached_run()).probe.is_none());
+    }
+
+    #[test]
+    fn a_run_stored_before_tcp_probes_still_loads() {
+        let mut run = reached_run();
+        run.tcp = Some(crate::tcp::TcpProbe::new(443));
+        let mut value = serde_json::to_value(&run).unwrap();
+        value.as_object_mut().unwrap().remove("tcp");
+        let old: Run = serde_json::from_value(value).unwrap();
+        assert!(old.tcp.is_none());
     }
 
     #[test]

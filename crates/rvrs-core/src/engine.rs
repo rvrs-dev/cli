@@ -96,6 +96,13 @@ pub enum Event {
     },
     Finished(Ending),
     Failed(String),
+    /// TCP: what the destination did with the first connect, and how long its answer took.
+    Port {
+        state: crate::tcp::PortState,
+        connect: Option<Duration>,
+        /// The maximum segment size the handshake settled on.
+        mss: Option<u16>,
+    },
     /// Ping: packet number `seq` (from 0) is on the wire.
     PingSent {
         seq: u32,

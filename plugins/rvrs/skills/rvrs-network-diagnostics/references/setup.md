@@ -41,12 +41,12 @@ It prints one line per check. Read these:
 - **ICMP over IPv4 / IPv6**: whether this user may send probes. On Linux a refusal names `net.ipv4.ping_group_range`. That is a system setting, so give the person the line and do not change it yourself.
 - **IPv6**: whether this device has a public IPv6 address. Without one, `-6` runs fail with exit code 2 and that is not a finding about the target.
 - **History / Saved**: how many runs and cases there are to compare against.
-- **Version**: this skill needs 0.7 or newer. Older versions have no `id` in a report and no filter on `rvrs history`.
+- **Version**: this skill needs 0.8 or newer. Older versions have no TCP probes (`traceroute -T`), and before 0.7 no `id` in a report and no filter on `rvrs history`.
 - **Account / Nodes**: whether runs can start anywhere but this device. See [nodes and accounts](nodes.md).
 
 ## Updating
 
-A report without an `id` field comes from rvrs older than 0.7. Ask, then:
+`rvrs traceroute -T` answering that it doesn't send that probe type, or a report without an `id` field, means an older rvrs. Ask, then:
 
 ```bash
 rvrs update

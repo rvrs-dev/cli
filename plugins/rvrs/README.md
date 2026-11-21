@@ -28,7 +28,7 @@ Claude Code, as a plugin:
 /plugin install rvrs@rvrs
 ```
 
-The skill needs the `rvrs` binary, version 0.7 or newer, on macOS or Linux. When it is missing the agent asks, then installs it into `~/.local/bin` without root:
+The skill needs the `rvrs` binary, version 0.8 or newer, on macOS or Linux. When it is missing the agent asks, then installs it into `~/.local/bin` without root:
 
 ```bash
 curl -fsSL https://rvrs.dev/install.sh | sh
@@ -44,7 +44,7 @@ curl -fsSL https://rvrs.dev/install.sh | sh
 
 ## What it doesn't
 
-- It sends ICMP probes. It does not test ports.
+- It tests one TCP port at a time, the one you ask about. It does not scan ports.
 - It never clears history or deletes saved runs or cases unless you ask for exactly that.
 - It measures from this device. Runs from other networks need rvrs nodes, which are not released. The skill says so when a question needs one and uses them once `rvrs status` reports them.
 

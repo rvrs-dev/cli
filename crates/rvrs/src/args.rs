@@ -23,6 +23,8 @@ pub struct TraceArgs {
     pub no_lookups: bool,
     /// The total packet length the classic header reports.
     pub packet_len: usize,
+    /// `-T`: probe with TCP toward this port (`-p`, 80 when it isn't given). None is ICMP.
+    pub tcp: Option<u16>,
     pub common: Common,
 }
 
@@ -112,6 +114,8 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
     let mut no_lookups = false;
     let mut common = Common::default();
     let mut positional: Vec<&str> = Vec::new();
+    let tcp = std::cell::Cell::new(false);
+    let port = std::cell::Cell::new(None::<u16>);
 
     let mut apply = |flag: char,
                      shown: &str,
@@ -168,12 +172,19 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
             '6' => *family = FamilyChoice::V6,
             'n' => numeric = true,
             'A' | 'a' => as_lookups = true,
-            'T' | 'U' | 'D' | 'P' | 'M' => {
+            'T' => tcp.set(true),
+            'U' | 'D' | 'P' | 'M' => {
                 return Err(format!(
-                    "{shown} asks for a probe type rvrs doesn't send yet. rvrs traceroute sends ICMP echo probes, as traceroute -I does."
+                    "{shown} asks for a probe type rvrs doesn't send yet. rvrs traceroute sends ICMP echo probes, or TCP with -T."
                 ));
             }
-            'p' => return Err(format!("{shown} sets a port, and ICMP echo probes have none.")),
+            'p' => {
+                let number: u32 = number(shown, value, "a port")?;
+                if !(1..=65535).contains(&number) {
+                    return Err(format!("{shown} takes a port from 1 to 65535."));
+                }
+                port.set(Some(number as u16));
+            }
             's' | 'i' => return Err(format!("{shown} isn't supported yet. rvrs sends from the address and interface the system routes through.")),
             other => return Err(format!("-{other} isn't supported yet. Supported flags: rvrs traceroute --help")),
         }
@@ -336,6 +347,14 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
         ));
     }
 
+    if port.get().is_some() && !tcp.get() {
+        return Err(
+            "-p sets a port, and ICMP echo probes have none. Add -T to probe with TCP.".to_string(),
+        );
+    }
+    // Linux traceroute's default port for -T.
+    let tcp = tcp.get().then(|| port.get().unwrap_or(80));
+
     Ok(Parsed::Run(Box::new(TraceArgs {
         target: normalize_target(target),
         options,
@@ -344,6 +363,7 @@ pub fn parse(arguments: &[String]) -> Result<Parsed, String> {
         as_lookups,
         no_lookups,
         packet_len,
+        tcp,
         common,
     })))
 }
@@ -451,12 +471,31 @@ mod tests {
 
     #[test]
     fn probe_types_rvrs_cant_send_are_errors() {
-        for flag in ["-T", "-U", "--tcp", "-p 80", "-s 10.0.0.1", "-i en0"] {
+        for flag in ["-U", "--udp", "-p 80", "-s 10.0.0.1", "-i en0"] {
             assert!(
                 parse_line(&format!("{flag} example.com")).is_err(),
                 "{flag}"
             );
         }
+    }
+
+    #[test]
+    fn tcp_probes_take_a_port_and_default_to_80() {
+        assert_eq!(parse_line("example.com").unwrap().tcp, None);
+        assert_eq!(parse_line("-T example.com").unwrap().tcp, Some(80));
+        assert_eq!(
+            parse_line("--tcp -p 443 example.com").unwrap().tcp,
+            Some(443)
+        );
+        assert_eq!(
+            parse_line("-T --port=22 example.com").unwrap().tcp,
+            Some(22)
+        );
+        // A port without -T has nothing to apply to, and the error says what to add.
+        let error = parse_line("-p 443 example.com").unwrap_err();
+        assert!(error.contains("-T"), "{error}");
+        assert!(parse_line("-T -p 0 example.com").is_err());
+        assert!(parse_line("-T -p 70000 example.com").is_err());
     }
 
     #[test]

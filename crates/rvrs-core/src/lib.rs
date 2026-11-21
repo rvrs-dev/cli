@@ -16,6 +16,7 @@ pub mod report;
 pub mod resolve;
 pub mod session;
 pub mod socket;
+pub mod tcp;
 
 use std::net::IpAddr;
 

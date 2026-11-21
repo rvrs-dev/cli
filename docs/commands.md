@@ -6,7 +6,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | --- | --- |
 | `rvrs` | Opens the Console |
 | `rvrs <target>` | Opens the Console and traces the target |
-| `rvrs traceroute [flags] <target>` | Traces and prints the result |
+| `rvrs traceroute [flags] <target>` | Traces and prints the result. With `-T -p <port>` it probes with TCP: is the port open, closed or filtered, and where a SYN stops |
 | `rvrs ping [flags] <target>` | Pings until Ctrl-C, or `-c` packets |
 | `rvrs mtr [flags] <target>` | Measures loss and latency at every hop, round after round, until Ctrl-C or `-c` rounds |
 | `rvrs dig <name>` | Looks the name up at every source and compares the answers. `rvrs dns` is the same command |
@@ -59,6 +59,7 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | `measured` | What was measured, as `name`, `value` and `unit`. For a BGP lookup: the collector peers that see the prefix, the distinct paths and the origin AS number |
 | `hops` | Traceroute and MTR: each hop's address, name, network, loss and average |
 | `records` | DNS: the reference answer |
+| `probe` | A TCP traceroute: `protocol`, `port` and `state` (`open`, `closed` or `filtered`) |
 | `sources` | DNS: what each source answered (`addresses`), how long it took and whether it matches the reference (`match`, `differs`, `error`) |
 | `interpretation` | What it likely means. Inferences only, each worded as one |
 | `summary`, `sentence` | The run in one line of facts, and as one plain sentence |
