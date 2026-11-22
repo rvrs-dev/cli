@@ -71,11 +71,15 @@ sub clean {
     return $text;
 }
 
-# Bold that starts after other text on the line, as opposed to a lead-in.
+# Bold that starts after other text, as opposed to a lead-in at the start of a line, a list
+# item or a table cell.
 sub bold_in_text {
     my ($text) = @_;
-    $text =~ s/^\s*(?:[-*+]|\d+\.)\s+//;
-    return $text =~ /\S[^*]*?\*\*[^*\s][^*]*\*\*/;
+    for my $part (split /\|/, $text) {
+        $part =~ s/^\s*(?:[-*+]|\d+\.)\s+//;
+        return 1 if $part =~ /\S[^*]*?\*\*[^*\s][^*]*\*\*/;
+    }
+    return 0;
 }
 
 # Returns [line number, message, text] for each finding among the lines asked about.
