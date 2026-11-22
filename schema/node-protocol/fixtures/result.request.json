@@ -10,6 +10,7 @@
     "origin": {
       "kind": "node",
       "node": "fra-1",
+      "nodeId": "9c2f1a7e-5b3d-4e8f-8a6c-1d2e3f4a5b6c",
       "install": null,
       "sourceAddress": "192.0.2.10",
       "publicAddress": "198.51.100.7"
@@ -182,5 +183,6 @@
   "claim": {
     "run": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11",
     "attempt": 1
-  }
+  },
+  "startedAgoMilliseconds": 14412
 }

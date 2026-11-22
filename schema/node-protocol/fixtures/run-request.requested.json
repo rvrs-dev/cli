@@ -17,5 +17,8 @@
   "requestedAt": "2026-11-22T20:15:00.000Z",
   "expiresAt": "2026-11-22T20:20:00.000Z",
   "attempt": 0,
+  "claimedAt": null,
+  "receivedAt": null,
+  "observedStartedAt": null,
   "report": null
 }

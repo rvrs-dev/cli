@@ -38,7 +38,7 @@
           "nodes"
         ],
         "summary": "Enroll a node",
-        "description": "The node trades an enrollment token for a token of its own. The answer carries that token once. A node that lost the answer sends the same key again: the answer is 200 with the same node and a new token, the earlier token stops working, and the enrollment token counts the node once.",
+        "description": "The node trades an enrollment token for a token of its own. Enrolling answers the same every time: under one enrollment token the same key is the same node with the same token, 201 the first time and 200 after that. No enroll revokes or replaces a token, so answers that come late, twice or out of order all say the same thing. Two enrolls with one key at the same moment make one node, and the enrollment token counts it once.",
         "security": [
           {
             "enrollment": []
@@ -76,11 +76,16 @@
             }
           },
           "200": {
-            "description": "This key enrolled before. The same node with a new token.",
+            "description": "This key enrolled before. The same node with the same token.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NewNode"
+                },
+                "examples": {
+                  "again": {
+                    "externalValue": "fixtures/enroll.response.json"
+                  }
                 }
               }
             }
@@ -106,7 +111,7 @@
             }
           },
           "410": {
-            "description": "The enrollment token expired, was revoked or has enrolled every node it may (ENROLLMENT_CLOSED).",
+            "description": "The enrollment token expired, was revoked, or has enrolled every node it may and doesn't know this key (ENROLLMENT_CLOSED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -237,7 +242,7 @@
           "nodes"
         ],
         "summary": "Open the event stream",
-        "description": "Server-Sent Events over a connection the node opens and holds. hello comes first with the numbers the node works by. work says there is something to claim and nothing about it. A comment line every keepAliveSeconds shows the stream is alive. A node is online while it holds this stream, and a new stream with the same token replaces the old one. The event name schedules is reserved.",
+        "description": "Server-Sent Events over a connection the node opens and holds. hello comes first with the numbers the node works by. work says there is something to claim and nothing about it, and the API writes it again every 15 seconds while a run waits for a node that holds a stream. A comment line every keepAliveSeconds shows the stream is alive. A node is online while it holds this stream, and a new stream with the same token replaces the old one. The event name schedules is reserved.",
         "security": [
           {
             "node": []
@@ -307,7 +312,7 @@
           "nodes"
         ],
         "summary": "Claim the runs that wait for the node",
-        "description": "The node says every run it holds and how many more it will start. The answer gives it the runs that waited, renews the leases it keeps and says which runs to stop or drop. A run the node holds by the API's count and didn't list is free again at once, so a retry after a lost answer gets that run back as a new attempt. A node claims after every hello and every work, every claimSeconds while idle and every third of leaseSeconds while it holds a run. A node sends one claim at a time.",
+        "description": "The node says every run it holds and how many more it will start. The answer gives it the runs that waited, renews the leases it keeps and says which runs to stop or drop. A run the node holds by the API's count and didn't list is free again at once, so a retry after a lost answer gets that run back as a new attempt. A node claims after every hello and every work, every third of leaseSeconds while it holds a run, and at a random time within claimSeconds while idle. A node sends one claim at a time.",
         "security": [
           {
             "node": []
@@ -788,7 +793,8 @@
             "properties": {
               "id": {
                 "type": "string",
-                "format": "uuid"
+                "format": "uuid",
+                "description": "It never changes, whatever the node is called."
               },
               "name": {
                 "type": "string",
@@ -834,7 +840,8 @@
             "properties": {
               "id": {
                 "type": "string",
-                "format": "uuid"
+                "format": "uuid",
+                "description": "It never changes, whatever the node is called."
               },
               "name": {
                 "type": "string",
@@ -862,7 +869,7 @@
           },
           "token": {
             "type": "string",
-            "description": "The node's own token. It is in this one answer and never again."
+            "description": "The node's own token. The same key gets the same token every time, so an answer that comes late or twice says nothing new."
           }
         }
       },
@@ -879,7 +886,7 @@
             "type": "string",
             "minLength": 22,
             "maxLength": 200,
-            "description": "A random word of 128 bits or more that the node makes once and keeps. It tells the API that a second enroll comes from the same node."
+            "description": "A random word of 128 bits or more that the node makes once, from the system's random source, and keeps. Under one enrollment token the same key is the same node and gets the same token."
           },
           "name": {
             "type": "string",
@@ -909,6 +916,11 @@
             "minLength": 1,
             "maxLength": 40,
             "description": "The node's rvrs version."
+          },
+          "protocol": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The revision of this protocol the node knows, 1 today and 1 when left out. A verdict or an event the node has to act on raises it, and the API sends a node none its revision lacks."
           },
           "system": {
             "type": "object",
@@ -1010,7 +1022,7 @@
           "claimSeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "How often a node with nothing to do claims anyway."
+            "description": "The longest a node with nothing to do goes without claiming. Each time it picks a random wait between half of this and all of it. No run depends on this claim: the API repeats work every 15 seconds while a run waits."
           },
           "heartbeatSeconds": {
             "type": "integer",
@@ -1212,8 +1224,9 @@
           },
           "verdict": {
             "type": "string",
-            "maxLength": 20,
-            "description": "keep: the lease is renewed. stop: a person stopped the run, so the node ends it now and sends what it measured. drop: a newer attempt has the run or the run has its result, so the node stops and sends nothing. A node treats a word it doesn't know as keep."
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "keep: the lease is renewed. stop: a person stopped the run, so the node ends it now and sends what it measured. drop: a newer attempt has the run or the run has its result, so the node stops and sends nothing. A word the node doesn't know is never read as keep: the node stops the run at once, counts its lease as over and sends what it measured with the outcome stopped and an error that names the word."
           }
         }
       },
@@ -1249,7 +1262,7 @@
       },
       "ResultInput": {
         "type": "object",
-        "description": "A finished run. The report's origin has the kind node and the node's name.",
+        "description": "A finished run. The report's origin has the kind node, the node's id and the name it had when it made the run. The API stores the run under the node it authenticated and answers 422 when origin.nodeId names another node.",
         "required": [
           "report"
         ],
@@ -1280,6 +1293,11 @@
           "detail": {
             "type": "object",
             "description": "The record a product keeps for its own other installs. A node leaves it out."
+          },
+          "startedAgoMilliseconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long before this request the run started, by a clock on the node that only counts forward. The API works out observedStartedAt from it. A node that restarted since the run leaves it out."
           }
         }
       },
@@ -1334,9 +1352,9 @@
           },
           "expiresIn": {
             "type": "integer",
-            "minimum": 10,
+            "minimum": 30,
             "maximum": 86400,
-            "description": "How many seconds the request may wait for the node. 300 when left out."
+            "description": "How many seconds the request may wait for the node. 300 when left out. A lost wake-up is repeated after 15 seconds, so 30 is the least."
           },
           "key": {
             "type": "string",
@@ -1348,7 +1366,7 @@
       },
       "RunRequest": {
         "type": "object",
-        "description": "A run that was asked of a node, and where it stands.",
+        "description": "A run that was asked of a node, and where it stands. Every time but the report's own is the API's clock.",
         "required": [
           "id",
           "state",
@@ -1360,6 +1378,9 @@
           "requestedAt",
           "expiresAt",
           "attempt",
+          "claimedAt",
+          "receivedAt",
+          "observedStartedAt",
           "report"
         ],
         "properties": {
@@ -1370,8 +1391,9 @@
           },
           "state": {
             "type": "string",
+            "minLength": 1,
             "maxLength": 40,
-            "description": "requested, running, ended or expired. A reader keeps a word it doesn't know."
+            "description": "requested, running, ended or expired. A reader keeps a word it doesn't know, shows it and assumes nothing from it."
           },
           "reason": {
             "type": [
@@ -1422,7 +1444,8 @@
           },
           "requestedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the install asked, by the API's clock."
           },
           "expiresAt": {
             "type": "string",
@@ -1433,6 +1456,30 @@
             "type": "integer",
             "minimum": 0,
             "description": "How many times the run was claimed. 0 before the first claim."
+          },
+          "claimedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the newest attempt was claimed, by the API's clock. null before the first claim."
+          },
+          "receivedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the API stored the result, by the API's clock. null until the run ended."
+          },
+          "observedStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the run started, by the API's clock: receivedAt minus what the node sent as startedAgoMilliseconds. null when the node didn't say. The report's startedAt is the node's own clock, which can be wrong."
           },
           "report": {
             "description": "The report, once the run ended. null until then.",

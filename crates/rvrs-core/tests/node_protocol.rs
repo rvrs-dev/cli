@@ -454,6 +454,12 @@ fn the_report_in_every_result_is_one_the_cli_reads() {
             .unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(report.origin.kind, "node", "{name}");
         assert_eq!(report.origin.node.as_deref(), Some("fra-1"), "{name}");
+        // The name is a snapshot. The id is the one the API answered the node's heartbeat with.
+        let node = read(&folder().join("fixtures/heartbeat.response.json"));
+        assert_eq!(
+            body["report"]["origin"]["nodeId"], node["node"]["id"],
+            "{name}"
+        );
         let run = Run::from_report(&report, "abc123", Some("fra-1".to_string()))
             .unwrap_or_else(|| panic!("{name}: no run from its report"));
         assert_eq!(run.summary(), report.summary, "{name}");
@@ -489,10 +495,74 @@ fn the_fixtures_tell_one_story() {
     assert_eq!(ended["state"], "ended");
     assert_eq!(ended["attempt"], claimed["attempt"]);
 
+    // The API's clock says when it saw things, and works the start out from what the node
+    // counted. Nothing here reads the report's own startedAt, which is the node's clock.
+    assert!(requested["claimedAt"].is_null() && requested["receivedAt"].is_null());
+    assert!(ended["claimedAt"].is_string());
+    assert_eq!(ended["receivedAt"], stored["receivedAt"]);
+    let ago = result["startedAgoMilliseconds"].as_i64().unwrap();
+    let received = milliseconds_of_day(ended["receivedAt"].as_str().unwrap());
+    let observed = milliseconds_of_day(ended["observedStartedAt"].as_str().unwrap());
+    assert_eq!(received - observed, ago);
+    assert!(milliseconds_of_day(ended["claimedAt"].as_str().unwrap()) <= observed);
+    assert_eq!(ended["node"]["id"], ended["report"]["origin"]["nodeId"]);
+
     // A run that was never claimed has no attempt, and one that expired says why.
     assert_eq!(requested["attempt"], 0);
     let expired = fixture("run-request.expired.json");
     assert_eq!(expired["state"], "expired");
     assert_eq!(expired["reason"], "unclaimed");
     assert_eq!(expired["node"]["online"], false);
+}
+
+/// The time of day of `2026-11-22T20:15:16.412Z` in milliseconds. The fixtures share one day.
+fn milliseconds_of_day(moment: &str) -> i64 {
+    let time = &moment[11..23];
+    let part = |from: usize, to: usize| time[from..to].parse::<i64>().unwrap();
+    ((part(0, 2) * 60 + part(3, 5)) * 60 + part(6, 8)) * 1000 + part(9, 12)
+}
+
+#[test]
+fn a_second_enroll_shows_the_same_answer_as_the_first() {
+    // Enrolling again with the same key gets the same node and the same token, so two answers
+    // that arrive out of order say the same thing. On paper that is one example for both.
+    let document = document();
+    let example = |status: &str| {
+        document
+            .pointer(&format!(
+                "/paths/~1v1~1nodes/post/responses/{status}/content/application~1json"
+            ))
+            .unwrap_or_else(|| panic!("enroll has no {status}"))
+            .clone()
+    };
+    let (first, again) = (example("201"), example("200"));
+    assert_eq!(first["schema"], again["schema"]);
+    let file = |body: &Value| -> Vec<String> {
+        body["examples"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|example| example["externalValue"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(file(&first), file(&again));
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains("No enroll revokes or replaces a token."));
+}
+
+#[test]
+fn an_unknown_verdict_is_never_read_as_keep() {
+    // The page and the document have to say the same about a word a node doesn't know.
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains("A verdict the node doesn't know is never read as `keep`."));
+    let document = document();
+    let verdict = document["components"]["schemas"]["Verdict"]["properties"]["verdict"]
+        ["description"]
+        .as_str()
+        .unwrap();
+    assert!(verdict.contains("never read as keep"), "{verdict}");
+    // And the numbers the page promises are the ones the stream's example carries.
+    let stream = std::fs::read_to_string(folder().join("fixtures/events.txt")).unwrap();
+    assert!(stream.contains("\"claimSeconds\":1800"));
+    assert!(page.contains("| A claim while idle | At random between 900 and 1,800 s |"));
 }
