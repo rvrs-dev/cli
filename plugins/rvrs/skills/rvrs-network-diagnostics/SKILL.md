@@ -105,6 +105,7 @@ Field by field, per tool, with jq recipes: [the report](references/report.md).
 | `mtu.finding` is `silent` | Small packets cross and larger ones vanish with no message | The same check from another network if there is one. Then it is worth a ticket: TLS and large transfers hang on such a path |
 | `mtu.finding` is `limited` | A router named a smaller size. That is path MTU discovery working | Nothing, unless connections hang anyway |
 | `probe.state` is `closed` | The host answered with a reset. Nothing listens there | The service, on the host itself |
+| `This build of rvrs leaves out BGP.` on stderr, exit 1 | This rvrs was built without that module, so nothing was sent | `rvrs status` lists the modules it has. With the person's word, `rvrs update --with bgp` |
 | `failed` | The run wasn't made | `error`. For a name that didn't resolve, `rvrs dig` |
 | A DNS source with `differs` | An observation, often a CDN or a cache | Whether its addresses are a subset of the authoritative ones |
 | A DNS source with `error` | That resolver, or the zone, fails | Its `kind`: device, public or authoritative |
@@ -172,7 +173,7 @@ When a question needs another origin, say in one sentence that this run can't se
 
 Reading history and making a run with a count need no permission. Each of these changes something the person owns, so it needs their word first:
 
-- Installing or updating rvrs.
+- Installing or updating rvrs, and adding or leaving out a module.
 - `rvrs login` and `rvrs logout`. The person confirms a login in their own browser. You never type an address, a password or a code into a page.
 - Saving a run or starting a case. A request for evidence, a ticket, a watch or a before-and-after is that word. Say what you saved.
 - A run above `-c 300`, or one left running in the background.
