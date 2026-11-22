@@ -876,6 +876,20 @@ pub fn status() -> ExitCode {
             &format!("{} ({})", crate::help::VERSION, crate::help::COMMIT),
         ),
     }
+    // The modules this build has, by the names a node announces and --with takes.
+    ok("Modules", &crate::modules::included().join(", "));
+    let left_out = crate::modules::left_out();
+    if !left_out.is_empty() {
+        let names = left_out.join(",");
+        off(
+            "Left out",
+            &format!(
+                "{} \u{00B7} rvrs update --with {names} adds {}",
+                left_out.join(", "),
+                if left_out.len() == 1 { "it" } else { "them" }
+            ),
+        );
+    }
     match crate::account::status_line() {
         (true, line) => ok("Account", &line),
         (false, line) => off("Account", &line),

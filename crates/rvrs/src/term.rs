@@ -3,8 +3,6 @@
 use std::io::Write;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ratatui::crossterm::terminal;
-
 static INTERRUPTS: AtomicUsize = AtomicUsize::new(0);
 
 extern "C" fn on_interrupt(_signal: libc::c_int) {
@@ -26,11 +24,30 @@ pub fn interrupts() -> usize {
     INTERRUPTS.load(Ordering::Relaxed)
 }
 
-/// Columns and rows, or the classic 80 by 24 when stdout is not a terminal.
+/// Columns and rows of the terminal rvrs runs in, or the classic 80 by 24 without one. Asked of
+/// the controlling terminal first, so a pipe still knows its width, then of stdout. Every build
+/// has this, the Console or not.
 pub fn size() -> (usize, usize) {
-    terminal::size().map_or((80, 24), |(columns, rows)| {
+    window_size().map_or((80, 24), |(columns, rows)| {
         (usize::from(columns.max(20)), usize::from(rows.max(5)))
     })
+}
+
+fn window_size() -> Option<(u16, u16)> {
+    use std::os::fd::AsRawFd;
+    let tty = std::fs::File::open("/dev/tty").ok();
+    let fd = tty
+        .as_ref()
+        .map_or(libc::STDOUT_FILENO, |file| file.as_raw_fd());
+    let mut size = libc::winsize {
+        ws_row: 0,
+        ws_col: 0,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: TIOCGWINSZ writes one winsize into the struct it is given, which outlives the call.
+    let answered = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut size) } == 0;
+    answered.then_some((size.ws_col, size.ws_row))
 }
 
 /// Lines on stdout that are rewritten where they stand, so a result fills in as it arrives and

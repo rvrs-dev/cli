@@ -1,8 +1,12 @@
 name: Release
 
-# A tag v<VERSION>.<patch> on main releases that commit: four static binaries, a .deb and an
-# .rpm for each Linux architecture, SHA256SUMS and install.sh, then the Homebrew formula.
+# A tag v<VERSION>.<patch> on main releases that commit: two static binaries per target, the full
+# build and the small build without the Console (docs/modules.md), a .deb and an .rpm of the full
+# build for x86_64 and arm64 Linux, SHA256SUMS and install.sh, then the Homebrew formula.
 # Actions > Release > Run workflow tags and releases the newest commit on main.
+#
+# rvrs-<target>.tar.gz is the full build under the name every rvrs before modules updates from,
+# so it keeps that name for good.
 
 on:
   push:
@@ -50,11 +54,16 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
             deb: arm64
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-24.04
+            run: qemu-arm
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       CC_x86_64_unknown_linux_musl: musl-gcc
       CC_aarch64_unknown_linux_musl: musl-gcc
+      CC_armv7_unknown_linux_musleabihf: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER: arm-linux-gnueabihf-gcc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,18 +73,23 @@ jobs:
           targets: ${{ matrix.target }}
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - if: matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: sudo apt-get install -y gcc-arm-linux-gnueabihf qemu-user
+      # The small build first: the full build goes last, so target/<target>/release holds it for
+      # the packages. Both archives land in dist/.
+      - run: sh scripts/build.sh ${{ matrix.target }} --without console
+      - run: sh scripts/build.sh ${{ matrix.target }}
       - name: Check the version
         if: matrix.target != 'x86_64-apple-darwin'
         run: |
-          printed="$(target/${{ matrix.target }}/release/rvrs --version)"
-          echo "$printed"
-          case "$printed" in "rvrs $VERSION "*) ;; *) echo "Expected rvrs $VERSION." >&2; exit 1 ;; esac
-      - run: |
-          mkdir -p dist
-          tar -czf dist/rvrs-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release rvrs
+          full="$(${{ matrix.run }} target/${{ matrix.target }}/release/rvrs --version)"
+          small="$(${{ matrix.run }} target/${{ matrix.target }}/small/rvrs --version)"
+          echo "$full"
+          echo "$small"
+          case "$full" in "rvrs $VERSION ("*")") ;; *) echo "Expected the full build of rvrs $VERSION." >&2; exit 1 ;; esac
+          case "$small" in "rvrs $VERSION ("*") without console") ;; *) echo "Expected rvrs $VERSION without console." >&2; exit 1 ;; esac
       - name: Linux packages
-        if: runner.os == 'Linux'
+        if: matrix.deb
         run: |
           cargo install cargo-deb cargo-generate-rpm --locked
           cargo deb -p rvrs --no-build --target ${{ matrix.target }} --deb-version "$VERSION" --output dist/

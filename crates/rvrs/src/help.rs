@@ -6,8 +6,12 @@ use crate::style::Style;
 pub const VERSION: &str = env!("RVRS_VERSION");
 pub const COMMIT: &str = env!("RVRS_COMMIT");
 
+/// `rvrs 0.14.2 (4ea5d4e)`, with what the build leaves out after it: `without console`.
 pub fn version() -> String {
-    format!("rvrs {VERSION} ({COMMIT})")
+    match crate::modules::version_note() {
+        Some(note) => format!("rvrs {VERSION} ({COMMIT}) {note}"),
+        None => format!("rvrs {VERSION} ({COMMIT})"),
+    }
 }
 
 fn section(style: Style, title: &str, rows: &[(&str, &str)]) -> String {
@@ -15,20 +19,68 @@ fn section(style: Style, title: &str, rows: &[(&str, &str)]) -> String {
     section_marked(style, title, &marked)
 }
 
-/// A section whose rows may be marked Soon: planned, named here so people know what is coming,
-/// and refused with a sentence when typed.
+/// What a row carries after its description.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tag {
+    None,
+    /// Planned, named here so people know what is coming, and refused with a sentence when typed.
+    Soon,
+    /// In rvrs, and left out of this build. Typed, it says how to add it.
+    LeftOut,
+}
+
+/// `Tag::LeftOut` when this build leaves the module out.
+fn tag_of(module: &str) -> Tag {
+    if crate::modules::has(module) {
+        Tag::None
+    } else {
+        Tag::LeftOut
+    }
+}
+
+/// Rows tagged Left out where the named module isn't in this build: `(row name, module)`.
+fn tag_rows<'a>(
+    rows: &[(&'a str, &'a str)],
+    modules: &[(&str, &str)],
+) -> Vec<(&'a str, &'a str, Tag)> {
+    rows.iter()
+        .map(|(name, description)| {
+            let tag = modules
+                .iter()
+                .find(|(row, _)| row == name)
+                .map_or(Tag::None, |(_, module)| tag_of(module));
+            (*name, *description, tag)
+        })
+        .collect()
+}
+
+/// A section whose rows may be marked Soon.
 fn section_marked(style: Style, title: &str, rows: &[(&str, &str, bool)]) -> String {
+    let tagged: Vec<(&str, &str, Tag)> = rows
+        .iter()
+        .map(|(name, description, soon)| {
+            (
+                *name,
+                *description,
+                if *soon { Tag::Soon } else { Tag::None },
+            )
+        })
+        .collect();
+    section_tagged(style, title, &tagged)
+}
+
+fn section_tagged(style: Style, title: &str, rows: &[(&str, &str, Tag)]) -> String {
     let widest = rows
         .iter()
         .map(|(name, _, _)| name.len())
         .max()
         .unwrap_or(0);
     let mut out = format!("{}\n", style.bold(title));
-    for (name, description, soon) in rows {
-        let tag = if *soon {
-            format!("  {}", style.yellow("Soon"))
-        } else {
-            String::new()
+    for (name, description, tag) in rows {
+        let tag = match tag {
+            Tag::None => String::new(),
+            Tag::Soon => format!("  {}", style.yellow("Soon")),
+            Tag::LeftOut => format!("  {}", style.yellow("Left out")),
         };
         if description.is_empty() {
             out.push_str(&format!("  {name}{tag}\n"));
@@ -54,56 +106,81 @@ pub fn main(style: Style) -> String {
         "{} rvrs {VERSION}\nSee what the network is doing.\n\n",
         style.bold("//")
     );
-    out.push_str(&section(
-        style,
-        "Usage",
-        &[
-            ("rvrs", "Open the Console"),
-            ("rvrs <target>", "Open the Console and trace the target"),
-            (
-                "rvrs traceroute [flags] <target>",
-                "Trace and print the result",
-            ),
-            (
-                "rvrs ping [flags] <target>",
-                "Ping until Ctrl-C, or -c packets",
-            ),
-            (
-                "rvrs dig <name>",
-                "Look the name up at every source and compare the answers",
-            ),
-            (
-                "rvrs bgp <host|address|prefix|ASN>",
-                "Look up the route, its origin validation and the network",
-            ),
-        ],
-    ));
+    // Usage shows what this build runs. Tools lists every tool and marks the ones it leaves out.
+    let console = crate::modules::has("console");
+    let traces = crate::modules::has("traceroute");
+    let usage: Vec<(&str, &str)> = [
+        (console, "rvrs", "Open the Console"),
+        (
+            console && traces,
+            "rvrs <target>",
+            "Open the Console and trace the target",
+        ),
+        (
+            !console && traces,
+            "rvrs <target>",
+            "Trace the target and print the result",
+        ),
+        (
+            traces,
+            "rvrs traceroute [flags] <target>",
+            "Trace and print the result",
+        ),
+        (
+            crate::modules::has("ping"),
+            "rvrs ping [flags] <target>",
+            "Ping until Ctrl-C, or -c packets",
+        ),
+        (
+            crate::modules::has("dns"),
+            "rvrs dig <name>",
+            "Look the name up at every source and compare the answers",
+        ),
+        (
+            crate::modules::has("bgp"),
+            "rvrs bgp <host|address|prefix|ASN>",
+            "Look up the route, its origin validation and the network",
+        ),
+    ]
+    .into_iter()
+    .filter(|(shown, _, _)| *shown)
+    .map(|(_, name, description)| (name, description))
+    .collect();
+    out.push_str(&section(style, "Usage", &usage));
     out.push('\n');
-    out.push_str(&section_marked(
+    out.push_str(&section_tagged(
         style,
         "Tools",
         &[
             (
                 "traceroute",
                 "The path to a target, hop by hop, with each hop's network",
-                false,
+                tag_of("traceroute"),
             ),
-            ("ping", "Latency and loss to a target, packet by packet", false),
-            ("mtr", "Loss and latency at every hop, round after round", false),
+            (
+                "ping",
+                "Latency and loss to a target, packet by packet",
+                tag_of("ping"),
+            ),
+            (
+                "mtr",
+                "Loss and latency at every hop, round after round",
+                tag_of("mtr"),
+            ),
             (
                 "dig",
                 "One name asked of this device's resolver, public resolvers and the authoritative servers",
-                false,
+                tag_of("dns"),
             ),
             (
                 "iperf3",
                 "Download and upload throughput against an iperf3 server",
-                true,
+                Tag::Soon,
             ),
             (
                 "bgp",
                 "The route an address falls in: origin AS, RPKI, AS paths, history and the network behind it",
-                false,
+                tag_of("bgp"),
             ),
         ],
     ));
@@ -213,6 +290,10 @@ pub fn main(style: Style) -> String {
             ("status", "Check that this device can run the tools"),
             ("completions", "Set up tab completion for zsh, bash or fish"),
             ("update", "Update rvrs the way it was installed"),
+            (
+                "update --with|--without <module>",
+                "Add a module to this build, or leave one out",
+            ),
         ],
     ));
     out.push('\n');
@@ -256,44 +337,51 @@ pub fn traceroute(style: Style) -> String {
         &[("rvrs traceroute [flags] <target> [packet length]", "")],
     ));
     out.push('\n');
-    out.push_str(&section(
+    out.push_str(&section_tagged(
         style,
         "traceroute flags",
-        &[
-            (
-                "-m, --max-hops <n>",
-                "Last hop to probe, 1 to 255 (default 30)",
-            ),
-            ("-q, --queries <n>", "Probes per hop, 1 to 10 (default 3)"),
-            (
-                "-w, --wait <s>",
-                "Longest wait for a reply, in seconds (default 5)",
-            ),
-            ("-f, --first <n>", "First hop to probe (default 1)"),
-            (
-                "-z, --sendwait <t>",
-                "Pause between probes: seconds up to 10, milliseconds beyond",
-            ),
-            ("-n", "Addresses only, no reverse DNS"),
-            (
-                "-A, --as-path-lookups",
-                "Show each hop's AS number in the classic output",
-            ),
-            ("-4, -6", "Resolve the target to IPv4 or IPv6"),
-            (
-                "-I, --icmp",
-                "ICMP echo probes, which rvrs sends unless -T is given",
-            ),
-            (
-                "-T, --tcp",
-                "TCP probes to a port: is it open, closed or filtered, and where a SYN stops",
-            ),
-            ("-p, --port <n>", "The port for -T (default 80)"),
-            (
-                "--mtu",
-                "The path MTU: the largest packet that crosses unfragmented, and who limits it",
-            ),
-        ],
+        &tag_rows(
+            &[
+                (
+                    "-m, --max-hops <n>",
+                    "Last hop to probe, 1 to 255 (default 30)",
+                ),
+                ("-q, --queries <n>", "Probes per hop, 1 to 10 (default 3)"),
+                (
+                    "-w, --wait <s>",
+                    "Longest wait for a reply, in seconds (default 5)",
+                ),
+                ("-f, --first <n>", "First hop to probe (default 1)"),
+                (
+                    "-z, --sendwait <t>",
+                    "Pause between probes: seconds up to 10, milliseconds beyond",
+                ),
+                ("-n", "Addresses only, no reverse DNS"),
+                (
+                    "-A, --as-path-lookups",
+                    "Show each hop's AS number in the classic output",
+                ),
+                ("-4, -6", "Resolve the target to IPv4 or IPv6"),
+                (
+                    "-I, --icmp",
+                    "ICMP echo probes, which rvrs sends unless -T is given",
+                ),
+                (
+                    "-T, --tcp",
+                    "TCP probes to a port: is it open, closed or filtered, and where a SYN stops",
+                ),
+                ("-p, --port <n>", "The port for -T (default 80)"),
+                (
+                    "--mtu",
+                    "The path MTU: the largest packet that crosses unfragmented, and who limits it",
+                ),
+            ],
+            &[
+                ("-T, --tcp", "tcp"),
+                ("-p, --port <n>", "tcp"),
+                ("--mtu", "mtu"),
+            ],
+        ),
     ));
     out.push('\n');
     out.push_str(&section_marked(

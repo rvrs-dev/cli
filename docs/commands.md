@@ -28,9 +28,9 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
 | `rvrs logout` | Signs out and revokes this install's credential |
 | `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
-| `rvrs status` | Checks that this device can run the tools, and says who is signed in |
+| `rvrs status` | Checks that this device can run the tools, lists the modules of this build and says who is signed in |
 | `rvrs completions install` | Sets up tab completion for zsh, bash or fish |
-| `rvrs update` | Brings rvrs up to date, however it was installed |
+| `rvrs update` | Brings rvrs up to date, however it was installed. `--with` and `--without` change its [modules](modules.md) |
 
 Flags on every run: `--json` prints the report, `--classic` prints the original tool's output, `--color auto|always|never` sets color, and `--case <name>` saves the run into a case. `NO_COLOR` is honored.
 
@@ -118,8 +118,10 @@ On a device nobody sits at, make a token under Installs at app.rvrs.dev and set 
 
 A release download is checked against the release's `SHA256SUMS` before it replaces anything, by the installer and by `rvrs update` alike.
 
+An update keeps the [modules](modules.md): it installs the build that leaves out what this one leaves out, so a build without the Console stays without it. `rvrs update --without console` leaves the Console out from now on, and `rvrs update --with console` takes it back.
+
 Once a day rvrs checks on its own, and a result ends with one line when a newer version is out. `RVRS_UPDATE_CHECK=0` turns that off.
 
 ## Versions
 
-`VERSION` holds major.minor, and the build adds the commits since `VERSION` last changed (`crates/rvrs/build.rs`). `rvrs --version` prints both, as in `rvrs 0.5.3 (4ea5d4e)`.
+`VERSION` holds major.minor, and the build adds the commits since `VERSION` last changed (`crates/rvrs/build.rs`). `rvrs --version` prints both, as in `rvrs 0.5.3 (4ea5d4e)`, and a build that leaves out modules names them after it: `rvrs 0.14.0 (4ea5d4e) without console`.

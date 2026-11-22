@@ -421,7 +421,7 @@ fn last_tool(path: &std::path::Path) -> Option<Tool> {
     let data = std::fs::read(path).ok()?;
     let value: serde_json::Value = serde_json::from_slice(&data).ok()?;
     let tool: Tool = serde_json::from_value(value.get("tool")?.clone()).ok()?;
-    tool.is_available().then_some(tool)
+    crate::modules::runs(tool).then_some(tool)
 }
 
 /// Writes the chosen tool to `console.json`. A write that fails costs only the memory of it.
@@ -453,7 +453,11 @@ impl App {
             synced: sync_mark(),
             section: Section::Console,
             input: String::new(),
-            tool: Tool::Traceroute,
+            // traceroute, or the first tool this build runs.
+            tool: Tool::ALL
+                .into_iter()
+                .find(|tool| crate::modules::runs(*tool))
+                .unwrap_or(Tool::Traceroute),
             row: None,
             pane: Pane::Start,
             shown: None,
@@ -783,6 +787,12 @@ impl App {
         if target.is_empty() {
             return;
         }
+        if let Some(module) =
+            crate::modules::of_tool(tool).filter(|name| !crate::modules::has(name))
+        {
+            self.toast(crate::modules::missing(module));
+            return;
+        }
         if tool == Tool::Bgp && rvrs_core::bgp::Target::parse(&target).is_none() {
             self.toast(format!(
                 "\u{201C}{target}\u{201D} isn't a hostname, an address, a prefix or an AS number."
@@ -887,9 +897,9 @@ impl App {
                 self.start(&target);
             }
             [tool, target] => {
-                let named = Tool::ALL
-                    .into_iter()
-                    .find(|known| known.is_available() && known.command() == tool.to_lowercase());
+                let named = Tool::ALL.into_iter().find(|known| {
+                    crate::modules::runs(*known) && known.command() == tool.to_lowercase()
+                });
                 match named {
                     Some(tool) => {
                         self.tool = tool;
@@ -1133,16 +1143,18 @@ impl App {
             // Left steps back out of the list to the field.
             KeyCode::Left => self.row = None,
             KeyCode::Tab if self.row.is_none() => {
-                // The next tool the CLI can run.
+                // The next tool this build can run.
                 let available: Vec<Tool> = Tool::ALL
                     .into_iter()
-                    .filter(|tool| tool.is_available())
+                    .filter(|tool| crate::modules::runs(*tool))
                     .collect();
-                let current = available
-                    .iter()
-                    .position(|tool| *tool == self.tool)
-                    .unwrap_or(0);
-                self.tool = available[(current + 1) % available.len()];
+                if !available.is_empty() {
+                    let current = available
+                        .iter()
+                        .position(|tool| *tool == self.tool)
+                        .unwrap_or(0);
+                    self.tool = available[(current + 1) % available.len()];
+                }
             }
             // Right goes into the selected entry, as Return does.
             KeyCode::Right
@@ -1345,7 +1357,7 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
             KeyCode::Char('f') => self.toggle_favorite(&target),
-            KeyCode::Char('R') if tool.is_available() => self.start_with(tool, &target),
+            KeyCode::Char('R') if crate::modules::runs(tool) => self.start_with(tool, &target),
             KeyCode::Char('r') => self.open_result_launcher(),
             KeyCode::Char('s') => self.toggle_save(),
             KeyCode::Char('a') => {
@@ -1710,7 +1722,7 @@ impl App {
         if self.pane == Pane::Result {
             if let Some(run) = self.run().filter(|run| run.is_report_only()) {
                 let mut keys = vec![("s", "Save"), ("a", "Add to Case"), ("f", "Favorite")];
-                if run.tool.is_available() {
+                if crate::modules::runs(run.tool) {
                     keys.push(("R", "Run Again"));
                 }
                 keys.extend([("r", "Run"), ("\u{2190}", "Back"), ("?", "Help")]);
@@ -2197,7 +2209,7 @@ impl App {
                                 Paint::new().fg(TOOL).add_modifier(Modifier::BOLD),
                             ),
                         ])
-                    } else if tool.is_available() {
+                    } else if crate::modules::runs(tool) {
                         Line::from(vec![
                             Span::styled("\u{25CB} ", Paint::new().fg(TOOL)),
                             Span::raw(tool.command()),

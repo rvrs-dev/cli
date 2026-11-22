@@ -52,6 +52,14 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
             "Nodes aren't available yet, so nothing was sent from \u{201C}{node}\u{201D}. Without --node the run comes from this device."
         ));
     }
+    // The TCP probe and the path MTU check are modules of their own. cfg! is a constant, so a
+    // build without them never links their code.
+    if args.tcp.is_some() && !cfg!(feature = "tcp") {
+        return crate::modules::refuse("tcp");
+    }
+    if args.mtu && !cfg!(feature = "mtu") {
+        return crate::modules::refuse("mtu");
+    }
     let look = look(args.common.json, args.common.classic, multicall);
     let style = Style::detect(args.common.color);
     let lookups = Lookups {
@@ -67,7 +75,7 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
 
     term::catch_interrupts();
     let started = Instant::now();
-    let mut session = match args.tcp {
+    let mut session = match args.tcp.filter(|_| cfg!(feature = "tcp")) {
         Some(port) => Session::start_tcp(
             &args.target,
             args.family,
@@ -154,7 +162,7 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
     }
     session.finish_lookups(Duration::ZERO);
     // The path MTU, asked for with --mtu: a few don't-fragment pings once the trace is done.
-    if args.mtu && term::interrupts() == 0 {
+    if cfg!(feature = "mtu") && args.mtu && term::interrupts() == 0 {
         if let Some(destination) = session.run.destination {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             match rvrs_core::mtu::discover(destination, Duration::from_secs(1), &stop) {

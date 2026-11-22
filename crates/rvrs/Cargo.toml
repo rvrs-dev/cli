@@ -10,12 +10,26 @@ repository.workspace = true
 name = "rvrs"
 path = "src/main.rs"
 
+[features]
+# The modules (docs/modules.md): every build has all of them unless it was built without some.
+# A node names the ones it has in its heartbeat, so a name never changes. Keep `default` on one
+# line: scripts/build.sh and rvrs update read it.
+default = ["traceroute", "ping", "mtr", "dns", "bgp", "tcp", "mtu", "console"]
+traceroute = []
+ping = []
+mtr = []
+dns = []
+bgp = []
+tcp = ["traceroute"]
+mtu = ["traceroute"]
+console = ["dep:ratatui"]
+
 [dependencies]
 rvrs-core = { path = "../rvrs-core" }
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-ratatui = "0.30"
+ratatui = { version = "0.30", optional = true }
 unicode-width = "0.2"
 ureq = "3"
 

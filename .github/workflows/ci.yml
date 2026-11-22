@@ -36,6 +36,55 @@ jobs:
           DISABLE_TELEMETRY: 1
           DO_NOT_TRACK: 1
 
+  modules:
+    # Every module can be left out, one at a time and all together, without a warning.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sh scripts/check-modules.sh
+
+  small-build:
+    # The build without the Console, for servers and routers: under its budget and with no crate
+    # that scripts/small-build.deps doesn't list, on two servers' targets and one router's.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-24.04
+            run: qemu-arm
+    runs-on: ${{ matrix.os }}
+    env:
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      CC_aarch64_unknown_linux_musl: musl-gcc
+      CC_armv7_unknown_linux_musleabihf: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER: arm-linux-gnueabihf-gcc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - if: matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: sudo apt-get install -y gcc-arm-linux-gnueabihf qemu-user
+      - run: sh scripts/check-small-build.sh ${{ matrix.target }}
+      - name: The small build runs
+        run: |
+          binary=target/${{ matrix.target }}/small/rvrs
+          ${{ matrix.run }} $binary --version
+          ${{ matrix.run }} $binary --version | grep -q ' without console$'
+          ${{ matrix.run }} $binary status || true
+          ${{ matrix.run }} $binary help | grep -q '^Usage'
+
   voice:
     runs-on: ubuntu-24.04
     steps:

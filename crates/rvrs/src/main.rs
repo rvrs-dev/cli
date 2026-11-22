@@ -7,9 +7,11 @@ mod bgp;
 mod classic;
 mod commands;
 mod completions;
+#[cfg(feature = "console")]
 mod console;
 mod dig;
 mod help;
+mod modules;
 mod mtr;
 mod ping;
 mod pretty;
@@ -129,8 +131,11 @@ fn main() -> ExitCode {
         return dig(&arguments, true);
     }
 
+    #[cfg_attr(not(feature = "console"), allow(unused_variables))]
     let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let Some(command) = arguments.first().cloned() else {
+        // A build without the Console answers rvrs alone with the help, as a pipe does.
+        #[cfg(feature = "console")]
         if interactive {
             return console::open(None);
         }
@@ -189,11 +194,11 @@ fn main() -> ExitCode {
         "__runs" => commands::runs(),
         "__cases" => commands::case_names(),
         other if looks_like_target(other) => {
+            #[cfg(feature = "console")]
             if interactive && rest.is_empty() {
-                console::open(Some(args::normalize_target(other)))
-            } else {
-                traceroute(&arguments, false)
+                return console::open(Some(args::normalize_target(other)));
             }
+            traceroute(&arguments, false)
         }
         other => {
             let closest = COMMANDS.iter().map(|known| (distance(other, known), *known)).min().filter(|(score, _)| *score <= 3);
@@ -206,6 +211,9 @@ fn main() -> ExitCode {
 }
 
 fn traceroute(arguments: &[String], multicall: bool) -> ExitCode {
+    if !cfg!(feature = "traceroute") {
+        return modules::refuse("traceroute");
+    }
     match args::parse(arguments) {
         Ok(args::Parsed::Run(parsed)) => trace::run(*parsed, multicall),
         Ok(args::Parsed::Help) => {
@@ -226,6 +234,9 @@ fn noticed(code: ExitCode) -> ExitCode {
 }
 
 fn mtr(arguments: &[String], multicall: bool) -> ExitCode {
+    if !cfg!(feature = "mtr") {
+        return modules::refuse("mtr");
+    }
     match mtr::parse(arguments) {
         Ok(mtr::Parsed::Run(parsed)) => mtr::run(*parsed, multicall),
         Ok(mtr::Parsed::Help) => {
@@ -241,6 +252,9 @@ fn mtr(arguments: &[String], multicall: bool) -> ExitCode {
 }
 
 fn dig(arguments: &[String], multicall: bool) -> ExitCode {
+    if !cfg!(feature = "dns") {
+        return modules::refuse("dns");
+    }
     match dig::parse(arguments, multicall) {
         Ok(dig::Parsed::Run(parsed)) => dig::run(*parsed, multicall),
         Ok(dig::Parsed::Help) => {
@@ -256,6 +270,9 @@ fn dig(arguments: &[String], multicall: bool) -> ExitCode {
 }
 
 fn bgp(arguments: &[String]) -> ExitCode {
+    if !cfg!(feature = "bgp") {
+        return modules::refuse("bgp");
+    }
     match bgp::parse(arguments) {
         Ok(bgp::Parsed::Run(parsed)) => bgp::run(*parsed),
         Ok(bgp::Parsed::Check {
@@ -278,6 +295,9 @@ fn bgp(arguments: &[String]) -> ExitCode {
 }
 
 fn ping(arguments: &[String], multicall: bool) -> ExitCode {
+    if !cfg!(feature = "ping") {
+        return modules::refuse("ping");
+    }
     match ping::parse(arguments) {
         Ok(ping::Parsed::Run(parsed)) => ping::run(*parsed, multicall),
         Ok(ping::Parsed::Help) => {
