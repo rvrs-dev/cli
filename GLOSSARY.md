@@ -61,9 +61,9 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | Term | Meaning | Not |
 | --- | --- | --- |
 | **this device** | The phone, tablet or computer rvrs is running on, in the app and on the command line alike. The default origin. | local, localhost, this machine, client |
-| **node** | A machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary as the CLI (`rvrs node`), and `--node <name>` or the app's "Run from" picks one. | probe, agent, remote node, sensor, vantage point |
+| **node** | A machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary as the CLI (`rvrs node`), and `--node <name>` or the app's "Run from" picks one. It signs in with a token, and its runs belong to the workspace. | probe, agent, remote node, sensor, vantage point |
 | **origin** | Where a run was made from: this device or a node, with its interface, source address, public address and network. | source (sources are DNS resolvers), vantage point |
-| **fleet** | Every node of one account. | cluster, pool |
+| **fleet** | Every node of one workspace. | cluster, pool |
 | **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
 | **alert** | The message sent when a scheduled run's result changes. | notification (those are the system's), alarm |
 
@@ -103,7 +103,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 
 | Term | Meaning | Not |
 | --- | --- | --- |
-| **install** | One copy of one product (the app, the CLI, a node) on one device, known only by a random ID made at first start. Every install is its own entry. Signing in attaches an install to an account, and the account's workspace groups them. | user, device (in counts), client |
+| **install** | One copy of one product (the app, the CLI, a node) on one device, known only by a random ID made at first start. Every install is its own entry. Signing in attaches an install to an account, and the account's workspace groups them. The app and the CLI sign in with a login and act for a person: they send runs, read history and ask nodes for runs. A node signs in with a token and acts for its workspace: it sends runs and takes requests. | user, device (in counts), client |
 | **product** | Which rvrs an install is: `ios`, `cli` or `node`. Pulses and reports name it. | platform, client, surface |
 | **pulse** | The anonymous daily signal that an install was used: product, version, system, opens, runs per tool. Never a target, address or hostname. | telemetry event, analytics, heartbeat, ping |
 | **waitlist** | The list of email addresses waiting for accounts and nodes. | newsletter, signup |
