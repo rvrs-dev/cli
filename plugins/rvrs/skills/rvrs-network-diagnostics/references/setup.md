@@ -22,7 +22,7 @@ brew install rvrs-dev/tap/rvrs
 curl -fsSL https://rvrs.dev/install.sh | sh
 ```
 
-That is the full build, with every module. Leave modules out only when the person asks, or agrees on a machine with little room such as a router or a small container. You never open the Console, so the build without it runs everything you need:
+That is the full build, with every build feature. Leave build features out only when the person asks, or agrees on a machine with little room such as a router or a small container. You never open the Console, so the build without it runs everything you need:
 
 ```bash
 curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without console
@@ -47,7 +47,7 @@ It prints one line per check. Read these:
 - **ICMP over IPv4 / IPv6**: whether this user may send probes. On Linux a refusal names `net.ipv4.ping_group_range`. That is a system setting, so give the person the line and do not change it yourself.
 - **IPv6**: whether this device has a public IPv6 address. Without one, `-6` runs fail with exit code 2 and that is not a finding about the target.
 - **History / Saved**: how many runs and cases there are to compare against.
-- **Modules**: what this build can run. A tool that isn't listed refuses with "This build of rvrs leaves out", and a **Left out** line names what is missing. Versions before 0.14 have no Modules line and run every tool.
+- **Build features**: what this build can run. A tool that isn't listed refuses with "This build of rvrs leaves out", and a **Left out** line names what is missing. Versions before 0.14 have no Build features line and run every tool.
 - **Version**: this skill needs 0.10 or newer. Older versions have no `rvrs login`. Older versions have no path MTU check (`traceroute --mtu`), before 0.8 no TCP probes (`traceroute -T`), and before 0.7 no `id` in a report and no filter on `rvrs history`.
 - **Account / Nodes**: whether runs can start anywhere but this device. See [nodes and accounts](nodes.md).
 
@@ -59,9 +59,9 @@ It prints one line per check. Read these:
 rvrs update
 ```
 
-It updates rvrs the way it was installed and names the package manager's command when a package manager owns the binary. It keeps the modules: a build without the Console stays without it. `rvrs update --check` only looks.
+It updates rvrs the way it was installed and names the package manager's command when a package manager owns the binary. It keeps the build features: a build without the Console stays without it. `rvrs update --check` only looks.
 
-A command that answers "This build of rvrs leaves out" needs that module. Ask, then add it, as in:
+A command that answers "This build of rvrs leaves out" needs that build feature. Ask, then add it, as in:
 
 ```bash
 rvrs update --with bgp
