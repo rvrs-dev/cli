@@ -1,0 +1,10 @@
+event: hello
+data: {"keepAliveSeconds":25,"claimSeconds":240,"heartbeatSeconds":3600,"reconnectSeconds":10}
+
+: keep-alive
+
+event: work
+data: {}
+
+: keep-alive
+

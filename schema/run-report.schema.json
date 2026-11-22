@@ -95,7 +95,7 @@
     },
     "outcome": {
       "type": "string",
-      "description": "reached, exhausted, stopped or failed."
+      "description": "reached, exhausted, stopped or failed, or refused for a run a node was asked for and would not make. A reader keeps a word it doesn't know as it is."
     },
     "summary": {
       "type": "string",
