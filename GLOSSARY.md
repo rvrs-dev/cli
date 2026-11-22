@@ -13,7 +13,8 @@ One word per thing, in every repo, document, screen, command and API field. The 
 | **run** | One tool, against one target, from one origin, once. Everything rvrs saves, lists, shares and uploads is a run. A traceroute run may be called a trace, a DNS run a lookup and an iperf3 run a test where that reads better. The general word is always run. | job, session, measurement, check, scan |
 | **result** | What a run measured, as a person reads it: the hop table, the chart, the records. | output (except for a command's text), response |
 | **report** | A run as data (`RunReport`): `measured`, `hops`, `records` and `outcome` are observations, `interpretation` holds the inferences, `sentence` is one plain line. It is what `--json` prints, what Shortcuts receive, what the API stores and what MCP will return. | payload, export, result (for the data format) |
-| **outcome** | How a run ended: reached, exhausted, stopped or failed. | status, result |
+| **outcome** | How a run ended: reached, exhausted, stopped or failed. A run a node was asked for and would not make ended refused. | status, result |
+| **state** | Where a run stands: requested, running, ended or expired. A run made on this device is ended as soon as it is kept. A run asked of a node waits (requested), is being made (running) and ends, or expires when the node never made it. | status, phase, progress |
 | **status line** | The line of facts under a result's title, while the run is live and after it has ended: "Running · 4 hops so far", "Reached 1.1.1.1 · 6 hops · 10.3 ms". | headline, subtitle |
 | **summary** | A run in one line of facts: "6 hops · 12.4 ms". | headline, title |
 | **interpretation** | What a result likely means. Always worded as an inference and kept apart from what was measured. | insight (as a noun for output), diagnosis, analysis |
@@ -62,10 +63,28 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | --- | --- | --- |
 | **this device** | The phone, tablet or computer rvrs is running on, in the app and on the command line alike. The default origin. | local, localhost, this machine, client |
 | **node** | A machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary as the CLI (`rvrs node`), and `--node <name>` or the app's "Run from" picks one. It signs in with a token, and its runs belong to the workspace. | probe, agent, remote node, sensor, vantage point |
+| **token** | A node's credential: one per node, made in the web app or received when the node enrolls, and revoked without touching another node. People sign in with a login. | API key, secret, password |
+| **enroll** | A node joining a workspace by itself: it trades an enrollment token for a token of its own. | register, onboard, adopt, provision, activate |
+| **enrollment token** | What a node enrolls with. It enrolls a set number of nodes before it expires and does nothing else. No image carries one. | join token, provisioning key, bootstrap token, claim code |
+| **build feature** | A part of rvrs a build can leave out: a tool, the TCP probe, the path MTU check, the Console. A node says which ones it has. | capability, module, plugin, feature (for a tool) |
 | **origin** | Where a run was made from: this device or a node, with its interface, source address, public address and network. | source (sources are DNS resolvers), vantage point |
 | **fleet** | Every node of one workspace. | cluster, pool |
 | **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
 | **alert** | The message sent when a scheduled run's result changes. | notification (those are the system's), alarm |
+
+## Between a node and the API
+
+The words of the node protocol, which is written down in the CLI repo (`schema/node-protocol`). People rarely read them on a screen. Routes and fields use them.
+
+| Term | Meaning | Not |
+| --- | --- | --- |
+| **event stream** | The one connection a node holds open to the API. A node is online while it holds it. | socket, channel, tunnel, subscription |
+| **wake-up** | The event that tells a node there is work. It says nothing about the work. | push, notification, signal |
+| **claim** | A node taking the runs that wait for it. To claim. | pull, poll, fetch, pickup |
+| **lease** | A node's hold on a run it claimed, for a limited time and renewed while it works. | lock, reservation |
+| **attempt** | One claim of a run. A run whose lease ran out can be claimed again, as the next attempt. | retry, try |
+| **heartbeat** | What a node tells the API about itself: its version, its build features and its limits. | ping (ping is a tool), keepalive, check-in |
+| **outbox** | Where a finished run waits on a device until the API has it. | queue, buffer, spool |
 
 ## Keeping runs
 
