@@ -1,0 +1,30 @@
+{
+  "version": "0.14.2",
+  "protocol": 1,
+  "system": {
+    "os": "linux",
+    "arch": "aarch64"
+  },
+  "boot": "k3v9q2ta",
+  "features": [
+    "traceroute",
+    "ping",
+    "mtr",
+    "dns",
+    "bgp",
+    "tcp",
+    "mtu"
+  ],
+  "limits": {
+    "runsAtOnce": 2,
+    "runsPerMinute": 12,
+    "packetsPerRun": 1000,
+    "secondsPerRun": 300,
+    "reportBytes": 262144
+  },
+  "outbox": {
+    "waiting": 0,
+    "dropped": 0,
+    "keeps": "disk"
+  }
+}

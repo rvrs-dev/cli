@@ -1,0 +1,24 @@
+{
+  "id": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11",
+  "state": "requested",
+  "reason": null,
+  "node": {
+    "id": "9c2f1a7e-5b3d-4e8f-8a6c-1d2e3f4a5b6c",
+    "name": "fra-1",
+    "online": true,
+    "lastSeenAt": "2026-11-22T20:14:58.120Z"
+  },
+  "tool": "mtr",
+  "target": "example.com",
+  "options": {
+    "rounds": 12,
+    "family": "IPv4"
+  },
+  "requestedAt": "2026-11-22T20:15:00.000Z",
+  "expiresAt": "2026-11-22T20:20:00.000Z",
+  "attempt": 0,
+  "claimedAt": null,
+  "receivedAt": null,
+  "observedStartedAt": null,
+  "report": null
+}

@@ -70,7 +70,14 @@
             "string",
             "null"
           ],
-          "description": "The node's name. null is the device itself."
+          "description": "The node's name when it made the run. A node can be renamed, and a report keeps the name it had. null is the device itself."
+        },
+        "nodeId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The node's id, which never changes. Runs of one node compare by it across a rename."
         },
         "install": {
           "type": [
@@ -95,7 +102,7 @@
     },
     "outcome": {
       "type": "string",
-      "description": "reached, exhausted, stopped or failed."
+      "description": "reached, exhausted, stopped or failed, or refused for a run a node was asked for and would not make. A reader keeps a word it doesn't know as it is."
     },
     "summary": {
       "type": "string",
