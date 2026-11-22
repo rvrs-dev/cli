@@ -2,6 +2,13 @@
 
 The `rvrs` binary for macOS and Linux (Rust 2021, no async runtime): the network tools engineers already type, with their flags, plus what the rvrs app does. traceroute, ping, MTR, dig and BGP are the tools today; iperf3 is next. The same binary later runs as a node (`rvrs node`). Sibling repos: `../ios-app` (the iOS app, whose Swift engine and models this ports; its `WORLDVIEW.md` says where rvrs is going and `docs/tasks/cli-bootstrap.md` is this repo's plan), `../app` (the API; runs, accounts and nodes land there).
 
+## Voice
+
+@.claude/skills/rvrs-voice/SKILL.md
+@GLOSSARY.md
+
+The voice guide and the glossary above load in every session. Every string a person reads, every doc and every reply in the chat follows them. `scripts/check-voice.pl` checks the lines each edit adds, through the hook in `.claude/settings.json`, and the lines each push adds, in CI. Add `voice: ok` to a line that is a deliberate exception, such as a quote. The script, the guide and the glossary are identical in every rvrs repo. Change them together.
+
 ## Repositories
 
 rvrs is split into repos by who may read them (decided 2026-11-15). All five live in the `rvrs-dev` GitHub organization, with the user as owner (moved from their personal account on 2026-11-17, `rvrs-` prefix dropped; the API repo was renamed `app` the same day, since it holds the API, the admin app and the web app, and the iOS app's folder became `ios-app`). Unikraft image names (`fivenp/rvrs-site` and the rest) belong to the Unikraft account and did not move. This section is identical in the CLAUDE.md of `app`, `api`, `cli`, `site` and `try`; change the five together.

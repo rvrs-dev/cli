@@ -35,3 +35,14 @@ jobs:
         env:
           DISABLE_TELEMETRY: 1
           DO_NOT_TRACK: 1
+
+  voice:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Voice check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: perl scripts/check-voice.pl --diff "$BASE"
