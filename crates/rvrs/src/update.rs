@@ -4,8 +4,8 @@
 //! - A build from a checkout pulls the new commits and builds them.
 //! - A Homebrew install is Homebrew's to upgrade, and rvrs says so.
 //!
-//! An update keeps the modules (`modules.rs`): it installs the build that leaves out what this one
-//! leaves out, and nothing more, so a module added since comes with it. `--with` and `--without`
+//! An update keeps the build features (`features.rs`): it installs the build that leaves out what
+//! this one leaves out, and nothing more, so a build feature added since comes with it. `--with` and `--without`
 //! change that set. A release without the matching build leaves rvrs as it is, since a router
 //! with little flash must never get a bigger build than the one it has.
 //!
@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 
 use rvrs_core::{format, paths};
 
+use crate::features;
 use crate::help::{COMMIT, VERSION};
-use crate::modules;
 use crate::style::{ColorChoice, Style, SPINNER};
 use crate::{fail, usage};
 
@@ -317,7 +317,7 @@ pub fn after_command() {
 
 // The command
 
-/// What `rvrs update` was asked: `--check`, and the modules `--with` adds back and `--without`
+/// What `rvrs update` was asked: `--check`, and the build features `--with` adds back and `--without`
 /// leaves out.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Asked {
@@ -338,9 +338,9 @@ pub fn parse(arguments: &[String]) -> Result<Asked, String> {
             "--check" if inline.is_none() => asked.check_only = true,
             "--with" | "--without" => {
                 let Some(value) = inline.or_else(|| words.next().cloned()) else {
-                    return Err(format!("{flag} takes the modules to change, as in {flag} console."));
+                    return Err(format!("{flag} takes the build features to change, as in {flag} console."));
                 };
-                let names = modules::parse_list(&value)?;
+                let names = features::parse_list(&value)?;
                 if flag == "--with" {
                     asked.with.extend(names);
                 } else {
@@ -366,19 +366,19 @@ pub fn parse(arguments: &[String]) -> Result<Asked, String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Wanted {
     left_out: Vec<&'static str>,
-    /// Modules this build has and the update leaves out.
+    /// Build features this build has and the update leaves out.
     removed: Vec<&'static str>,
-    /// Modules this build leaves out and the update has.
+    /// Build features this build leaves out and the update has.
     added: Vec<&'static str>,
 }
 
 impl Wanted {
     fn of(asked: &Asked) -> Self {
-        Self::from(&modules::left_out(), asked)
+        Self::from(&features::left_out(), asked)
     }
 
     fn from(current: &[&'static str], asked: &Asked) -> Self {
-        let left_out = modules::wanted(current, &asked.with, &asked.without);
+        let left_out = features::wanted(current, &asked.with, &asked.without);
         let removed = left_out
             .iter()
             .copied()
@@ -403,12 +403,12 @@ impl Wanted {
     /// "This update leaves out console.", "This update adds console back."
     fn change_words(&self) -> String {
         match (self.removed.as_slice(), self.added.as_slice()) {
-            ([], added) => format!("This update adds {} back.", modules::and_list(added)),
-            (removed, []) => format!("This update leaves out {}.", modules::and_list(removed)),
+            ([], added) => format!("This update adds {} back.", features::and_list(added)),
+            (removed, []) => format!("This update leaves out {}.", features::and_list(removed)),
             (removed, added) => format!(
                 "This update leaves out {} and adds {} back.",
-                modules::and_list(removed),
-                modules::and_list(added)
+                features::and_list(removed),
+                features::and_list(added)
             ),
         }
     }
@@ -426,11 +426,11 @@ pub fn run(arguments: &[String]) -> ExitCode {
     };
     match install_of(&executable) {
         Install::Homebrew if wanted.changes() => fail(&format!(
-            "Homebrew installs the full build, so it can't leave modules out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
+            "Homebrew installs the full build, so it can't leave build features out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
             wanted.left_out.join(",")
         )),
         Install::Package if wanted.changes() => fail(&format!(
-            "The .deb and .rpm hold the full build, so they can't leave modules out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
+            "The .deb and .rpm hold the full build, so they can't leave build features out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
             wanted.left_out.join(",")
         )),
         Install::Homebrew => {
@@ -464,7 +464,7 @@ fn update_checkout(
     let Some(branch) = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]) else {
         return fail(&format!("{shown} isn't a git checkout rvrs can read."));
     };
-    // A change of modules builds this checkout as it is, so it needs no remote.
+    // A change of build features builds this checkout as it is, so it needs no remote.
     let follows = git(repo, &["rev-parse", "--abbrev-ref", "@{u}"]).is_some();
     if !follows && !wanted.changes() {
         return fail(&format!("The branch {branch} in {shown} follows no remote branch, so there is nothing to pull from."));
@@ -550,18 +550,18 @@ fn update_checkout(
     if release {
         build.arg("--release");
     }
-    // The modules: the pulled Cargo.toml's default features, less what this build leaves out,
-    // so a module added in the new commits is built in.
+    // The build features: the pulled Cargo.toml's default features, less what this build leaves
+    // out, so one added in the new commits is built in.
     if !wanted.left_out.is_empty() {
         let manifest =
             std::fs::read_to_string(repo.join("crates/rvrs/Cargo.toml")).unwrap_or_default();
-        let Some(default) = modules::default_features(&manifest) else {
+        let Some(default) = features::default_features(&manifest) else {
             return fail(&format!(
-                "crates/rvrs/Cargo.toml in {shown} names no default features, so rvrs can't tell which modules to build."
+                "crates/rvrs/Cargo.toml in {shown} names no default features, so rvrs can't tell what to build."
             ));
         };
         build.args(["-p", "rvrs", "--no-default-features", "--features"]);
-        build.arg(modules::features(&default, &wanted.left_out).join(","));
+        build.arg(features::cargo_features(&default, &wanted.left_out).join(","));
     }
     let built = with_spinner(style, "Building", || build.output());
     match built {
@@ -645,7 +645,7 @@ fn update_binary(path: &Path, check_only: bool, wanted: &Wanted, style: Style) -
         Some(local) => local.clone(),
         None => {
             // The checksums first: they say which builds the release has.
-            let name = modules::archive(&target, &wanted.left_out);
+            let name = features::archive(&target, &wanted.left_out);
             let base = format!("https://github.com/{REPO}/releases/latest/download");
             let sums = work.join("SHA256SUMS");
             if let Err(message) = with_spinner(style, "Downloading", || {
@@ -764,11 +764,11 @@ fn no_such_build(release: &str, target: &str, wanted: &Wanted, sums: &str) -> St
     } else {
         release.to_string()
     };
-    let builds = modules::builds_in(sums, target);
+    let builds = features::builds_in(sums, target);
     let mut text = format!(
         "{release} has no build without {} for {target}, so the rvrs you have is unchanged. It has {}.",
-        modules::and_list(&wanted.left_out),
-        modules::builds_text(&builds)
+        features::and_list(&wanted.left_out),
+        features::builds_text(&builds)
     );
     if builds.iter().any(Vec::is_empty) {
         text.push_str(&format!(
@@ -1128,13 +1128,13 @@ mod tests {
 
     #[test]
     fn the_full_build_updates_to_the_full_build() {
-        // This is how every rvrs from before modules updates, since its binary is the full build
+        // This is how every rvrs from before build features updates, since its binary is the full build
         // and asks for rvrs-<target>.tar.gz as it always did.
         let wanted = Wanted::of(&Asked::default());
         assert_eq!(wanted.left_out, Vec::<&str>::new());
         assert!(!wanted.changes());
         assert_eq!(
-            modules::archive("aarch64-apple-darwin", &wanted.left_out),
+            features::archive("aarch64-apple-darwin", &wanted.left_out),
             "rvrs-aarch64-apple-darwin.tar.gz"
         );
         let headless = Wanted::of(&parse(&words("--without console")).unwrap());

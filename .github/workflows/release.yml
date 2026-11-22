@@ -1,11 +1,11 @@
 name: Release
 
 # A tag v<VERSION>.<patch> on main releases that commit: two static binaries per target, the full
-# build and the small build without the Console (docs/modules.md), a .deb and an .rpm of the full
+# build and the small build without the Console (docs/build-features.md), a .deb and an .rpm of the full
 # build for x86_64 and arm64 Linux, SHA256SUMS and install.sh, then the Homebrew formula.
 # Actions > Release > Run workflow tags and releases the newest commit on main.
 #
-# rvrs-<target>.tar.gz is the full build under the name every rvrs before modules updates from,
+# rvrs-<target>.tar.gz is the full build under the name every rvrs before build features updates from,
 # so it keeps that name for good.
 
 on:

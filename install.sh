@@ -4,14 +4,14 @@
 #   curl -fsSL https://rvrs.dev/install.sh | sh
 #   curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without console
 #
-# It installs the full build, with every module, unless --without names modules to leave out
-# (docs/modules.md). rvrs update keeps that choice, and a module added in a later version comes
-# with the next update unless it is left out too.
+# It installs the full build, with every build feature, unless --without names some to leave out
+# (docs/build-features.md). rvrs update keeps that choice, and a build feature added in a later
+# version comes with the next update unless it is left out too.
 #
 # On a terminal it asks whether rvrs should also run as traceroute, ping, mtr and dig, and
 # whether to set up tab completion. Without a terminal it asks nothing and does neither.
 #
-#   --without <modules>   leave out modules, separated by commas: console, bgp, dns and the rest
+#   --without <features>  leave out build features, separated by commas: console, bgp, dns and more
 #   --link                run rvrs as traceroute, ping, mtr and dig, without asking
 #   --no-link             leave the system tools as they are, without asking
 #   --yes                 answer yes to every question
@@ -27,13 +27,14 @@ link=ask
 completions=ask
 without=""
 
-# Every module, as crates/rvrs/src/modules.rs lists them. A test there checks these two lines.
-modules="traceroute ping mtr dns bgp tcp mtu console"
+# Every build feature, as crates/rvrs/src/features.rs lists them. A test there checks these two
+# lines.
+features="traceroute ping mtr dns bgp tcp mtu console"
 inside_traceroute="tcp mtu"
 
 usage() {
-  echo "Usage: install.sh [--without <modules>] [--link | --no-link] [--yes]"
-  echo "  --without <modules>   leave out modules, separated by commas: $(echo $modules | tr ' ' ',')"
+  echo "Usage: install.sh [--without <features>] [--link | --no-link] [--yes]"
+  echo "  --without <features>  leave out build features, separated by commas: $(echo $features | tr ' ' ',')"
   echo "  --link                run rvrs as traceroute, ping, mtr and dig"
   echo "  --no-link             leave the system tools as they are"
   echo "  --yes                 answer yes to every question"
@@ -49,7 +50,7 @@ while [ $# -gt 0 ]; do
       ;;
     --without)
       if [ $# -lt 2 ]; then
-        echo "rvrs install: --without takes the modules to leave out, as in --without console." >&2
+        echo "rvrs install: --without takes the build features to leave out, as in --without console." >&2
         exit 2
       fi
       without="$without,$2"
@@ -82,10 +83,10 @@ and_list() {
 left=""
 for name in $(echo "$without" | tr ',' ' '); do
   name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
-  case " $modules " in
+  case " $features " in
     *" $name "*) left="$left $name" ;;
     *)
-      echo "rvrs install: rvrs has no module $name. The modules are $(and_list $modules)." >&2
+      echo "rvrs install: rvrs has no build feature $name. The build features are $(and_list $features)." >&2
       exit 2
       ;;
   esac
@@ -206,9 +207,9 @@ echo "Installed $("$dir/rvrs" --version) in $dir"
 # Running rvrs as the original tools: a link per tool the build has, never over a real file.
 linked=""
 for tool in traceroute ping mtr dig; do
-  module="$tool"
-  [ "$tool" = dig ] && module=dns
-  has "$module" || continue
+  feature="$tool"
+  [ "$tool" = dig ] && feature=dns
+  has "$feature" || continue
   case "$link" in
     yes) want=1 ;;
     no) want=0 ;;

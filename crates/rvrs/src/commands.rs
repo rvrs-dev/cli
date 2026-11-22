@@ -876,9 +876,9 @@ pub fn status() -> ExitCode {
             &format!("{} ({})", crate::help::VERSION, crate::help::COMMIT),
         ),
     }
-    // The modules this build has, by the names a node announces and --with takes.
-    ok("Modules", &crate::modules::included().join(", "));
-    let left_out = crate::modules::left_out();
+    // The build features this build has, by the names a node announces and --with takes.
+    ok("Build features", &crate::features::included().join(", "));
+    let left_out = crate::features::left_out();
     if !left_out.is_empty() {
         let names = left_out.join(",");
         off(

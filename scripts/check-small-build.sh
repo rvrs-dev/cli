@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the small build for a target and holds it to its budget: scripts/check-small-build.sh <target>
 #
-# The small build is rvrs without the Console (docs/modules.md), the build for servers and for
+# The small build is rvrs without the Console (docs/build-features.md), the build for servers and for
 # routers with little flash. It fails when the binary is bigger than the target's budget in
 # scripts/small-build.budget, or when a crate comes into the build or leaves it that
 # scripts/small-build.deps doesn't list, which is how a new dependency in rvrs-core shows up.

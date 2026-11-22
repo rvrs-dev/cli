@@ -11,7 +11,8 @@ name = "rvrs"
 path = "src/main.rs"
 
 [features]
-# The modules (docs/modules.md): every build has all of them unless it was built without some.
+# The build features (docs/build-features.md): every build has all of them unless it was built
+# without some.
 # A node names the ones it has in its heartbeat, so a name never changes. Keep `default` on one
 # line: scripts/build.sh and rvrs update read it.
 default = ["traceroute", "ping", "mtr", "dns", "bgp", "tcp", "mtu", "console"]

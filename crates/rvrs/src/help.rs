@@ -8,7 +8,7 @@ pub const COMMIT: &str = env!("RVRS_COMMIT");
 
 /// `rvrs 0.14.2 (4ea5d4e)`, with what the build leaves out after it: `without console`.
 pub fn version() -> String {
-    match crate::modules::version_note() {
+    match crate::features::version_note() {
         Some(note) => format!("rvrs {VERSION} ({COMMIT}) {note}"),
         None => format!("rvrs {VERSION} ({COMMIT})"),
     }
@@ -29,26 +29,26 @@ enum Tag {
     LeftOut,
 }
 
-/// `Tag::LeftOut` when this build leaves the module out.
-fn tag_of(module: &str) -> Tag {
-    if crate::modules::has(module) {
+/// `Tag::LeftOut` when this build leaves the build feature out.
+fn tag_of(feature: &str) -> Tag {
+    if crate::features::has(feature) {
         Tag::None
     } else {
         Tag::LeftOut
     }
 }
 
-/// Rows tagged Left out where the named module isn't in this build: `(row name, module)`.
+/// Rows tagged Left out where the named build feature isn't in this build: `(row, feature)`.
 fn tag_rows<'a>(
     rows: &[(&'a str, &'a str)],
-    modules: &[(&str, &str)],
+    features: &[(&str, &str)],
 ) -> Vec<(&'a str, &'a str, Tag)> {
     rows.iter()
         .map(|(name, description)| {
-            let tag = modules
+            let tag = features
                 .iter()
                 .find(|(row, _)| row == name)
-                .map_or(Tag::None, |(_, module)| tag_of(module));
+                .map_or(Tag::None, |(_, feature)| tag_of(feature));
             (*name, *description, tag)
         })
         .collect()
@@ -107,8 +107,8 @@ pub fn main(style: Style) -> String {
         style.bold("//")
     );
     // Usage shows what this build runs. Tools lists every tool and marks the ones it leaves out.
-    let console = crate::modules::has("console");
-    let traces = crate::modules::has("traceroute");
+    let console = crate::features::has("console");
+    let traces = crate::features::has("traceroute");
     let usage: Vec<(&str, &str)> = [
         (console, "rvrs", "Open the Console"),
         (
@@ -127,17 +127,17 @@ pub fn main(style: Style) -> String {
             "Trace and print the result",
         ),
         (
-            crate::modules::has("ping"),
+            crate::features::has("ping"),
             "rvrs ping [flags] <target>",
             "Ping until Ctrl-C, or -c packets",
         ),
         (
-            crate::modules::has("dns"),
+            crate::features::has("dns"),
             "rvrs dig <name>",
             "Look the name up at every source and compare the answers",
         ),
         (
-            crate::modules::has("bgp"),
+            crate::features::has("bgp"),
             "rvrs bgp <host|address|prefix|ASN>",
             "Look up the route, its origin validation and the network",
         ),
@@ -291,8 +291,8 @@ pub fn main(style: Style) -> String {
             ("completions", "Set up tab completion for zsh, bash or fish"),
             ("update", "Update rvrs the way it was installed"),
             (
-                "update --with|--without <module>",
-                "Add a module to this build, or leave one out",
+                "update --with|--without <feature>",
+                "Add a build feature, or leave one out",
             ),
         ],
     ));
