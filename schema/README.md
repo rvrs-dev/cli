@@ -26,7 +26,3 @@ Every surface shows a run it didn't make from the report alone. The CLI does it 
 ## Where it is checked
 
 `cargo test` checks that every field of a report and of each fixture is one the schema names, that each fixture is read and written back unchanged, and that each becomes a run every look can draw. `traceroute.json`, `mtr.json` and `bgp.json` are the reports of runs the tests build, so they can't drift (`RVRS_WRITE_FIXTURES=1 cargo test` rewrites them). The iOS app's tests read copies of the same files. The rvrs API reads the same fixtures against its own copy of the shape.
-
-## The node protocol
-
-`node-protocol/` is the other contract in this folder: how a node talks to the rvrs API and how a person's install asks a node for a run, as a page, an OpenAPI document and fixtures. A node's result is this report, sent through the route every install uses.
