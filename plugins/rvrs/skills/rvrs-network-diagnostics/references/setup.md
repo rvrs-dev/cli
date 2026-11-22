@@ -47,7 +47,7 @@ It prints one line per check. Read these:
 - **ICMP over IPv4 / IPv6**: whether this user may send probes. On Linux a refusal names `net.ipv4.ping_group_range`. That is a system setting, so give the person the line and do not change it yourself.
 - **IPv6**: whether this device has a public IPv6 address. Without one, `-6` runs fail with exit code 2 and that is not a finding about the target.
 - **History / Saved**: how many runs and cases there are to compare against.
-- **Build features**: what this build can run. A tool that isn't listed refuses with "This build of rvrs leaves out", and a **Left out** line names what is missing. Versions before 0.14 have no Build features line and run every tool.
+- **Build features**: what this build can run. A tool that isn't listed refuses with "This build of rvrs leaves out", and a Left out line names what is missing. Versions before 0.14 have no Build features line and run every tool.
 - **Version**: this skill needs 0.10 or newer. Older versions have no `rvrs login`. Older versions have no path MTU check (`traceroute --mtu`), before 0.8 no TCP probes (`traceroute -T`), and before 0.7 no `id` in a report and no filter on `rvrs history`.
 - **Account / Nodes**: whether runs can start anywhere but this device. See [nodes and accounts](nodes.md).
 
