@@ -1,12 +1,12 @@
-# Modules
+# Build features
 
-A build of rvrs is made of modules: the tools, the TCP probe, the path MTU check and the Console. The installer puts the full build in place, with every module. A build can leave modules out, which makes the binary smaller for a server or for a router with little flash.
+A build of rvrs is made of build features: the tools, the TCP probe, the path MTU check and the Console. The installer puts the full build in place, with every build feature. A build can leave some out, which makes the binary smaller for a server or for a router with little flash.
 
 ```bash
 curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without console
 ```
 
-| Module | Gives |
+| Build feature | Gives |
 | --- | --- |
 | `traceroute` | `rvrs traceroute` |
 | `ping` | `rvrs ping` |
@@ -17,17 +17,17 @@ curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without console
 | `mtu` | The path MTU check, `rvrs traceroute --mtu`. It works inside traceroute |
 | `console` | The Console, `rvrs` with no command |
 
-`rvrs status` lists the modules a build has. `rvrs --version` ends with what it leaves out:
+`rvrs status` lists the build features a build has. `rvrs --version` ends with what it leaves out:
 
 ```
 rvrs 0.14.0 (4ea5d4e) without console
 ```
 
-A node will name its modules in its heartbeat, so these names never change ([the node protocol](../schema/node-protocol/README.md)). iperf3 joins as a module when the CLI runs it.
+A node will name its build features in its heartbeat, so these names never change ([the node protocol](../schema/node-protocol/README.md)). iperf3 joins as a build feature when the CLI runs it.
 
-## A build without a module
+## A build without a build feature
 
-It can't run that module's commands, and it says how to add the module:
+It can't run the commands that need it, and it says how to add it:
 
 ```
 $ rvrs bgp AS64500
@@ -38,7 +38,7 @@ It shows every run, including runs of a tool it leaves out. Those are drawn from
 
 ## Updates
 
-`rvrs update` installs the build that leaves out what this one leaves out. A module that a later version adds comes with the update, unless you leave it out too. An rvrs installed before modules existed is the full build, and every update it takes is the full build.
+`rvrs update` installs the build that leaves out what this one leaves out. A build feature that a later version adds comes with the update, unless you leave it out too. An rvrs installed before build features existed is the full build, and every update it takes is the full build.
 
 ```bash
 rvrs update --without console
@@ -50,9 +50,9 @@ rvrs update --with console
 
 The first leaves the Console out from now on, and the second takes it back. Both work while rvrs is up to date.
 
-When a release has no build that leaves out the same modules, the update stops and rvrs stays as it is. It never puts a bigger build in place of a smaller one unasked, since a router may have no room for it.
+When a release has no build that leaves out the same build features, the update stops and rvrs stays as it is. It never puts a bigger build in place of a smaller one unasked, since a router may have no room for it.
 
-Homebrew and the `.deb` and `.rpm` packages hold the full build. To leave modules out, use the installer.
+Homebrew and the `.deb` and `.rpm` packages hold the full build. To leave build features out, use the installer.
 
 ## Prebuilt builds
 
@@ -68,7 +68,7 @@ Every release has two builds for each target: the full build, and the small buil
 
 An archive is named by what it leaves out, with the names sorted: a build without BGP and the Console would be `-without-bgp-console`. The installer and `rvrs update` ask for an archive by that name, and when a release doesn't have it they say which builds it has. ARMv7 is 32-bit ARM with hardware floating point, as on most routers and boards that run Linux on ARM.
 
-## Another set of modules
+## Another set of build features
 
 From source, any set builds:
 
@@ -94,4 +94,4 @@ The budgets are in `scripts/small-build.budget`. On the router targets, 3.5 MiB 
 
 MIPS routers come later. Rust ships no standard library for MIPS, a tier 3 target, so a MIPS build needs a nightly compiler. ARMv7 came first for that reason.
 
-The modules only decide what is in the binary. A node will also keep its runs in memory instead of a history file, which comes with `rvrs node`.
+The build features only decide what is in the binary. A node will also keep its runs in memory instead of a history file, which comes with `rvrs node`.

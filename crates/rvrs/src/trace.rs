@@ -52,13 +52,13 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
             "Nodes aren't available yet, so nothing was sent from \u{201C}{node}\u{201D}. Without --node the run comes from this device."
         ));
     }
-    // The TCP probe and the path MTU check are modules of their own. cfg! is a constant, so a
+    // The TCP probe and the path MTU check are build features of their own. cfg! is a constant, so a
     // build without them never links their code.
     if args.tcp.is_some() && !cfg!(feature = "tcp") {
-        return crate::modules::refuse("tcp");
+        return crate::features::refuse("tcp");
     }
     if args.mtu && !cfg!(feature = "mtu") {
-        return crate::modules::refuse("mtu");
+        return crate::features::refuse("mtu");
     }
     let look = look(args.common.json, args.common.classic, multicall);
     let style = Style::detect(args.common.color);

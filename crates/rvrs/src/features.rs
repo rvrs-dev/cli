@@ -1,15 +1,16 @@
-//! The modules: the parts of rvrs a build can include or leave out (`docs/modules.md`). Each one
-//! is a Cargo feature of this crate, and a build has all of them unless it was made without some.
-//! A node names the modules it has as `features` in its heartbeat, so a name never changes.
+//! The build features: the parts of rvrs a build can include or leave out
+//! (`docs/build-features.md`). Each one is a Cargo feature of this crate of the same name, and a
+//! build has all of them unless it was made without some. A node names the ones it has as
+//! `features` in its heartbeat, so a name never changes.
 //!
-//! A module decides what a build can run, never what it can show. Every build reads every run,
-//! and a run of a tool this build leaves out is shown from its report, as a run another device
-//! made is.
+//! A build feature decides what a build can run, never what it can show. Every build reads every
+//! run, and a run of a tool this build leaves out is shown from its report, as a run another
+//! device made is.
 //!
-//! What a build leaves out is the one thing it remembers about its modules. `rvrs update` and the
-//! installer ask for a build that leaves out the same ones, so a module added in a later version
-//! is in the next update unless the person leaves it out too. A build from before modules has
-//! everything, and so does its update.
+//! What a build leaves out is the one thing it remembers about its build features. `rvrs update`
+//! and the installer ask for a build that leaves out the same ones, so a build feature added in a
+//! later version is in the next update unless the person leaves it out too. A build from before
+//! build features has everything, and so does its update.
 
 use std::process::ExitCode;
 
@@ -17,71 +18,71 @@ use rvrs_core::model::Tool;
 
 /// One part of rvrs that a build can leave out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Module {
+pub struct Feature {
     /// The name flags, Cargo and a node's heartbeat use.
     pub name: &'static str,
-    /// The module in a sentence: "BGP", "the Console".
+    /// The build feature in a sentence: "BGP", "the Console".
     pub title: &'static str,
     /// What it does, for `rvrs status` and the docs.
     pub about: &'static str,
-    /// The modules it works inside. Leaving one of them out leaves this one out too.
+    /// The build features it works inside. Leaving one of them out leaves this one out too.
     pub needs: &'static [&'static str],
     /// Whether this build has it.
     pub included: bool,
 }
 
-/// Every module this version knows, in the order a node lists them.
-pub const ALL: [Module; 8] = [
-    Module {
+/// Every build feature this version knows, in the order a node lists them.
+pub const ALL: [Feature; 8] = [
+    Feature {
         name: "traceroute",
         title: "traceroute",
         about: "rvrs traceroute",
         needs: &[],
         included: cfg!(feature = "traceroute"),
     },
-    Module {
+    Feature {
         name: "ping",
         title: "ping",
         about: "rvrs ping",
         needs: &[],
         included: cfg!(feature = "ping"),
     },
-    Module {
+    Feature {
         name: "mtr",
         title: "MTR",
         about: "rvrs mtr",
         needs: &[],
         included: cfg!(feature = "mtr"),
     },
-    Module {
+    Feature {
         name: "dns",
         title: "DNS",
         about: "rvrs dig",
         needs: &[],
         included: cfg!(feature = "dns"),
     },
-    Module {
+    Feature {
         name: "bgp",
         title: "BGP",
         about: "rvrs bgp",
         needs: &[],
         included: cfg!(feature = "bgp"),
     },
-    Module {
+    Feature {
         name: "tcp",
         title: "the TCP probe",
         about: "rvrs traceroute -T",
         needs: &["traceroute"],
         included: cfg!(feature = "tcp"),
     },
-    Module {
+    Feature {
         name: "mtu",
         title: "the path MTU check",
         about: "rvrs traceroute --mtu",
         needs: &["traceroute"],
         included: cfg!(feature = "mtu"),
     },
-    Module {
+    Feature {
         name: "console",
         title: "the Console",
         about: "rvrs with no command",
@@ -90,32 +91,32 @@ pub const ALL: [Module; 8] = [
     },
 ];
 
-pub fn find(name: &str) -> Option<&'static Module> {
-    ALL.iter().find(|module| module.name == name)
+pub fn find(name: &str) -> Option<&'static Feature> {
+    ALL.iter().find(|feature| feature.name == name)
 }
 
-/// Whether this build has the module. A name this version doesn't know is never in it.
+/// Whether this build has the build feature. A name this version doesn't know is never in it.
 pub fn has(name: &str) -> bool {
-    find(name).is_some_and(|module| module.included)
+    find(name).is_some_and(|feature| feature.included)
 }
 
-/// The modules this build has, in the order of [`ALL`].
+/// The build features this build has, in the order of [`ALL`].
 pub fn included() -> Vec<&'static str> {
     ALL.iter()
-        .filter(|module| module.included)
-        .map(|module| module.name)
+        .filter(|feature| feature.included)
+        .map(|feature| feature.name)
         .collect()
 }
 
-/// The modules this build leaves out, in the order of [`ALL`]. Empty for the full build.
+/// The build features this build leaves out, in the order of [`ALL`]. Empty for the full build.
 pub fn left_out() -> Vec<&'static str> {
     ALL.iter()
-        .filter(|module| !module.included)
-        .map(|module| module.name)
+        .filter(|feature| !feature.included)
+        .map(|feature| feature.name)
         .collect()
 }
 
-/// The module that runs a tool. iperf3 has none until the CLI runs it.
+/// The build feature that runs a tool. iperf3 has none until the CLI runs it.
 #[cfg_attr(not(feature = "console"), allow(dead_code))]
 pub fn of_tool(tool: Tool) -> Option<&'static str> {
     match tool {
@@ -134,19 +135,19 @@ pub fn runs(tool: Tool) -> bool {
     tool.is_available() && of_tool(tool).is_some_and(has)
 }
 
-/// The sentence for a command whose module this build leaves out.
+/// The sentence for a command whose build feature this build leaves out.
 pub fn missing(name: &str) -> String {
-    let title = find(name).map_or(name, |module| module.title);
+    let title = find(name).map_or(name, |feature| feature.title);
     format!("This build of rvrs leaves out {title}. rvrs update --with {name} adds it.")
 }
 
-/// Refuses a command whose module this build leaves out. Nothing was run, so the exit code is
+/// Refuses a command whose build feature this build leaves out. Nothing was run, so the exit code is
 /// the one for a run that couldn't be made.
 pub fn refuse(name: &str) -> ExitCode {
     crate::fail(&missing(name))
 }
 
-/// Reads "bgp,console" or "bgp console" into module names, in the order of [`ALL`]. A name this
+/// Reads "bgp,console" or "bgp console" into names, in the order of [`ALL`]. A name this
 /// version doesn't know is an error that lists the ones it does.
 pub fn parse_list(text: &str) -> Result<Vec<&'static str>, String> {
     let mut names = Vec::new();
@@ -156,34 +157,34 @@ pub fn parse_list(text: &str) -> Result<Vec<&'static str>, String> {
     {
         let word = word.to_ascii_lowercase();
         match find(&word) {
-            Some(module) => names.push(module.name),
+            Some(feature) => names.push(feature.name),
             None => {
                 return Err(format!(
-                    "rvrs has no module \u{201C}{word}\u{201D}. The modules are {}.",
-                    and_list(&ALL.iter().map(|module| module.name).collect::<Vec<_>>())
+                    "rvrs has no build feature \u{201C}{word}\u{201D}. The build features are {}.",
+                    and_list(&ALL.iter().map(|feature| feature.name).collect::<Vec<_>>())
                 ))
             }
         }
     }
     if names.is_empty() {
         return Err(format!(
-            "Name the modules, as in bgp,console. The modules are {}.",
-            and_list(&ALL.iter().map(|module| module.name).collect::<Vec<_>>())
+            "Name the build features, as in bgp,console. The build features are {}.",
+            and_list(&ALL.iter().map(|feature| feature.name).collect::<Vec<_>>())
         ));
     }
     Ok(ordered(&names))
 }
 
-/// The names in the order of [`ALL`], each once, with every module whose needs are left out
+/// The names in the order of [`ALL`], each once, with every build feature whose needs are left out
 /// added: a build without traceroute has no TCP probe either.
 pub fn closed(left_out: &[&str]) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = ordered(left_out);
     loop {
         let more: Vec<&'static str> = ALL
             .iter()
-            .filter(|module| !out.contains(&module.name))
-            .filter(|module| module.needs.iter().any(|need| out.contains(need)))
-            .map(|module| module.name)
+            .filter(|feature| !out.contains(&feature.name))
+            .filter(|feature| feature.needs.iter().any(|need| out.contains(need)))
+            .map(|feature| feature.name)
             .collect();
         if more.is_empty() {
             return ordered(&out);
@@ -194,12 +195,12 @@ pub fn closed(left_out: &[&str]) -> Vec<&'static str> {
 
 fn ordered(names: &[&str]) -> Vec<&'static str> {
     ALL.iter()
-        .map(|module| module.name)
+        .map(|feature| feature.name)
         .filter(|name| names.contains(name))
         .collect()
 }
 
-/// The modules a build should leave out once `with` is added back and `without` is left out, on
+/// The build features a build should leave out once `with` is added back and `without` is left out, on
 /// top of what `current` leaves out.
 pub fn wanted(current: &[&str], with: &[&str], without: &[&str]) -> Vec<&'static str> {
     let mut out: Vec<&str> = current
@@ -208,17 +209,17 @@ pub fn wanted(current: &[&str], with: &[&str], without: &[&str]) -> Vec<&'static
         .filter(|name| !with.contains(name))
         .collect();
     out.extend(without.iter().copied());
-    // Adding a module back adds back what it works inside.
+    // Adding a build feature back adds back what it works inside.
     let needed: Vec<&str> = with
         .iter()
         .filter_map(|name| find(name))
-        .flat_map(|module| module.needs.iter().copied())
+        .flat_map(|feature| feature.needs.iter().copied())
         .collect();
     out.retain(|name| !needed.contains(name));
     closed(&out)
 }
 
-/// The release archive of the build for a target that leaves out these modules, as the
+/// The release archive of the build for a target that leaves out these build features, as the
 /// installer, `rvrs update` and `scripts/build.sh` name it: `rvrs-<target>.tar.gz` for the full
 /// build, `rvrs-<target>-without-bgp-console.tar.gz` with the names sorted.
 pub fn archive(target: &str, left_out: &[&str]) -> String {
@@ -271,9 +272,9 @@ pub fn builds_text(builds: &[Vec<String>]) -> String {
     }
 }
 
-/// The features `cargo build` needs for a build that leaves out these modules, from the
-/// `default` features of the crate being built, so a module added since is in.
-pub fn features(default: &[String], left_out: &[&str]) -> Vec<String> {
+/// The features `cargo build` needs for a build that leaves out these, from the `default`
+/// features of the crate being built, so a build feature added since is in.
+pub fn cargo_features(default: &[String], left_out: &[&str]) -> Vec<String> {
     default
         .iter()
         .filter(|name| !left_out.contains(&name.as_str()))
@@ -323,22 +324,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_module_is_a_feature_of_this_crate_and_in_the_default() {
+    fn every_build_feature_is_a_cargo_feature_in_the_default() {
         let manifest = include_str!("../Cargo.toml");
         let default = default_features(manifest).expect("a default line");
-        let names: Vec<&str> = ALL.iter().map(|module| module.name).collect();
+        let names: Vec<&str> = ALL.iter().map(|feature| feature.name).collect();
         assert_eq!(
             default, names,
-            "Cargo.toml's default and ALL list the same modules"
+            "Cargo.toml's default and ALL list the same build features"
         );
-        for module in &ALL {
+        for feature in &ALL {
             assert!(
-                manifest.contains(&format!("\n{} = [", module.name)),
+                manifest.contains(&format!("\n{} = [", feature.name)),
                 "{} is a feature",
-                module.name
+                feature.name
             );
             // A name joins archive names with dashes and is typed in flags.
-            assert!(module
+            assert!(feature
                 .name
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
@@ -354,34 +355,34 @@ mod tests {
             .lines()
             .find(|line| line.starts_with("| `features` |"))
             .expect("the features row");
-        for module in &ALL {
+        for feature in &ALL {
             assert!(
-                line.contains(&format!("`{}`", module.name)),
+                line.contains(&format!("`{}`", feature.name)),
                 "{}",
-                module.name
+                feature.name
             );
         }
     }
 
     #[test]
-    fn the_installer_knows_the_same_modules() {
+    fn the_installer_knows_the_same_build_features() {
         let installer = include_str!("../../../install.sh");
-        let names: Vec<&str> = ALL.iter().map(|module| module.name).collect();
+        let names: Vec<&str> = ALL.iter().map(|feature| feature.name).collect();
         assert!(
-            installer.contains(&format!("\nmodules=\"{}\"\n", names.join(" "))),
-            "install.sh lists the modules of ALL"
+            installer.contains(&format!("\nfeatures=\"{}\"\n", names.join(" "))),
+            "install.sh lists the build features of ALL"
         );
         let inside: Vec<&str> = ALL
             .iter()
-            .filter(|module| module.needs == ["traceroute"])
-            .map(|module| module.name)
+            .filter(|feature| feature.needs == ["traceroute"])
+            .map(|feature| feature.name)
             .collect();
         assert!(installer.contains(&format!("\ninside_traceroute=\"{}\"\n", inside.join(" "))));
-        // No module needs another one but traceroute, which is all install.sh and
+        // No build feature needs another one but traceroute, which is all install.sh and
         // scripts/build.sh know how to close over.
         assert!(ALL
             .iter()
-            .all(|module| module.needs.is_empty() || module.needs == ["traceroute"]));
+            .all(|feature| feature.needs.is_empty() || feature.needs == ["traceroute"]));
     }
 
     #[test]
@@ -435,7 +436,7 @@ mod tests {
 
     #[test]
     fn with_and_without_change_what_an_update_leaves_out() {
-        // A build from before modules leaves out nothing, and its update neither.
+        // A build from before build features leaves out nothing, and its update neither.
         assert_eq!(wanted(&[], &[], &[]), Vec::<&str>::new());
         assert_eq!(wanted(&["console"], &[], &[]), vec!["console"]);
         assert_eq!(wanted(&["console"], &["console"], &[]), Vec::<&str>::new());
@@ -451,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_of_modules_are_read_and_checked() {
+    fn lists_of_build_features_are_read_and_checked() {
         assert_eq!(parse_list("console").unwrap(), vec!["console"]);
         assert_eq!(parse_list("console,BGP").unwrap(), vec!["bgp", "console"]);
         assert_eq!(parse_list("bgp console").unwrap(), vec!["bgp", "console"]);
@@ -468,14 +469,14 @@ mod tests {
         assert_eq!(default, vec!["traceroute", "ping", "iperf3", "console"]);
         // iperf3 is newer than this build, so it is in.
         assert_eq!(
-            features(&default, &["console"]),
+            cargo_features(&default, &["console"]),
             vec!["traceroute", "ping", "iperf3"]
         );
         assert_eq!(default_features("[package]\nname = \"x\"\n"), None);
     }
 
     #[test]
-    fn a_missing_module_names_the_way_back() {
+    fn a_missing_build_feature_names_the_way_back() {
         assert_eq!(
             missing("bgp"),
             "This build of rvrs leaves out BGP. rvrs update --with bgp adds it."

@@ -36,15 +36,15 @@ jobs:
           DISABLE_TELEMETRY: 1
           DO_NOT_TRACK: 1
 
-  modules:
-    # Every module can be left out, one at a time and all together, without a warning.
+  features:
+    # Every build feature can be left out, one at a time and all together, without a warning.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - run: sh scripts/check-modules.sh
+      - run: sh scripts/check-features.sh
 
   small-build:
     # The build without the Console, for servers and routers: under its budget and with no crate

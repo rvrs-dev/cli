@@ -10,8 +10,8 @@ mod completions;
 #[cfg(feature = "console")]
 mod console;
 mod dig;
+mod features;
 mod help;
-mod modules;
 mod mtr;
 mod ping;
 mod pretty;
@@ -212,7 +212,7 @@ fn main() -> ExitCode {
 
 fn traceroute(arguments: &[String], multicall: bool) -> ExitCode {
     if !cfg!(feature = "traceroute") {
-        return modules::refuse("traceroute");
+        return features::refuse("traceroute");
     }
     match args::parse(arguments) {
         Ok(args::Parsed::Run(parsed)) => trace::run(*parsed, multicall),
@@ -235,7 +235,7 @@ fn noticed(code: ExitCode) -> ExitCode {
 
 fn mtr(arguments: &[String], multicall: bool) -> ExitCode {
     if !cfg!(feature = "mtr") {
-        return modules::refuse("mtr");
+        return features::refuse("mtr");
     }
     match mtr::parse(arguments) {
         Ok(mtr::Parsed::Run(parsed)) => mtr::run(*parsed, multicall),
@@ -253,7 +253,7 @@ fn mtr(arguments: &[String], multicall: bool) -> ExitCode {
 
 fn dig(arguments: &[String], multicall: bool) -> ExitCode {
     if !cfg!(feature = "dns") {
-        return modules::refuse("dns");
+        return features::refuse("dns");
     }
     match dig::parse(arguments, multicall) {
         Ok(dig::Parsed::Run(parsed)) => dig::run(*parsed, multicall),
@@ -271,7 +271,7 @@ fn dig(arguments: &[String], multicall: bool) -> ExitCode {
 
 fn bgp(arguments: &[String]) -> ExitCode {
     if !cfg!(feature = "bgp") {
-        return modules::refuse("bgp");
+        return features::refuse("bgp");
     }
     match bgp::parse(arguments) {
         Ok(bgp::Parsed::Run(parsed)) => bgp::run(*parsed),
@@ -296,7 +296,7 @@ fn bgp(arguments: &[String]) -> ExitCode {
 
 fn ping(arguments: &[String], multicall: bool) -> ExitCode {
     if !cfg!(feature = "ping") {
-        return modules::refuse("ping");
+        return features::refuse("ping");
     }
     match ping::parse(arguments) {
         Ok(ping::Parsed::Run(parsed)) => ping::run(*parsed, multicall),
