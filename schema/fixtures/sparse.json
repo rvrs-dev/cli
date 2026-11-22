@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "sp4rs3",
+  "tool": "Traceroute",
+  "target": "example.com",
+  "address": "203.0.113.80",
+  "startedAt": "2026-11-15T09:30:00Z",
+  "origin": {
+    "kind": "node",
+    "node": "lab-1"
+  },
+  "outcome": "reached",
+  "summary": "3 hops · 14.8 ms",
+  "measured": [
+    {
+      "name": "hops",
+      "value": 3.0
+    },
+    {
+      "name": "avg",
+      "value": 14.8,
+      "unit": "ms"
+    }
+  ],
+  "hops": [
+    {
+      "ttl": 1,
+      "address": "192.0.2.1",
+      "avgMilliseconds": 1.2
+    },
+    {
+      "ttl": 2
+    },
+    {
+      "ttl": 3,
+      "address": "203.0.113.80",
+      "avgMilliseconds": 14.8
+    }
+  ],
+  "interpretation": [],
+  "sentence": "Reached 203.0.113.80 in 3 hops, 14.8 ms round trip."
+}

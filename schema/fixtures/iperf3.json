@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "id": "5d0c1f0e-6f43-4a51-9b1e-0c1d5a3b7e21-1794735000",
+  "tool": "iPerf3",
+  "target": "iperf.example.net:5201",
+  "address": null,
+  "family": null,
+  "startedAt": "2026-11-15T09:30:00Z",
+  "origin": {
+    "kind": "device",
+    "node": null,
+    "install": null,
+    "sourceAddress": "192.0.2.10",
+    "publicAddress": "203.0.113.7"
+  },
+  "outcome": "reached",
+  "summary": "↓ 942 Mbps · ↑ 876 Mbps",
+  "error": null,
+  "measured": [
+    {
+      "name": "download peak",
+      "value": 968.2,
+      "unit": "Mbps"
+    },
+    {
+      "name": "upload peak",
+      "value": 902.4,
+      "unit": "Mbps"
+    }
+  ],
+  "hops": null,
+  "records": null,
+  "sources": null,
+  "probe": null,
+  "mtu": null,
+  "samples": null,
+  "interpretation": [],
+  "sentence": "↓ 942 Mbps · ↑ 876 Mbps"
+}

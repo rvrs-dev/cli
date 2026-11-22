@@ -60,7 +60,12 @@ pub fn title(view: &View) -> String {
     if let Some(tcp) = &run.tcp {
         facts.push(format!("TCP port {}", tcp.port));
     }
-    facts.push("this device".to_string());
+    // A run another install made says where it came from.
+    facts.push(
+        run.from
+            .clone()
+            .unwrap_or_else(|| "this device".to_string()),
+    );
     let lead = format!("{} {} ", style.bold("//"), style.dim(run.tool.command()));
     let room = view
         .width
@@ -374,6 +379,104 @@ pub fn footer(view: &View) -> Vec<String> {
     out.push(line);
     for sentence in Report::of(run).interpretation {
         out.extend(wrap(&sentence, view.width.clamp(40, 100)));
+    }
+    out
+}
+
+/// A run that came as a report and whose tool keeps its result in a record a report doesn't
+/// carry (DNS, BGP, iperf3): the status line and the interpretation in the maker's words, the
+/// figures, and for DNS the records of the reference answer and what each source said.
+pub fn report_lines(run: &Run, style: Style, total_width: usize) -> Vec<String> {
+    let Some(report) = run.report.as_deref() else {
+        return Vec::new();
+    };
+    let limit = total_width.clamp(40, 160);
+    let mut out = Vec::new();
+    let status = match report.outcome.as_str() {
+        "reached" => style.bold_green(&report.summary),
+        "exhausted" => style.yellow(&report.summary),
+        "failed" => style.red(report.error.as_deref().unwrap_or(&report.summary)),
+        _ => style.bold(&report.summary),
+    };
+    out.push(status);
+    let figures = report.figure_line();
+    if !figures.is_empty() {
+        out.extend(wrap(&figures, limit).iter().map(|line| style.dim(line)));
+    }
+    let column = |cells: &[String]| cells.iter().map(|cell| width(cell)).max().unwrap_or(0);
+    if let Some(records) = report
+        .records
+        .as_ref()
+        .filter(|records| !records.is_empty())
+    {
+        out.push(String::new());
+        out.push(style.bold("Records"));
+        let types: Vec<String> = records
+            .iter()
+            .map(|record| record.type_name.clone())
+            .collect();
+        let names: Vec<String> = records.iter().map(|record| record.name.clone()).collect();
+        let ttls: Vec<String> = records
+            .iter()
+            .map(|record| record.ttl.map(format::ttl).unwrap_or_default())
+            .collect();
+        let (type_width, ttl_width) = (column(&types).max(4), column(&ttls));
+        let name_width = column(&names).min(limit / 3);
+        for (index, record) in records.iter().enumerate() {
+            let room = limit.saturating_sub(type_width + name_width + ttl_width + 8);
+            out.push(format!(
+                "  {}  {}  {}  {}",
+                style.dim(&format!("{:<type_width$}", types[index])),
+                format_args!("{:<name_width$}", truncate_end(&names[index], name_width)),
+                style.dim(&format!("{:>ttl_width$}", ttls[index])),
+                truncate_end(&record.value, room.max(12)),
+            ));
+        }
+    }
+    if let Some(sources) = report
+        .sources
+        .as_ref()
+        .filter(|sources| !sources.is_empty())
+    {
+        out.push(String::new());
+        out.push(style.bold("Sources"));
+        let names: Vec<String> = sources.iter().map(|source| source.name.clone()).collect();
+        let times: Vec<String> = sources
+            .iter()
+            .map(|source| {
+                source
+                    .milliseconds
+                    .map(|milliseconds| rvrs_core::report::figure_text(milliseconds, Some("ms")))
+                    .unwrap_or_default()
+            })
+            .collect();
+        let name_width = column(&names).min(limit / 3);
+        let time_width = column(&times);
+        for (index, source) in sources.iter().enumerate() {
+            let answer = match source.status.as_str() {
+                "match" => style.green("Match  "),
+                "differs" => style.yellow("Differs"),
+                "error" => style.red("Error  "),
+                other => format!("{other:<7}"),
+            };
+            let said = source
+                .error
+                .clone()
+                .unwrap_or_else(|| source.addresses.join(" \u{00B7} "));
+            let room = limit.saturating_sub(name_width + time_width + 15);
+            out.push(format!(
+                "  {}  {answer}  {}  {}",
+                format_args!("{:<name_width$}", truncate_end(&names[index], name_width)),
+                style.dim(&format!("{:>time_width$}", times[index])),
+                style.dim(&truncate_end(&said, room.max(12))),
+            ));
+        }
+    }
+    if !report.interpretation.is_empty() {
+        out.push(String::new());
+        for sentence in &report.interpretation {
+            out.extend(wrap(sentence, limit.min(100)));
+        }
     }
     out
 }

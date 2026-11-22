@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
 metadata:
   author: rvrs-dev
-  version: "0.12.0"
+  version: "0.13.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 

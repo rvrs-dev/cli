@@ -78,6 +78,21 @@ pub fn iso8601(seconds: u64) -> String {
     )
 }
 
+/// Seconds since 1970 for a moment written as ISO 8601 in UTC, "2026-11-15T09:30:00Z". What
+/// follows the seconds, a fraction or an offset, is ignored.
+pub fn seconds_of(moment: &str) -> Option<u64> {
+    let number = |range: std::ops::Range<usize>| moment.get(range)?.parse::<i64>().ok();
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    // Days from the civil date, after Howard Hinnant.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let of_era = year.rem_euclid(400);
+    let of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let days = era * 146_097 + of_era * 365 + of_era / 4 - of_era / 100 + of_year - 719_468;
+    u64::try_from(days * 86_400 + hour * 3600 + minute * 60 + second).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -13,6 +13,7 @@ use crate::bgp::{BgpEvent, BgpResult};
 use crate::dns::{DnsEvent, DnsResult};
 use crate::engine::{Ending, Event, ReplyKind};
 use crate::format;
+use crate::report::Report;
 use crate::{is_private, Family, FamilyChoice};
 
 /// The tools rvrs has. Only the ones `is_available` run in the CLI today.
@@ -144,6 +145,65 @@ pub struct Hop {
     pub probes: Vec<Slot>,
     #[serde(default)]
     pub is_destination: bool,
+    /// The hop's figures as a report states them, for a run that came as a report. They stand
+    /// where the samples a report carries are fewer than the probes the run sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported: Option<Reported>,
+}
+
+/// What a report says about one hop. Every figure is optional: an origin reports what it
+/// measured, and a figure it left out is absent here too, never zero.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Reported {
+    #[serde(default)]
+    pub address: Option<IpAddr>,
+    #[serde(default)]
+    pub sent: Option<u32>,
+    #[serde(default)]
+    pub received: Option<u32>,
+    #[serde(default)]
+    pub loss_percent: Option<f64>,
+    /// Round trips in microseconds.
+    #[serde(default)]
+    pub min: Option<u64>,
+    #[serde(default)]
+    pub mean: Option<u64>,
+    #[serde(default)]
+    pub max: Option<u64>,
+    #[serde(default)]
+    pub jitter: Option<u64>,
+    #[serde(default)]
+    pub p50: Option<u64>,
+    #[serde(default)]
+    pub p95: Option<u64>,
+}
+
+impl Reported {
+    /// The report's figures over what the kept samples add up to. A figure the report lacks is
+    /// taken from the samples only when they cover every probe the hop sent.
+    fn stats(&self, own: HopStats) -> HopStats {
+        let sent = self.sent.map_or(own.sent, |sent| sent as usize);
+        let received = self
+            .received
+            .map_or(own.received, |received| received as usize);
+        let complete = own.sent == sent && sent > 0;
+        let figure = |reported: Option<u64>, computed: Option<Duration>| {
+            reported
+                .map(Duration::from_micros)
+                .or(if complete { computed } else { None })
+        };
+        HopStats {
+            sent,
+            received: received.min(sent),
+            min: figure(self.min, own.min),
+            mean: figure(self.mean, own.mean),
+            max: figure(self.max, own.max),
+            jitter: figure(self.jitter, own.jitter),
+            p50: figure(self.p50, own.p50),
+            p95: figure(self.p95, own.p95),
+            reported_loss: self.loss_percent.map(|percent| percent / 100.0),
+        }
+    }
 }
 
 impl Hop {
@@ -152,12 +212,16 @@ impl Hop {
             ttl,
             probes: vec![Slot::Pending; queries],
             is_destination: false,
+            reported: None,
         }
     }
 
     /// The first host that answered at this hop.
     pub fn address(&self) -> Option<IpAddr> {
-        self.probes.iter().find_map(Slot::from)
+        self.probes
+            .iter()
+            .find_map(Slot::from)
+            .or_else(|| self.reported.as_ref()?.address)
     }
 
     /// Every host that answered, in the order they first did. More than one means the path
@@ -168,6 +232,9 @@ impl Hop {
             if !seen.contains(&address) {
                 seen.push(address);
             }
+        }
+        if seen.is_empty() {
+            seen.extend(self.address());
         }
         seen
     }
@@ -188,7 +255,11 @@ impl Hop {
     }
 
     pub fn stats(&self) -> HopStats {
-        HopStats::of(&self.probes)
+        let own = HopStats::of(&self.probes);
+        match &self.reported {
+            Some(reported) => reported.stats(own),
+            None => own,
+        }
     }
 }
 
@@ -204,6 +275,8 @@ pub struct HopStats {
     pub jitter: Option<Duration>,
     pub p50: Option<Duration>,
     pub p95: Option<Duration>,
+    /// The loss a report states, as a fraction, when the run came as one.
+    pub reported_loss: Option<f64>,
 }
 
 impl HopStats {
@@ -241,6 +314,7 @@ impl HopStats {
             jitter,
             p50: percentile(0.5),
             p95: percentile(0.95),
+            reported_loss: None,
         }
     }
 
@@ -249,6 +323,9 @@ impl HopStats {
     }
 
     pub fn loss_fraction(&self) -> f64 {
+        if let Some(loss) = self.reported_loss {
+            return loss;
+        }
         if self.sent == 0 {
             0.0
         } else {
@@ -413,6 +490,11 @@ pub struct Run {
     /// The path MTU, when the run looked for it (`traceroute --mtu`).
     #[serde(default)]
     pub mtu: Option<crate::mtu::PathMtu>,
+    /// The report this run came as, when another surface made it: the app, a node, or a
+    /// version of the CLI whose record this one can't read. Its sentences and figures are
+    /// shown as they came. None is a run with a record of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<Box<Report>>,
 }
 
 impl Run {
@@ -438,7 +520,232 @@ impl Run {
             bgp: None,
             tcp: None,
             mtu: None,
+            report: None,
         }
+    }
+
+    /// A run from its report alone. The sentences stay the maker's (`summary`, `reading`), the
+    /// figures are the report's, and what it doesn't carry is absent. A probing tool gets its
+    /// hops back, with every probe when the report has samples. None is a tool this version
+    /// doesn't know.
+    pub fn from_report(report: &Report, id: &str, from: Option<String>) -> Option<Self> {
+        let tool = Tool::ALL
+            .into_iter()
+            .find(|tool| tool.title().eq_ignore_ascii_case(&report.tool))?;
+        let micros = |milliseconds: f64| (milliseconds * 1000.0).round().max(0.0) as u64;
+        let destination: Option<IpAddr> = report
+            .address
+            .as_deref()
+            .and_then(|address| address.parse().ok());
+        let slots = |samples: &[Option<f64>], from: Option<IpAddr>| -> Vec<Slot> {
+            let Some(from) = from else {
+                return Vec::new();
+            };
+            samples
+                .iter()
+                .map(|sample| match sample {
+                    Some(milliseconds) => Slot::Reply {
+                        from,
+                        micros: micros(*milliseconds),
+                        unreachable: None,
+                        ttl: None,
+                    },
+                    None => Slot::Lost,
+                })
+                .collect()
+        };
+        let mut run = Run::new(tool, &report.target, FamilyChoice::Auto, 0, 0);
+        run.id = id.to_string();
+        run.destination = destination;
+        run.family = match report.family.as_deref() {
+            Some("IPv4") => FamilyChoice::V4,
+            Some("IPv6") => FamilyChoice::V6,
+            _ => FamilyChoice::Auto,
+        };
+        run.started_at = format::seconds_of(&report.started_at).unwrap_or_else(format::now);
+        run.outcome = Some(match report.outcome.as_str() {
+            "reached" => Outcome::Reached,
+            "exhausted" => Outcome::Exhausted,
+            "failed" => Outcome::Failed(
+                report
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| report.summary.clone()),
+            ),
+            _ => Outcome::Stopped,
+        });
+        run.source = report
+            .origin
+            .source_address
+            .as_deref()
+            .and_then(|address| address.parse().ok());
+        run.public_source = report
+            .origin
+            .public_address
+            .as_deref()
+            .and_then(|address| address.parse().ok());
+        run.from = from;
+        for hop in report.hops.iter().flatten() {
+            let address: Option<IpAddr> = hop
+                .address
+                .as_deref()
+                .and_then(|address| address.parse().ok());
+            if let Some(address) = address {
+                if let Some(name) = &hop.hostname {
+                    run.names.insert(address, name.clone());
+                }
+                let number = hop
+                    .asn
+                    .as_deref()
+                    .and_then(|label| label.trim_start_matches("AS").parse().ok());
+                if let Some(number) = number {
+                    run.networks.insert(
+                        address,
+                        Some(Network {
+                            number,
+                            name: hop.network.clone().unwrap_or_default(),
+                            country: None,
+                            city: None,
+                            prefix: None,
+                        }),
+                    );
+                }
+            }
+            run.hops.push(Hop {
+                ttl: hop.ttl,
+                probes: slots(hop.samples.as_deref().unwrap_or_default(), address),
+                is_destination: false,
+                reported: Some(Reported {
+                    address,
+                    sent: hop.sent,
+                    received: hop.received,
+                    loss_percent: hop.loss_percent,
+                    min: hop.min_milliseconds.map(micros),
+                    mean: hop.avg_milliseconds.map(micros),
+                    max: hop.max_milliseconds.map(micros),
+                    jitter: hop.jitter_milliseconds.map(micros),
+                    p50: None,
+                    p95: None,
+                }),
+            });
+        }
+        // The destination's figures are the run's own: `measured` names them.
+        let whole = Reported {
+            address: destination,
+            sent: report.figure("sent").map(|sent| sent as u32),
+            received: report.figure("received").map(|received| received as u32),
+            loss_percent: report.figure("loss"),
+            min: report.figure("min").map(micros),
+            mean: report.figure("avg").map(micros),
+            max: report.figure("max").map(micros),
+            jitter: report.figure("jitter").map(micros),
+            p50: report.figure("p50").map(micros),
+            p95: report.figure("p95").map(micros),
+        };
+        if tool == Tool::Ping {
+            run.hops = vec![Hop {
+                ttl: 0,
+                probes: slots(report.samples.as_deref().unwrap_or_default(), destination),
+                is_destination: true,
+                reported: Some(whole),
+            }];
+        } else {
+            // The destination is the last hop that answered from the run's own address. A run
+            // that was stopped by hand reached it too, so the outcome alone doesn't say.
+            let reached = report.outcome == "reached";
+            let is_destination = run.hops.last().is_some_and(|last| match destination {
+                Some(destination) => last.address() == Some(destination),
+                None => reached,
+            }) || (reached && !run.hops.is_empty());
+            if let Some(last) = run.hops.last_mut().filter(|_| is_destination) {
+                last.is_destination = true;
+                if let Some(samples) = report.samples.as_deref().filter(|kept| !kept.is_empty()) {
+                    last.probes = slots(samples, last.address().or(destination));
+                }
+                let address = last.address();
+                last.reported = Some(Reported { address, ..whole });
+            }
+        }
+        run.queries = run
+            .hops
+            .iter()
+            .map(|hop| hop.probes.len())
+            .max()
+            .unwrap_or(0)
+            .min(usize::from(u8::MAX)) as u8;
+        run.max_ttl = run.hops.last().map_or(0, |hop| hop.ttl);
+        if tool == Tool::Mtr {
+            // The report keeps a hop's newest rounds. The ones before them were dropped.
+            let rounds = run
+                .hops
+                .iter()
+                .map(|hop| hop.probes.len())
+                .max()
+                .unwrap_or(0);
+            let sent = run
+                .hops
+                .iter()
+                .filter_map(|hop| hop.reported.as_ref()?.sent)
+                .max()
+                .unwrap_or(0) as usize;
+            run.first_round = sent.saturating_sub(rounds) as u32;
+            // Every hop of an MTR has a slot per round, so short hops are padded at the front.
+            for hop in &mut run.hops {
+                if !hop.probes.is_empty() && hop.probes.len() < rounds {
+                    let mut padded = vec![Slot::Lost; rounds - hop.probes.len()];
+                    padded.append(&mut hop.probes);
+                    hop.probes = padded;
+                }
+            }
+        }
+        run.tcp = report.probe.as_ref().map(|probe| crate::tcp::TcpProbe {
+            port: probe.port,
+            state: match probe.state.as_deref() {
+                Some("open") => Some(crate::tcp::PortState::Open),
+                Some("closed") => Some(crate::tcp::PortState::Closed),
+                Some("filtered") => Some(crate::tcp::PortState::Filtered),
+                _ => None,
+            },
+            connect_micros: report.figure("connect").map(micros),
+            mss: report.figure("mss").map(|mss| mss as u16),
+        });
+        run.mtu = report.mtu.as_ref().map(|mtu| crate::mtu::PathMtu {
+            finding: match mtu.finding.as_str() {
+                "full" => crate::mtu::MtuFinding::Full,
+                "limited" => crate::mtu::MtuFinding::Limited,
+                "silent" => crate::mtu::MtuFinding::Silent,
+                _ => crate::mtu::MtuFinding::Unknown,
+            },
+            mtu: mtu.bytes,
+            limited_by: mtu
+                .limited_by
+                .as_deref()
+                .and_then(|address| address.parse().ok()),
+            tried: mtu.tried,
+        });
+        run.report = Some(Box::new(report.clone()));
+        Some(run)
+    }
+
+    /// What the result likely means, as the maker of the run put it, for a run that came as a
+    /// report. A reader shows these sentences and never works them out again from figures it
+    /// only has part of. None is a run made here.
+    pub fn reading(&self) -> Option<&[String]> {
+        self.report
+            .as_ref()
+            .map(|report| report.interpretation.as_slice())
+    }
+
+    /// True for a run that came as a report and whose tool keeps its result in a record of
+    /// its own (DNS, BGP, iperf3), which a report doesn't carry.
+    pub fn is_report_only(&self) -> bool {
+        self.report.is_some()
+            && match self.tool {
+                Tool::Dns => self.dns.is_none(),
+                Tool::Bgp => self.bgp.is_none(),
+                Tool::Iperf3 => true,
+                _ => false,
+            }
     }
 
     pub fn is_running(&self) -> bool {
@@ -808,7 +1115,9 @@ impl Run {
 
     /// What the packets of a ping run add up to.
     pub fn ping_stats(&self) -> HopStats {
-        HopStats::of(self.packets())
+        self.hops
+            .first()
+            .map_or_else(|| HopStats::of(&[]), Hop::stats)
     }
 
     /// "20 pkt · 0.0% loss · 11.2 ms avg", the words the app's rows use for ping.
@@ -947,6 +1256,10 @@ impl Run {
 
     /// "8 hops · 12.4 ms", the same words the app's rows use.
     pub fn summary(&self) -> String {
+        // A run that came as a report says it in its maker's words.
+        if let Some(report) = &self.report {
+            return report.summary.clone();
+        }
         if self.tool == Tool::Dns {
             // The app's words for DNS: the addresses, whether the sources agree, and DNSSEC.
             let found = self.dns.as_ref().filter(|dns| !dns.is_empty());

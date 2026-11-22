@@ -1213,6 +1213,10 @@ impl App {
             self.pane = Pane::Start;
             return;
         };
+        if run.is_report_only() {
+            self.report_key(key);
+            return;
+        }
         if run.tool == Tool::Dns {
             self.dns_key(key);
             return;
@@ -1334,6 +1338,26 @@ impl App {
     }
 
     /// Keys of a DNS result: the tabs, the rows in them, and a record's details.
+    /// A run shown from its report: nothing in it to select, so the keys are the run's own.
+    fn report_key(&mut self, key: KeyEvent) {
+        let Some(run) = self.run() else { return };
+        let (tool, target) = (run.tool, run.target.clone());
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
+            KeyCode::Char('f') => self.toggle_favorite(&target),
+            KeyCode::Char('R') if tool.is_available() => self.start_with(tool, &target),
+            KeyCode::Char('r') => self.open_result_launcher(),
+            KeyCode::Char('s') => self.toggle_save(),
+            KeyCode::Char('a') => {
+                if let Some(run) = self.run().cloned() {
+                    self.open_picker(run);
+                }
+            }
+            KeyCode::Char('?') => self.help = true,
+            _ => {}
+        }
+    }
+
     fn dns_key(&mut self, key: KeyEvent) {
         let Some(run) = self.run() else { return };
         let running = run.is_running();
@@ -1683,6 +1707,16 @@ impl App {
                 ("\u{2190}", "Close"),
             ];
         }
+        if self.pane == Pane::Result {
+            if let Some(run) = self.run().filter(|run| run.is_report_only()) {
+                let mut keys = vec![("s", "Save"), ("a", "Add to Case"), ("f", "Favorite")];
+                if run.tool.is_available() {
+                    keys.push(("R", "Run Again"));
+                }
+                keys.extend([("r", "Run"), ("\u{2190}", "Back"), ("?", "Help")]);
+                return keys;
+            }
+        }
         let is_bgp = self.run().is_some_and(|run| run.tool == Tool::Bgp);
         if is_bgp && self.pane == Pane::Result {
             return self.bgp_keys();
@@ -1926,7 +1960,14 @@ impl App {
                 format!("{} {}", network.label(), network.name)
             });
         let style = Style { color: true };
-        let status = if run.tool == Tool::Bgp {
+        let status = if let Some(report) = run.report.as_deref().filter(|_| run.is_report_only()) {
+            // The maker's status line, painted by how the run ended.
+            match report.outcome.as_str() {
+                "reached" => style.bold_green(&report.summary),
+                "failed" => style.red("Failed"),
+                _ => style.yellow(&report.summary),
+            }
+        } else if run.tool == Tool::Bgp {
             self.bgp_status(run, style)
         } else if run.tool == Tool::Dns {
             let found = run.dns.as_ref().filter(|dns| !dns.is_empty());
@@ -2059,17 +2100,19 @@ impl App {
             );
         }
         // A BGP lookup probes nothing. It has who was asked, a prefix and the origin AS.
-        if run.tool == Tool::Bgp {
+        if run.tool == Tool::Bgp && !run.is_report_only() {
             let [source, prefix, network] = Self::bgp_info(run);
             info[1] = (source.0, value(source.1));
             info[3] = (prefix.0, value(prefix.1));
             info[4] = (network.0, value(network.1));
         }
         if let Shown::Saved(saved) = shown {
+            // A run another install made names it, as the list's FROM column does.
+            let origin = saved.from.as_deref().unwrap_or("this device");
             info[0] = (
                 "Origin",
                 value(format!(
-                    "this device \u{00B7} {}",
+                    "{origin} \u{00B7} {}",
                     format::relative(saved.started_at, format::now())
                 )),
             );
@@ -2503,31 +2546,40 @@ impl App {
         let table_focused = !self.details_focus;
         let Some(shown) = &self.shown else { return };
         let run = shown.run();
-        let (name, count) = if run.tool == Tool::Bgp {
-            ("BGP", Self::bgp_count(run))
-        } else if run.tool == Tool::Dns {
-            let records = run.dns.as_ref().map_or(0, DnsResult::answer_count);
-            (
-                "DNS",
-                if records == 1 {
-                    "1 record".to_string()
-                } else {
-                    format!("{records} records")
-                },
-            )
-        } else if run.tool == Tool::Ping {
-            ("Ping", format!("{} pkt", run.ping_stats().sent))
-        } else if run.tool == Tool::Mtr {
-            let rounds = run
-                .path()
-                .iter()
-                .map(|hop| hop.stats().sent)
-                .max()
-                .unwrap_or(0);
-            ("MTR", format!("{rounds} rounds"))
-        } else {
-            ("Traceroute", run.path_len().to_string())
-        };
+        let (name, count) =
+            if let Some(report) = run.report.as_deref().filter(|_| run.is_report_only()) {
+                let records = report.records.as_ref().map_or(0, Vec::len);
+                let count = match (run.tool, records) {
+                    (Tool::Dns, 1) => "1 record".to_string(),
+                    (Tool::Dns, records) => format!("{records} records"),
+                    _ => "report".to_string(),
+                };
+                (run.tool.title(), count)
+            } else if run.tool == Tool::Bgp {
+                ("BGP", Self::bgp_count(run))
+            } else if run.tool == Tool::Dns {
+                let records = run.dns.as_ref().map_or(0, DnsResult::answer_count);
+                (
+                    "DNS",
+                    if records == 1 {
+                        "1 record".to_string()
+                    } else {
+                        format!("{records} records")
+                    },
+                )
+            } else if run.tool == Tool::Ping {
+                ("Ping", format!("{} pkt", run.ping_stats().sent))
+            } else if run.tool == Tool::Mtr {
+                let rounds = run
+                    .path()
+                    .iter()
+                    .map(|hop| hop.stats().sent)
+                    .max()
+                    .unwrap_or(0);
+                ("MTR", format!("{rounds} rounds"))
+            } else {
+                ("Traceroute", run.path_len().to_string())
+            };
         let block = panel_with(name, &run.target, &count, table_focused);
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -2539,6 +2591,21 @@ impl App {
                 )),
                 inner,
             );
+            return;
+        }
+        if run.is_report_only() {
+            // The report's page: status line, figures, records, sources, interpretation.
+            let style = Style { color: true };
+            // The header's Status line already says the first line of it.
+            let lines: Vec<Line> = std::iter::once(String::new())
+                .chain(
+                    pretty::report_lines(run, style, usize::from(inner.width).saturating_sub(2))
+                        .into_iter()
+                        .skip(1),
+                )
+                .map(|line| ansi_line(&format!(" {line}")))
+                .collect();
+            frame.render_widget(Paragraph::new(lines), inner);
             return;
         }
         if run.tool == Tool::Bgp {
@@ -3607,7 +3674,17 @@ impl App {
                 )),
             ])
         };
-        lines.push(verdict_line);
+        match run.reading() {
+            // A run that came as a report says it in its maker's words.
+            Some(reading) => {
+                for sentence in reading {
+                    for line in pretty::wrap(sentence, columns.saturating_sub(2).clamp(20, 110)) {
+                        lines.push(Line::raw(format!(" {line}")));
+                    }
+                }
+            }
+            None => lines.push(verdict_line),
+        }
         lines.push(Line::default());
 
         let packets = run.packets();
@@ -5092,6 +5169,89 @@ mod tests {
             .contains("a tool and a target"));
     }
 
+    /// Every fixture of the report's contract as a run another install made.
+    fn fixture_runs() -> Vec<(String, Run)> {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/fixtures");
+        let mut names: Vec<String> = std::fs::read_dir(&folder)
+            .unwrap()
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .filter(|name| name.ends_with(".json"))
+            .collect();
+        names.sort();
+        names
+            .into_iter()
+            .map(|name| {
+                let report: rvrs_core::report::Report =
+                    serde_json::from_slice(&std::fs::read(folder.join(&name)).unwrap()).unwrap();
+                let run = Run::from_report(&report, "abc234", Some("iPhone".into())).unwrap();
+                (name, run)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_fixture_opens_from_its_report_alone() {
+        for (name, run) in fixture_runs() {
+            let report = run.report.clone().unwrap();
+            let mut app = app_with(vec![run]);
+            press(&mut app, KeyCode::Down);
+            press(&mut app, KeyCode::Enter);
+            let text = screen(&mut app, 170, 50).join("\n");
+            assert!(text.contains(&report.target), "{name}\n{text}");
+            // The maker's sentences are on screen as they came.
+            for sentence in &report.interpretation {
+                let start: String = sentence.chars().take(40).collect();
+                assert!(text.contains(&start), "{name}: {start}\n{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_dns_lookup_from_its_report_shows_records_and_sources_without_tabs() {
+        let (_, run) = fixture_runs()
+            .into_iter()
+            .find(|(name, _)| name == "dns.json")
+            .unwrap();
+        let report = run.report.clone().unwrap();
+        let mut app = app_with(vec![run]);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        let text = screen(&mut app, 170, 50).join("\n");
+        for part in [
+            report.summary.as_str(),
+            "Origin:   iPhone",
+            "Records",
+            "Sources",
+            "Match",
+            "Run Again",
+        ] {
+            assert!(text.contains(part), "{part}\n{text}");
+        }
+        assert!(!text.contains("<1> Overview"), "{text}");
+        // Left goes back to the list, as from any run.
+        press(&mut app, KeyCode::Left);
+        assert!(screen(&mut app, 170, 50).join("\n").contains("Recent"));
+    }
+
+    #[test]
+    fn a_ping_from_its_report_keeps_its_figures_and_its_makers_verdict() {
+        let (_, run) = fixture_runs()
+            .into_iter()
+            .find(|(name, _)| name == "ping.json")
+            .unwrap();
+        let report = run.report.clone().unwrap();
+        let mut app = app_with(vec![run]);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        let text = screen(&mut app, 170, 50).join("\n");
+        assert!(text.contains("LATENCY BY PACKET"), "{text}");
+        assert!(
+            text.contains(&format!("SENT {}", report.figure("sent").unwrap())),
+            "{text}"
+        );
+        assert!(text.contains("Origin:   iPhone"), "{text}");
+    }
+
     #[test]
     fn a_dns_lookup_has_four_tabs_and_a_record_opens_beside_them() {
         let mut app = app_with(vec![crate::dig::tests::finished()]);
@@ -5498,6 +5658,7 @@ mod tests {
                 Slot::Pending,
             ],
             is_destination: false,
+            reported: None,
         };
         let jitter = jitter_series(&hop);
         assert_eq!(jitter.len(), 5);

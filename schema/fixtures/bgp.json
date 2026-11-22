@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "bgp7ka",
+  "tool": "BGP",
+  "target": "example.com",
+  "address": "192.0.2.10",
+  "family": null,
+  "startedAt": "2026-11-15T09:30:00Z",
+  "origin": {
+    "kind": "device",
+    "node": null,
+    "install": null,
+    "sourceAddress": null,
+    "publicAddress": null
+  },
+  "outcome": "reached",
+  "summary": "AS64500 · Valid · 318/320 peers",
+  "error": null,
+  "measured": [
+    {
+      "name": "peers seeing",
+      "value": 318.0,
+      "unit": null
+    },
+    {
+      "name": "peers total",
+      "value": 320.0,
+      "unit": null
+    },
+    {
+      "name": "distinct paths",
+      "value": 3.0,
+      "unit": null
+    },
+    {
+      "name": "origin asn",
+      "value": 64500.0,
+      "unit": null
+    },
+    {
+      "name": "ipv4 prefixes",
+      "value": 1.0,
+      "unit": null
+    },
+    {
+      "name": "ipv6 prefixes",
+      "value": 1.0,
+      "unit": null
+    }
+  ],
+  "hops": null,
+  "records": null,
+  "sources": null,
+  "probe": null,
+  "mtu": null,
+  "samples": null,
+  "interpretation": [
+    "Routed and authorized. 192.0.2.0/24 is announced by AS64500 Example Net, seen by 318 of 320 collector peers. A ROA authorizes this origin AS."
+  ],
+  "sentence": "Routed and authorized. 192.0.2.0/24 is announced by AS64500 Example Net, seen by 318 of 320 collector peers."
+}

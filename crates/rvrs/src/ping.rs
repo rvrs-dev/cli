@@ -527,8 +527,16 @@ pub fn closing_lines(run: &Run, style: Style, width: usize) -> Vec<String> {
             "{lead}{}",
             style.dim(&format!(" \u{00B7} {}", run.packet_summary()))
         ));
-        if stats.sent > 0 {
-            out.extend(pretty::wrap(SILENT_TARGET, width.clamp(40, 100)));
+        match run.reading() {
+            Some(reading) => {
+                for sentence in reading {
+                    out.extend(pretty::wrap(sentence, width.clamp(40, 100)));
+                }
+            }
+            None if stats.sent > 0 => {
+                out.extend(pretty::wrap(SILENT_TARGET, width.clamp(40, 100)));
+            }
+            None => {}
         }
         return out;
     }
@@ -553,6 +561,13 @@ pub fn closing_lines(run: &Run, style: Style, width: usize) -> Vec<String> {
     .collect();
     if !figures.is_empty() {
         out.push(style.dim(&format!("{} ms", figures.join(" \u{00B7} "))));
+    }
+    // A run that came as a report says it in its maker's words.
+    if let Some(reading) = run.reading() {
+        for sentence in reading {
+            out.extend(pretty::wrap(sentence, width.clamp(40, 100)));
+        }
+        return out;
     }
     let verdict = Verdict::of(&stats);
     if verdict.grade != Grade::Collecting {

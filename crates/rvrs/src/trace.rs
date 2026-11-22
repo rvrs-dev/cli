@@ -266,6 +266,28 @@ pub fn style_error(style: Style, message: &str) -> String {
 
 /// A saved run in the look that fits where the output goes.
 pub fn show(run: &Run, json: bool, classic: bool, style: Style) {
+    if run.is_report_only() {
+        // A run another surface made, whose record a report doesn't carry.
+        if json {
+            println!("{}", Report::of(run).json());
+            return;
+        }
+        let (width, _) = term::size();
+        let view = pretty::View {
+            run,
+            style,
+            width,
+            frame: 0,
+            elapsed: None,
+            looking_up: false,
+        };
+        println!("{}", pretty::title(&view));
+        println!();
+        for line in pretty::report_lines(run, style, width) {
+            println!("{line}");
+        }
+        return;
+    }
     if run.tool == rvrs_core::model::Tool::Mtr {
         match look(json, classic, false) {
             Look::Json => println!("{}", Report::of(run).json()),

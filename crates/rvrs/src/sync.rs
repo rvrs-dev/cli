@@ -80,7 +80,14 @@ struct State {
     /// here, so a device that can't show a run never removes it from the account.
     #[serde(default)]
     unshown: BTreeSet<String>,
+    /// Which kinds of run this state was read with. A version that can show more starts
+    /// reading again from the newest runs, once, so what an earlier one skipped appears.
+    #[serde(default)]
+    reads: u32,
 }
+
+/// What this version reads: 1 was this CLI's own runs, 2 is every run with a report.
+const READS: u32 = 2;
 
 fn folder() -> PathBuf {
     paths::data_dir()
@@ -345,24 +352,52 @@ fn send(state: &mut State, done: &mut Done) -> Result<(), String> {
     Ok(())
 }
 
-/// The run a `GET /v1/runs` entry carries, when it is in this CLI's format.
+/// The run a `GET /v1/runs` entry carries. A run this CLI made on another device comes with
+/// its own record. Any other run, from the app, a node or a version of the CLI whose record
+/// this one can't read, is built from its report, which every surface shares. None is a tool
+/// this version doesn't know.
 fn run_of(entry: &Value) -> Option<(String, Run)> {
     let id = entry["id"].as_str()?;
-    if entry["detail"]["format"].as_str()? != FORMAT {
-        return None;
+    let from = entry["install"]["name"]
+        .as_str()
+        .unwrap_or("another install")
+        .to_string();
+    if entry["detail"]["format"].as_str() == Some(FORMAT) {
+        if let Ok(mut run) = serde_json::from_value::<Run>(entry["detail"]["run"].clone()) {
+            run.from = Some(from);
+            return Some((id.to_string(), run));
+        }
     }
-    let mut run: Run = serde_json::from_value(entry["detail"]["run"].clone()).ok()?;
-    run.from = Some(
-        entry["install"]["name"]
-            .as_str()
-            .unwrap_or("another install")
-            .to_string(),
-    );
+    let report: Report = serde_json::from_value(entry["report"].clone()).ok()?;
+    let run = Run::from_report(&report, &local_id(id), Some(from))?;
     Some((id.to_string(), run))
+}
+
+/// A short id for a run the account handed over without one of this CLI's: six letters worked
+/// out from its id in the account, so the same run gets the same id every time it is read.
+fn local_id(account_id: &str) -> String {
+    const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    // FNV-1a.
+    let mut value = account_id
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    (0..6)
+        .map(|_| {
+            let letter = ALPHABET[(value % ALPHABET.len() as u64) as usize] as char;
+            value /= ALPHABET.len() as u64;
+            letter
+        })
+        .collect()
 }
 
 /// Reads the runs the person's other installs made since the last time.
 fn receive(state: &mut State, done: &mut Done) -> Result<(), String> {
+    if state.reads < READS {
+        state.cursor = None;
+        state.reads = READS;
+    }
     let own = History::at(folder().join("history.json"));
     let mut kept = history::account_runs();
     let mut changed = false;
@@ -484,16 +519,7 @@ pub fn merge(base: &Library, local: &Library, remote: &Library) -> Library {
 
 /// Seconds since 1970 of an ISO 8601 moment in UTC, as the API writes them.
 fn seconds_of(moment: &str) -> Option<u64> {
-    let number = |range: std::ops::Range<usize>| moment.get(range)?.parse::<i64>().ok();
-    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
-    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
-    // Days from the civil date, after Howard Hinnant.
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let of_era = year.rem_euclid(400);
-    let of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
-    let days = era * 146_097 + of_era * 365 + of_era / 4 - of_era / 100 + of_year - 719_468;
-    u64::try_from(days * 86_400 + hour * 3600 + minute * 60 + second).ok()
+    format::seconds_of(moment)
 }
 
 /// What this device keeps, in the account's terms. A saved run the account doesn't have yet is
@@ -915,6 +941,7 @@ mod tests {
                     ttl: None,
                 }],
                 is_destination: false,
+                reported: None,
             });
         }
         let cache = Cache::at(
@@ -951,5 +978,56 @@ mod tests {
             sentence(&done),
             "Sent 1 run. Received 3 runs. 2 runs waiting. The rvrs API didn't take them."
         );
+    }
+    #[test]
+    fn a_run_another_surface_made_is_read_from_its_report() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/fixtures");
+        let report: Value =
+            serde_json::from_slice(&std::fs::read(folder.join("mtr.json")).unwrap()).unwrap();
+        let entry = json!({
+            "id": "0b6f6a1e-52a5-4c0f-9d0e-3b0f5d0a7c11",
+            "install": { "id": "i1", "name": "iPhone" },
+            "report": report,
+            "detail": { "format": "ios-run", "run": { "anything": true } },
+        });
+        let (account_id, run) = run_of(&entry).unwrap();
+        assert_eq!(account_id, "0b6f6a1e-52a5-4c0f-9d0e-3b0f5d0a7c11");
+        assert_eq!(run.from.as_deref(), Some("iPhone"));
+        assert_eq!(run.summary(), report["summary"].as_str().unwrap());
+        assert_eq!(run.hops.len(), 3);
+        // The id is short, and the same every time this run is read.
+        assert_eq!(run.id.len(), 6);
+        assert_eq!(run_of(&entry).unwrap().1.id, run.id);
+
+        // A run without a record of any kind is read the same way.
+        let bare = json!({ "id": "r2", "install": { "name": "node-1" }, "report": report });
+        assert_eq!(run_of(&bare).unwrap().1.from.as_deref(), Some("node-1"));
+
+        // A tool this version doesn't know is left out.
+        let mut unknown = entry.clone();
+        unknown["report"]["tool"] = json!("Port Scan");
+        assert!(run_of(&unknown).is_none());
+    }
+
+    #[test]
+    fn a_run_this_cli_made_elsewhere_keeps_its_own_record() {
+        let mut own = Run::new(
+            rvrs_core::model::Tool::Ping,
+            "example.com",
+            rvrs_core::FamilyChoice::Auto,
+            1,
+            0,
+        );
+        own.id = "mine22".into();
+        let entry = json!({
+            "id": "r3",
+            "install": { "name": "laptop" },
+            "report": Report::of(&own),
+            "detail": { "format": FORMAT, "run": own },
+        });
+        let (_, run) = run_of(&entry).unwrap();
+        assert_eq!(run.id, "mine22");
+        assert!(run.report.is_none());
+        assert_eq!(run.from.as_deref(), Some("laptop"));
     }
 }

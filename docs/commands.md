@@ -98,7 +98,7 @@ A report prints whatever the outcome, and the error goes to stderr. [rvrs for ag
 
 Every tool runs without an account, and runs stay in this device's history whether you sign in or not.
 
-Signed in, every run you make is also kept in your account, where app.rvrs.dev lists it under Runs. Saved runs, cases and favorites are kept there too, so they are the same on every device you sign in on. A device you sign in on later gets your newest 200 runs from the other devices, every saved run, and from then on what is new. `rvrs history` names the install a run came from in a FROM column, and `--json` carries it as `origin.install`.
+Signed in, every run you make is also kept in your account, where app.rvrs.dev lists it under Runs. Saved runs, cases and favorites are kept there too, so they are the same on every device you sign in on. A device you sign in on later gets your newest 200 runs from the other devices, every saved run, and from then on what is new. `rvrs history` names the install a run came from in a FROM column, and `--json` carries it as `origin.install`. Runs made in the iOS app are among them: `rvrs show` and the Console open them from their report, with the app's own summary and interpretation. A DNS or BGP lookup and an iperf3 test from the app show their figures, records and sources. Run the tool again here for the rest.
 
 rvrs syncs on its own: after each run, and at most every ten minutes when it starts. `rvrs sync` does it now and says what went each way. A run made offline waits on this device and goes with the next sync, for up to a week. `RVRS_SYNC=0` turns syncing off, so a signed-in install keeps its runs to itself.
 
