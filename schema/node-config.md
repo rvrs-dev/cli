@@ -74,7 +74,7 @@ Tags and the place are text that everyone in the workspace reads. Put no address
 
 ## What a package writes
 
-Packaging is not built. When it is, a package writes the settings once and the node reads them at every start.
+The container image is built: `ghcr.io/rvrs-dev/rvrs`. The other packages are not. A package writes the settings once and the node reads them at every start.
 
 | Package | Writes |
 | --- | --- |

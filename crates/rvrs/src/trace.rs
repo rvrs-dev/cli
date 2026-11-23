@@ -39,7 +39,7 @@ pub fn look(json: bool, classic: bool, multicall: bool) -> Look {
     }
 }
 
-/// What --fleet says until nodes exist.
+/// What --fleet says until a run can be asked of every node at once.
 pub const NO_FLEET: &str =
     "A run from every node at once isn't available yet. --node <name> runs from one node.";
 

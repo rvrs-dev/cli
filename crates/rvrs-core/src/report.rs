@@ -123,7 +123,7 @@ pub struct ReportOrigin {
     /// What made the run: `device` (a person's own install) today, `node` once nodes exist.
     /// A reader that meets a kind it doesn't know treats the run as from somewhere else.
     pub kind: String,
-    /// The node's name. `null` is this device, the only origin until nodes exist.
+    /// The node's name. `null` is this device.
     pub node: Option<String>,
     /// The node's id, which never changes. A report a device made has none, and the key is
     /// left out of it.
@@ -1324,7 +1324,7 @@ mod tests {
         run.public_source = Some("203.0.113.9".parse().unwrap());
         let report = Report::of(&run);
         assert_eq!(report.id, run.id);
-        // Until nodes exist every run is made from this device.
+        // A run made here names no node.
         assert_eq!(report.origin.kind, "device");
         assert_eq!(report.origin.node, None);
         assert_eq!(report.schema, 1);

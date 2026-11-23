@@ -46,7 +46,7 @@ curl -fsSL https://rvrs.dev/install.sh | sh
 
 - It tests one TCP port at a time, the one you ask about. It does not scan ports.
 - It never clears history or deletes saved runs or cases unless you ask for exactly that.
-- It measures from this device. Runs from other networks need rvrs nodes, which are not released. The skill says so when a question needs one and uses them once `rvrs status` reports them.
+- It measures from this device. A run from another network takes an rvrs node there. The skill says so when a question needs one, and uses a node once `rvrs status` counts one that is online.
 
 ## Privacy
 
