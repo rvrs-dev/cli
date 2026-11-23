@@ -47,8 +47,25 @@ pub fn enabled() -> bool {
     !off("RVRS_PULSE", "0") && !off("DO_NOT_TRACK", "1")
 }
 
+/// Which rvrs this is to the pulse: the CLI, or a node. `rvrs node` says so for itself and for
+/// the process it starts to send its pulse.
+pub const ENV_PRODUCT: &str = "RVRS_PULSE_PRODUCT";
+
+fn product() -> &'static str {
+    if std::env::var(ENV_PRODUCT).is_ok_and(|product| product == "node") {
+        "node"
+    } else {
+        "cli"
+    }
+}
+
+/// A node counts apart from a CLI on the same machine, so neither sends the other's runs.
 fn counts_path() -> std::path::PathBuf {
-    paths::data_dir().join("pulse.json")
+    paths::data_dir().join(if product() == "node" {
+        "pulse-node.json"
+    } else {
+        "pulse.json"
+    })
 }
 
 fn read() -> Counts {
@@ -89,6 +106,14 @@ pub fn count_open() {
     counts.opens += 1;
     write(&counts);
     send_when_due(&mut counts);
+}
+
+/// Sends the pulse when one is due. A node asks with every heartbeat, since it starts once
+/// and runs for months.
+pub fn when_due() {
+    if enabled() {
+        send_when_due(&mut read());
+    }
 }
 
 /// Counts one run of a tool.
@@ -198,7 +223,7 @@ fn payload(counts: &Counts, install: &str, day: &str) -> serde_json::Value {
     serde_json::json!({
         "schema": 1,
         "app": "rvrs",
-        "product": "cli",
+        "product": product(),
         "version": VERSION,
         "build": COMMIT,
         "os": system(),

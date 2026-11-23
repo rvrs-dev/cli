@@ -17,6 +17,7 @@ mod node;
 mod ping;
 mod pretty;
 mod pulse;
+mod remote;
 mod style;
 mod sync;
 mod term;
@@ -103,10 +104,16 @@ fn main() -> ExitCode {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     arguments.remove(0);
+    // The flags of waiting for a run from a node belong to no tool, so they are read first.
+    if let Err(message) = remote::take_flags(&mut arguments) {
+        return usage(&message);
+    }
     // Every start counts as an open, as an app's launch does, except rvrs's own hidden helpers.
+    // A node is no person's install: it has a token of its own, and until it has one it makes
+    // no call at all. So it counts no open and starts no sync.
     if !arguments
         .first()
-        .is_some_and(|command| command.starts_with("__"))
+        .is_some_and(|command| command.starts_with("__") || command == "node")
     {
         pulse::count_open();
         // The account commands sync themselves, or end what a sync would need.
@@ -174,8 +181,8 @@ fn main() -> ExitCode {
         "logout" => account::logout(rest),
         "share" => fail("Share links aren't available yet. To send a run, print it as a report with rvrs last --json."),
         "node" => node::run(rest),
-        "nodes" => fail("Nodes aren't available yet, so runs come from this device. The waitlist is at rvrs.dev."),
-        "schedule" | "schedules" | "alerts" => fail("Schedules and alerts come with nodes, which aren't available yet. The waitlist is at rvrs.dev."),
+        "nodes" => remote::nodes(rest),
+        "schedule" | "schedules" | "alerts" => fail("Schedules and alerts aren't available yet. A node makes a run when you ask it to, with --node."),
         "help" | "--help" | "-h" => {
             let style = Style::detect(ColorChoice::Auto);
             match rest.first().map(String::as_str) {
@@ -184,6 +191,7 @@ fn main() -> ExitCode {
                 Some("mtr") => print!("{}", help::mtr(style)),
                 Some("dig" | "dns") => print!("{}", help::dig(style)),
                 Some("bgp") => print!("{}", help::bgp(style)),
+                Some("node") => print!("{}", help::node(style)),
                 _ => print!("{}", help::main(style)),
             }
             ExitCode::SUCCESS

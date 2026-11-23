@@ -1,6 +1,6 @@
 # What a node does and what it refuses
 
-Nodes are not released. This page says what `rvrs node` is built to, so the rules are public before the first node runs on someone's line. [The node protocol](../schema/node-protocol/README.md) has the routes.
+This page says what `rvrs node` keeps to, whatever it is asked, so the rules are public for anyone who has a node on their line. [Nodes](node.md) says how to start one, and [the node protocol](../schema/node-protocol/README.md) has the routes.
 
 A node is a machine that makes runs on request: a server, a virtual machine, a router. It runs the tools `rvrs` runs on a laptop. Every rule on this page is checked on the node, by its own build, with settings only the node's owner writes. No request, claim or event from the API changes one of them.
 

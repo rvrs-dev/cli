@@ -98,7 +98,7 @@ fn section_tagged(style: Style, title: &str, rows: &[(&str, &str, Tag)]) -> Stri
 const NODE_FLAG: (&str, &str, bool) = (
     "--node <name>",
     "Run from a node instead of this device",
-    true,
+    false,
 );
 
 pub fn main(style: Style) -> String {
@@ -222,11 +222,11 @@ pub fn main(style: Style) -> String {
         style,
         "Nodes",
         &[
-            ("node", "Run this machine as a node in your fleet", true),
+            ("node", "Run this machine as a node in your fleet", false),
             (
                 "nodes",
-                "List the nodes in your fleet and whether they answer",
-                true,
+                "List the nodes in your fleet and whether each is online",
+                false,
             ),
             (
                 "nodes show <name>",
@@ -310,6 +310,16 @@ pub fn main(style: Style) -> String {
                 false,
             ),
             NODE_FLAG,
+            (
+                "--no-wait",
+                "With --node: print the run's id and leave",
+                false,
+            ),
+            (
+                "--expires-in <seconds>",
+                "With --node: how long the request waits for the node",
+                false,
+            ),
             ("--fleet", "Run from every node in the fleet", true),
         ],
     ));
@@ -319,8 +329,81 @@ pub fn main(style: Style) -> String {
         "Examples",
         &[
             ("rvrs traceroute 1.1.1.1", ""),
+            ("rvrs mtr example.com --node fra-1", ""),
             ("rvrs ping -c 20 -i 0.2 example.com", ""),
             ("rvrs last --json", ""),
+        ],
+    ));
+    out
+}
+
+pub fn node(style: Style) -> String {
+    let mut out = format!(
+        "{} rvrs node\nThis machine as a node. It makes the runs people in your workspace ask of it, within\nits own limits, and sends each result to the account of whoever asked. It opens every\nconnection itself, so it needs no open port.\n\n",
+        style.bold("//")
+    );
+    out.push_str(&section(
+        style,
+        "Usage",
+        &[(
+            "RVRS_TOKEN=<token> rvrs node",
+            "The token is made under Installs at app.rvrs.dev",
+        )],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "Flags",
+        &[
+            (
+                "--state <folder>",
+                "Where the node keeps its outbox and its token",
+            ),
+            (
+                "--tag <key>=<value>",
+                "A tag the node declares. Repeat it for more",
+            ),
+            ("--location <lat>,<lon>", "Where the node is"),
+            ("--place <text>", "The place by name, as in \"Esbjerg, DK\""),
+            ("--location-precision <p>", "exact, area or city"),
+            (
+                "--config <file>",
+                "The node's file, for its tags and location",
+            ),
+            (
+                "--allow <range>",
+                "A private range the node may probe, as in 192.168.1.0/24",
+            ),
+            (
+                "--limit <name>=<value>",
+                "runsAtOnce, runsPerMinute, packetsPerRun, secondsPerRun or reportBytes",
+            ),
+        ],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "Environment",
+        &[
+            ("RVRS_TOKEN", "The node's token"),
+            ("RVRS_API", "Another API than api.rvrs.dev"),
+            ("RVRS_NODE_STATE", "--state"),
+            ("RVRS_NODE_TAGS", "--tag, separated by commas"),
+            ("RVRS_NODE_LOCATION", "--location"),
+            ("RVRS_NODE_ALLOW", "--allow, separated by commas"),
+            ("RVRS_NODE_LIMITS", "--limit, separated by commas"),
+        ],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "Examples",
+        &[
+            ("RVRS_TOKEN=rvrs_... rvrs node --tag isp=telia", ""),
+            (
+                "docker run -d --network host -e RVRS_TOKEN=rvrs_... -v rvrs-node:/var/lib/rvrs ghcr.io/rvrs-dev/rvrs",
+                "",
+            ),
         ],
     ));
     out

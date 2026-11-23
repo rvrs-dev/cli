@@ -329,7 +329,10 @@ pub fn run(args: DigArgs, multicall: bool) -> ExitCode {
         return crate::usage(trace::NO_FLEET);
     }
     if let Some(node) = &args.common.node {
-        return crate::usage(&format!("Nodes aren't available yet, so nothing was asked from \u{201C}{node}\u{201D}. Without --node the lookup comes from this device."));
+        return match crate::remote::dig(&args) {
+            Ok(options) => crate::remote::run(node, "dns", &args.name, options, &args.common),
+            Err(message) => crate::usage(&message),
+        };
     }
     let look = trace::look(args.common.json, args.common.classic, multicall);
     if args.one_question || look == Look::Classic {

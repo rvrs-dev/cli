@@ -37,7 +37,7 @@ pub struct Common {
     pub classic: bool,
     pub color: ColorChoice,
     pub node: Option<String>,
-    /// `--fleet`: run from every node in the fleet. Refused until nodes exist.
+    /// `--fleet`: run from every node in the fleet. Refused until it is built.
     pub fleet: bool,
     /// `--case <name>`: save the run into this case once it is made.
     pub case: Option<String>,

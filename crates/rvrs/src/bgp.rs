@@ -252,7 +252,13 @@ pub fn run(args: BgpArgs) -> ExitCode {
         return crate::usage(trace::NO_FLEET);
     }
     if let Some(node) = &args.common.node {
-        return crate::usage(&format!("Nodes aren't available yet, so nothing was asked from \u{201C}{node}\u{201D}. Without --node the lookup comes from this device."));
+        return crate::remote::run(
+            node,
+            "bgp",
+            &args.target,
+            crate::remote::bgp(),
+            &args.common,
+        );
     }
     let Some(target) = Target::parse(&args.target) else {
         return crate::usage(&format!(

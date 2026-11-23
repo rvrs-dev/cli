@@ -39,18 +39,21 @@ pub fn look(json: bool, classic: bool, multicall: bool) -> Look {
     }
 }
 
-/// What --fleet says until nodes exist.
+/// What --fleet says until a run can be asked of every node at once.
 pub const NO_FLEET: &str =
-    "Nodes aren't available yet, so there is no fleet to run from. Without --fleet the run comes from this device.";
+    "A run from every node at once isn't available yet. --node <name> runs from one node.";
 
 pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
     if args.common.fleet {
         return fail(NO_FLEET);
     }
     if let Some(node) = &args.common.node {
-        return fail(&format!(
-            "Nodes aren't available yet, so nothing was sent from \u{201C}{node}\u{201D}. Without --node the run comes from this device."
-        ));
+        return match crate::remote::traceroute(&args) {
+            Ok(options) => {
+                crate::remote::run(node, "traceroute", &args.target, options, &args.common)
+            }
+            Err(message) => crate::usage(&message),
+        };
     }
     // The TCP probe and the path MTU check are build features of their own. cfg! is a constant, so a
     // build without them never links their code.

@@ -2,7 +2,7 @@
 
 How a node talks to the rvrs API, and how a person's install asks a node for a run. `openapi.json` in this folder names every route and field, and `fixtures/` holds one example of each body. This page says what the routes are for, who moves a run from one state to the next, and what each side does when something gets lost.
 
-Status: version 1, written down and not built yet. The rvrs API and `rvrs node` are built to it next. Anyone may build a controller or a node that speaks it.
+Status: version 1. The rvrs API serves it, except enrolling, and `rvrs node` speaks it since rvrs 0.15. Anyone may build a controller or a node that speaks it.
 
 ## Who speaks
 
@@ -36,7 +36,7 @@ A credential goes in `Authorization: Bearer <token>`. The node opens every conne
 - Words that tell a node what to do are another matter. The API sends a node only the ones its `protocol` revision has, and a node never guesses at one. A verdict it doesn't know stops the run. A tool or an option it doesn't know makes it refuse the run, because running without it would measure something else than what was asked.
 - Times the node acts on are lengths in seconds, never moments. A router's clock can be wrong before it has synchronized, and the protocol doesn't depend on it.
 - Every answer that is not 2xx has the one error shape, `{ "error": { "code", "message" } }`. A reader branches on `code`.
-- An answer without that shape didn't come from the API. A load balancer or a proxy on the way answers with a page of its own, such as a 404 when no server behind it has room. A node treats an answer without the API's error, whatever its status, as it treats a 5xx.
+- An answer without that shape didn't come from the API. A load balancer or a proxy on the way answers with a page of its own, such as a 404 when no server behind it has room. A node treats an answer without the API's error, whatever its status, as it treats a 5xx. A 2xx is read the same way: every answer the API gives a node is a JSON object, and a page with a good status, as a captive portal sends, is no answer.
 - No heartbeat, event or log line carries a credential, a target or anything from a report.
 
 ## Tokens and enrolling
@@ -120,7 +120,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 - An event says there is work and nothing about it. It carries no run's parameters and nothing secret. What the work is comes from the claim.
 - `work` is repeated. While a run waits for a node that holds a stream, the API writes `work` again every 15 seconds until the node has claimed the run. A wake-up that got lost is followed by the next one.
 - `hello` is the first event of every stream. Its numbers are the API's to choose, so a fleet can be slowed down without updating a node.
-- A stream that stays silent for twice `keepAliveSeconds` is dead. The node closes it and opens a new one.
+- A stream that stays silent for twice `keepAliveSeconds` is dead. The node closes it and opens a new one. Closing means giving up the connection, so a stream that died without a word holds no socket on the node.
 - When a stream ends or can't be opened, the node waits a random time up to `reconnectSeconds` and tries again. Every failure in a row doubles that window, up to 300 seconds, and a `hello` sets it back. So an API release doesn't bring every node back in the same second.
 - A node holds one stream. A second one with the same token replaces the first.
 - `schedules` is a reserved event name. It is filled in when nodes repeat runs on a schedule.
@@ -213,14 +213,16 @@ POST /v1/runs
 { "report": { ... }, "claim": { "run": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11", "attempt": 1 }, "startedAgoMilliseconds": 14412 }
 ```
 
-- The report's `origin.kind` is `node`. `origin.nodeId` is the node's id, which never changes. `origin.node` is the node's name. The API writes all three from the token ([Who made a run](#who-made-a-run)). The report's `id` is the node's own, unique on that node.
+- The report's `origin.kind` is `node`. `origin.nodeId` is the node's id, which never changes. `origin.node` is the node's name. The API writes all three from the token ([Who made a run](#who-made-a-run)). The report's `id` is the node's own and never repeats on that node, for as long as the API keeps its runs. `rvrs node` writes the run's id and the attempt, as in `0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11-1`. A node that makes its ids at random needs 128 bits of them.
 - A node sends the report alone, without the `detail` a CLI adds for its other installs.
 - The API takes a result when its attempt is the run's newest and the run has no result yet. Whether the lease ran out in between doesn't matter: a node that lost its uplink during an MTR still delivers that MTR, which is the run someone wanted.
 - 409 `CLAIM_LOST` says a newer attempt has the run, or the run already has its result. The node drops the result. So a node that hung can't overwrite a newer result, and a run made twice is stored and counted once.
+- 201 says the API stored the result, and its answer names the run: `id` is the run's id. A node keeps a result in its outbox until an answer names its run, and sends it again after any other 2xx.
 - 200 says the API had this report already, for this run and this attempt. Nothing changed.
 - 422 says the report is not the run that was asked for: its `tool` is another tool than the request named, without regard to case, or its `target` is another target. A node writes both as it was given them, also in a report with the outcome `refused`.
 - 422 also says the report's `id` is one the node used for another run. An id names one run on its node, so the API never answers for a run with another run's report.
 - A report without `claim` is a run the node made by itself, such as a scheduled run.
+- A node with many results waiting sends them between its claims, never in place of one. A node that comes back after a day without its uplink still claims every third of the lease, so the runs it is making keep theirs.
 
 ### Who made a run
 
@@ -451,4 +453,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes. `rvrs node` is tested against an API inside the test that answers with these fixtures (`crates/rvrs/src/node/service_tests.rs`).

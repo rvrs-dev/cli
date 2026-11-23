@@ -354,9 +354,10 @@ pub fn run(mut args: MtrArgs, multicall: bool) -> ExitCode {
         return fail(trace::NO_FLEET);
     }
     if let Some(node) = &args.common.node {
-        return fail(&format!(
-            "Nodes aren't available yet, so nothing was sent from \u{201C}{node}\u{201D}. Without --node the run comes from this device."
-        ));
+        return match crate::remote::mtr(&args) {
+            Ok(options) => crate::remote::run(node, "mtr", &args.target, options, &args.common),
+            Err(message) => crate::usage(&message),
+        };
     }
     // A report is the original's own text, wherever it goes.
     let look = trace::look(
@@ -915,7 +916,10 @@ fn report_host(run: &Run, hop: &Hop, options: ReportOptions) -> String {
 /// The report mtr prints with `-r`: a HOST line with the column names, then a line per hop with
 /// Loss%, Snt, Last, Avg, Best, Wrst and StDev. Without `-w` long names are cut to the column.
 pub fn report_lines(run: &Run, options: ReportOptions) -> Vec<String> {
-    report_lines_from(run, options, &local_hostname())
+    // The host of an MTR report is the machine that ran it: the node or the other device a run
+    // came from, and this one for a run made here.
+    let host = run.from.clone().unwrap_or_else(local_hostname);
+    report_lines_from(run, options, &host)
 }
 
 pub fn report_lines_from(run: &Run, options: ReportOptions, hostname: &str) -> Vec<String> {
@@ -1147,6 +1151,14 @@ pub(crate) mod tests {
         assert!(parse_line("-f 9 -m 3 example.com")
             .unwrap_err()
             .contains("beyond the last"));
+    }
+
+    #[test]
+    fn a_run_from_a_node_names_the_node_as_its_host() {
+        let mut run = sample(10, |_| false);
+        run.from = Some("fra-1".into());
+        let lines = report_lines(&run, ReportOptions::default());
+        assert!(lines[0].starts_with("HOST: fra-1 "), "{}", lines[0]);
     }
 
     #[test]
