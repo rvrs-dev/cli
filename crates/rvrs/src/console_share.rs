@@ -22,7 +22,7 @@ impl Choice {
         match self {
             Choice::PrivateNetworks => "Private Networks",
             Choice::PublicAddress => "Public Address",
-            Choice::InstallName => "Install Name",
+            Choice::InstallName => "Device Name",
         }
     }
 
