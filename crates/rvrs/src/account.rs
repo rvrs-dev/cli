@@ -331,6 +331,7 @@ pub fn poll_login(started: &Started) -> Poll {
 }
 
 /// Opens a link in the browser. False when there is no browser to open.
+#[cfg_attr(not(feature = "console"), allow(dead_code))]
 pub fn open_link(url: &str) -> bool {
     open_in_browser(url)
 }

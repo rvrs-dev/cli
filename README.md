@@ -43,6 +43,12 @@ brew install rvrs-dev/tap/rvrs
 
 Runs on macOS and Linux, without root. Every [release](https://github.com/rvrs-dev/cli/releases) also has a `.deb` and an `.rpm`. Update with `rvrs update`.
 
+On a server or a router, the build without the Console is smaller ([build features](docs/build-features.md)):
+
+```bash
+curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without console
+```
+
 For your agent, the [skill](docs/agents.md) that teaches it to diagnose a network with rvrs:
 
 ```bash
@@ -84,6 +90,7 @@ rvrs needs no account. With one, `rvrs login` keeps your runs, saved runs, cases
 - [traceroute](docs/traceroute.md), [ping](docs/ping.md), [mtr](docs/mtr.md), [dig](docs/dig.md), [bgp](docs/bgp.md)
 - [The Console](docs/console.md)
 - [Commands](docs/commands.md), including history, saved runs and `--json`
+- [Build features](docs/build-features.md): what a build has, and the small build
 - [rvrs for agents](docs/agents.md)
 - [Privacy](docs/privacy.md)
 

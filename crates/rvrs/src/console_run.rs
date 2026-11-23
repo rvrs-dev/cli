@@ -17,7 +17,10 @@ pub(super) struct Launcher {
 /// to BGP. An address has no DNS lookup, and a private one has no public route.
 pub(super) fn tools_for(target: &str) -> Vec<Tool> {
     if Target::is_routing_only(target) {
-        return vec![Tool::Bgp];
+        return [Tool::Bgp]
+            .into_iter()
+            .filter(|tool| crate::features::runs(*tool))
+            .collect();
     }
     let host = normalize_target(target);
     let mut tools = vec![Tool::Traceroute, Tool::Mtr, Tool::Ping];
@@ -26,6 +29,8 @@ pub(super) fn tools_for(target: &str) -> Vec<Tool> {
         Ok(_) => tools.push(Tool::Bgp),
         Err(_) => tools.extend([Tool::Dns, Tool::Bgp]),
     }
+    // Only the tools this build runs.
+    tools.retain(|tool| crate::features::runs(*tool));
     tools
 }
 

@@ -4,6 +4,11 @@
 //! - A build from a checkout pulls the new commits and builds them.
 //! - A Homebrew install is Homebrew's to upgrade, and rvrs says so.
 //!
+//! An update keeps the build features (`features.rs`): it installs the build that leaves out what
+//! this one leaves out, and nothing more, so a build feature added since comes with it. `--with` and `--without`
+//! change that set. A release without the matching build leaves rvrs as it is, since a router
+//! with little flash must never get a bigger build than the one it has.
+//!
 //! Between updates rvrs looks for a newer version at most once a day, from a process of its own
 //! so no run ever waits for it, and says so in one line after a result. `RVRS_UPDATE_CHECK=0`
 //! turns the look off. The look sends nothing but the request itself.
@@ -15,7 +20,8 @@ use std::time::{Duration, Instant};
 
 use rvrs_core::{format, paths};
 
-use crate::help::{COMMIT, VERSION};
+use crate::features;
+use crate::help::VERSION;
 use crate::style::{ColorChoice, Style, SPINNER};
 use crate::{fail, usage};
 
@@ -26,14 +32,63 @@ const CHECK_EVERY: u64 = 24 * 3600;
 /// How this rvrs got onto this device, which decides how it is updated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Install {
-    /// Built from a git checkout: the repo's folder, and whether it is a release build.
-    Checkout { repo: PathBuf, release: bool },
+    /// Built from a git checkout: the repo's folder and how the running binary was built, so an
+    /// update builds the same binary again.
+    Checkout { repo: PathBuf, build: CheckoutBuild },
     /// Installed by Homebrew.
     Homebrew,
     /// Installed from a .deb or .rpm, into /usr/bin. The package manager owns the file.
     Package,
     /// A release binary, as the installer puts it in place.
     Binary { path: PathBuf },
+}
+
+/// How a checkout's binary was built, read off its path: `target/[<target>/]<profile>/rvrs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckoutBuild {
+    /// The Cargo profile: `dev` for `target/debug`, else the folder's name (`release`, `small`).
+    pub profile: String,
+    /// The target triple when it was built with `--target`.
+    pub target: Option<String>,
+}
+
+impl CheckoutBuild {
+    /// Reads the folders between `target` and the binary: `release`, or
+    /// `armv7-unknown-linux-musleabihf/small`.
+    fn of(folders: &[String]) -> Self {
+        let (target, profile) = match folders {
+            [target, profile] => (Some(target.clone()), profile.clone()),
+            [.., profile] => (None, profile.clone()),
+            [] => (None, "dev".to_string()),
+        };
+        let profile = if profile == "debug" {
+            "dev".to_string()
+        } else {
+            profile
+        };
+        Self { profile, target }
+    }
+
+    /// The arguments after `cargo build` that put the binary where this one is.
+    pub fn args(&self) -> Vec<String> {
+        let mut args: Vec<String> = match self.profile.as_str() {
+            "dev" => vec![],
+            "release" => vec!["--release".into()],
+            other => vec!["--profile".into(), other.into()],
+        };
+        if let Some(target) = &self.target {
+            args.extend(["--target".into(), target.clone()]);
+        }
+        args
+    }
+
+    /// The command as a person types it: "cargo build --profile small --target …".
+    fn command(&self) -> String {
+        std::iter::once("cargo build".to_string())
+            .chain(self.args())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 /// Tells the kinds apart by where the running binary lives.
@@ -45,15 +100,25 @@ pub fn install_of(executable: &Path) -> Install {
     if text == "/usr/bin/rvrs" {
         return Install::Package;
     }
-    // target/<profile>/rvrs inside a folder that is a git checkout with a Cargo.toml.
+    // target/[<target>/]<profile>/rvrs inside a folder that is a git checkout with a Cargo.toml.
     let mut folder = executable.parent();
     while let Some(current) = folder {
         if current.file_name().is_some_and(|name| name == "target") {
             if let Some(repo) = current.parent() {
                 if repo.join(".git").exists() && repo.join("Cargo.toml").exists() {
+                    let folders: Vec<String> = executable
+                        .parent()
+                        .and_then(|parent| parent.strip_prefix(current).ok())
+                        .map(|inside| {
+                            inside
+                                .components()
+                                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     return Install::Checkout {
                         repo: repo.to_path_buf(),
-                        release: text.contains("/release/"),
+                        build: CheckoutBuild::of(&folders),
                     };
                 }
             }
@@ -89,19 +154,19 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
-/// The release archive for this device, named as the installer names it.
+/// The release target for this device, named as the installer names it.
 pub fn target() -> Option<String> {
-    let arch = match std::env::consts::ARCH {
-        "x86_64" => "x86_64",
-        "aarch64" => "aarch64",
-        _ => return None,
-    };
-    let os = match std::env::consts::OS {
-        "macos" => "apple-darwin",
-        "linux" => "unknown-linux-musl",
-        _ => return None,
-    };
-    Some(format!("{arch}-{os}"))
+    target_for(std::env::consts::ARCH, std::env::consts::OS)
+}
+
+fn target_for(arch: &str, os: &str) -> Option<String> {
+    match (arch, os) {
+        ("x86_64" | "aarch64", "macos") => Some(format!("{arch}-apple-darwin")),
+        ("x86_64" | "aarch64", "linux") => Some(format!("{arch}-unknown-linux-musl")),
+        // 32-bit ARM routers and boards: ARMv7 with hardware floating point.
+        ("arm", "linux") => Some("armv7-unknown-linux-musleabihf".to_string()),
+        _ => None,
+    }
 }
 
 fn git(repo: &Path, arguments: &[&str]) -> Option<String> {
@@ -277,6 +342,7 @@ pub fn notice_for(newer: Option<&str>) -> Option<String> {
 }
 
 /// What the daily look found, as a fact for a status line: "0.3.1 is out", "4 new commits".
+#[cfg_attr(not(feature = "console"), allow(dead_code))]
 pub fn newer_fact() -> Option<String> {
     if !checks_enabled() {
         return None;
@@ -310,23 +376,122 @@ pub fn after_command() {
 
 // The command
 
-pub fn run(arguments: &[String]) -> ExitCode {
-    let mut check_only = false;
-    for argument in arguments {
-        match argument.as_str() {
-            "--check" => check_only = true,
-            other => {
-                return usage(&format!(
-                    "rvrs update takes --check, and \u{201C}{other}\u{201D} isn't it."
+/// What `rvrs update` was asked: `--check`, and the build features `--with` adds back and `--without`
+/// leaves out.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Asked {
+    pub check_only: bool,
+    pub with: Vec<&'static str>,
+    pub without: Vec<&'static str>,
+}
+
+pub fn parse(arguments: &[String]) -> Result<Asked, String> {
+    let mut asked = Asked::default();
+    let mut words = arguments.iter();
+    while let Some(argument) = words.next() {
+        let (flag, inline) = match argument.split_once('=') {
+            Some((flag, value)) => (flag, Some(value.to_string())),
+            None => (argument.as_str(), None),
+        };
+        match flag {
+            "--check" if inline.is_none() => asked.check_only = true,
+            "--with" | "--without" => {
+                let Some(value) = inline.or_else(|| words.next().cloned()) else {
+                    return Err(format!("{flag} takes the build features to change, as in {flag} console."));
+                };
+                let names = features::parse_list(&value)?;
+                if flag == "--with" {
+                    asked.with.extend(names);
+                } else {
+                    asked.without.extend(names);
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "rvrs update takes --check, --with and --without, and \u{201C}{argument}\u{201D} is none of them."
                 ))
             }
         }
     }
+    if let Some(both) = asked.with.iter().find(|name| asked.without.contains(name)) {
+        return Err(format!(
+            "{both} is in both --with and --without. Name it in one."
+        ));
+    }
+    Ok(asked)
+}
+
+/// The build an update installs: what it leaves out, and how that differs from this one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Wanted {
+    left_out: Vec<&'static str>,
+    /// Build features this build has and the update leaves out.
+    removed: Vec<&'static str>,
+    /// Build features this build leaves out and the update has.
+    added: Vec<&'static str>,
+}
+
+impl Wanted {
+    fn of(asked: &Asked) -> Self {
+        Self::from(&features::left_out(), asked)
+    }
+
+    fn from(current: &[&'static str], asked: &Asked) -> Self {
+        let left_out = features::wanted(current, &asked.with, &asked.without);
+        let removed = left_out
+            .iter()
+            .copied()
+            .filter(|name| !current.contains(name))
+            .collect();
+        let added = current
+            .iter()
+            .copied()
+            .filter(|name| !left_out.contains(name))
+            .collect();
+        Self {
+            left_out,
+            removed,
+            added,
+        }
+    }
+
+    fn changes(&self) -> bool {
+        !self.removed.is_empty() || !self.added.is_empty()
+    }
+
+    /// "This update leaves out console.", "This update adds console back."
+    fn change_words(&self) -> String {
+        match (self.removed.as_slice(), self.added.as_slice()) {
+            ([], added) => format!("This update adds {} back.", features::and_list(added)),
+            (removed, []) => format!("This update leaves out {}.", features::and_list(removed)),
+            (removed, added) => format!(
+                "This update leaves out {} and adds {} back.",
+                features::and_list(removed),
+                features::and_list(added)
+            ),
+        }
+    }
+}
+
+pub fn run(arguments: &[String]) -> ExitCode {
+    let asked = match parse(arguments) {
+        Ok(asked) => asked,
+        Err(message) => return usage(&message),
+    };
+    let wanted = Wanted::of(&asked);
     let style = Style::detect(ColorChoice::Auto);
     let Some(executable) = running_binary() else {
         return fail("Couldn't tell where this rvrs is installed.");
     };
     match install_of(&executable) {
+        Install::Homebrew if wanted.changes() => fail(&format!(
+            "Homebrew installs the full build, so it can't leave build features out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
+            wanted.left_out.join(",")
+        )),
+        Install::Package if wanted.changes() => fail(&format!(
+            "The .deb and .rpm hold the full build, so they can't leave build features out. The installer can: curl -fsSL https://rvrs.dev/install.sh | sh -s -- --without {}",
+            wanted.left_out.join(",")
+        )),
         Install::Homebrew => {
             println!("This rvrs was installed with Homebrew. Update it with brew upgrade rvrs.");
             ExitCode::SUCCESS
@@ -335,46 +500,60 @@ pub fn run(arguments: &[String]) -> ExitCode {
             println!("This rvrs was installed from a package. Update it with the newest .deb or .rpm from github.com/{REPO}/releases.");
             ExitCode::SUCCESS
         }
-        Install::Checkout { repo, release } => update_checkout(&repo, release, check_only, style),
-        Install::Binary { path } => update_binary(&path, check_only, style),
+        Install::Checkout { repo, build } => {
+            update_checkout(&repo, &build, asked.check_only, &wanted, style)
+        }
+        Install::Binary { path } => update_binary(&path, asked.check_only, &wanted, style),
     }
 }
 
+/// This build as `rvrs --version` names it, with what it leaves out.
 fn current() -> String {
-    format!("rvrs {VERSION} ({COMMIT})")
+    crate::help::version()
 }
 
 /// A build from a checkout: fetch, show what is new, fast-forward, build.
-fn update_checkout(repo: &Path, release: bool, check_only: bool, style: Style) -> ExitCode {
+fn update_checkout(
+    repo: &Path,
+    how: &CheckoutBuild,
+    check_only: bool,
+    wanted: &Wanted,
+    style: Style,
+) -> ExitCode {
     let shown = paths::display(repo);
     let Some(branch) = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]) else {
         return fail(&format!("{shown} isn't a git checkout rvrs can read."));
     };
-    if git(repo, &["rev-parse", "--abbrev-ref", "@{u}"]).is_none() {
+    // A change of build features builds this checkout as it is, so it needs no remote.
+    let follows = git(repo, &["rev-parse", "--abbrev-ref", "@{u}"]).is_some();
+    if !follows && !wanted.changes() {
         return fail(&format!("The branch {branch} in {shown} follows no remote branch, so there is nothing to pull from."));
     }
-    let fetched = with_spinner(style, "Looking for new commits", || {
-        Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(["fetch", "--quiet"])
-            .stdin(Stdio::null())
-            .output()
-    });
-    match fetched {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            return fail(&format!(
-                "Couldn't reach the remote of {shown}. git said: {}",
-                last_line(&output.stderr)
-            ));
+    let mut behind: usize = 0;
+    if follows {
+        let fetched = with_spinner(style, "Looking for new commits", || {
+            Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(["fetch", "--quiet"])
+                .stdin(Stdio::null())
+                .output()
+        });
+        match fetched {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                return fail(&format!(
+                    "Couldn't reach the remote of {shown}. git said: {}",
+                    last_line(&output.stderr)
+                ));
+            }
+            Err(error) => return fail(&format!("Couldn't run git ({error}).")),
         }
-        Err(error) => return fail(&format!("Couldn't run git ({error}).")),
+        behind = git(repo, &["rev-list", "--count", "HEAD..@{u}"])
+            .and_then(|count| count.parse().ok())
+            .unwrap_or(0);
     }
-    let behind: usize = git(repo, &["rev-list", "--count", "HEAD..@{u}"])
-        .and_then(|count| count.parse().ok())
-        .unwrap_or(0);
-    if behind == 0 {
+    if behind == 0 && !wanted.changes() {
         write_found(
             &cache_file(),
             &Found {
@@ -385,49 +564,84 @@ fn update_checkout(repo: &Path, release: bool, check_only: bool, style: Style) -
         println!("{} is up to date.", current());
         return ExitCode::SUCCESS;
     }
-    let noun = if behind == 1 { "commit" } else { "commits" };
-    println!(
-        "{} {behind} new {noun} since {}",
-        style.bold("//"),
-        current()
-    );
-    let subjects = git(repo, &["log", "--format=%s", "HEAD..@{u}"]).unwrap_or_default();
-    for subject in subjects.lines().take(8) {
-        println!("  {subject}");
+    if behind > 0 {
+        let noun = if behind == 1 { "commit" } else { "commits" };
+        println!(
+            "{} {behind} new {noun} since {}",
+            style.bold("//"),
+            current()
+        );
+        let subjects = git(repo, &["log", "--format=%s", "HEAD..@{u}"]).unwrap_or_default();
+        for subject in subjects.lines().take(8) {
+            println!("  {subject}");
+        }
+        if behind > 8 {
+            println!("  {}", style.dim(&format!("and {} more", behind - 8)));
+        }
     }
-    if behind > 8 {
-        println!("  {}", style.dim(&format!("and {} more", behind - 8)));
+    if wanted.changes() {
+        println!("{} {}", style.bold("//"), wanted.change_words());
     }
     if check_only {
-        println!("\nPull and build them with rvrs update.");
+        if behind > 0 {
+            println!("\nPull and build with rvrs update.");
+        } else {
+            println!("\nBuild it with rvrs update.");
+        }
         return ExitCode::SUCCESS;
     }
-    if git(repo, &["status", "--porcelain", "--untracked-files=no"])
-        .is_some_and(|status| !status.is_empty())
-    {
-        return fail(&format!(
-            "{shown} has uncommitted changes, so rvrs left it alone. Commit or stash them and run rvrs update again."
-        ));
-    }
-    if git(repo, &["merge", "--ff-only", "--quiet", "@{u}"]).is_none() {
-        return fail(&format!(
-            "{shown} has commits of its own that the remote doesn't, so rvrs left it alone. Rebase or merge there, then build with cargo build --release."
-        ));
+    if behind > 0 {
+        if git(repo, &["status", "--porcelain", "--untracked-files=no"])
+            .is_some_and(|status| !status.is_empty())
+        {
+            return fail(&format!(
+                "{shown} has uncommitted changes, so rvrs left it alone. Commit or stash them and run rvrs update again."
+            ));
+        }
+        if git(repo, &["merge", "--ff-only", "--quiet", "@{u}"]).is_none() {
+            return fail(&format!(
+                "{shown} has commits of its own that the remote doesn't, so rvrs left it alone. Rebase or merge there, then build with {}.",
+                how.command()
+            ));
+        }
     }
     println!();
+    // The profile and the target the running binary was built with, so the build lands where
+    // it is and replaces it.
     let mut build = Command::new("cargo");
-    build.arg("build").current_dir(repo).stdin(Stdio::null());
-    if release {
-        build.arg("--release");
+    build
+        .arg("build")
+        .args(how.args())
+        .current_dir(repo)
+        .stdin(Stdio::null());
+    // The build features: the pulled Cargo.toml's default features, less what this build leaves
+    // out, so one added in the new commits is built in.
+    if !wanted.left_out.is_empty() {
+        let manifest =
+            std::fs::read_to_string(repo.join("crates/rvrs/Cargo.toml")).unwrap_or_default();
+        let Some(default) = features::default_features(&manifest) else {
+            return fail(&format!(
+                "crates/rvrs/Cargo.toml in {shown} names no default features, so rvrs can't tell what to build."
+            ));
+        };
+        build.args(["-p", "rvrs", "--no-default-features", "--features"]);
+        build.arg(features::cargo_features(&default, &wanted.left_out).join(","));
     }
     let built = with_spinner(style, "Building", || build.output());
     match built {
         Ok(output) if output.status.success() => {}
         Ok(output) => {
             let _ = std::io::stderr().write_all(&output.stderr);
-            return fail("The build failed, so the rvrs you have is unchanged. cargo's output is above.");
+            return fail(
+                "The build failed, so the rvrs you have is unchanged. cargo's output is above.",
+            );
         }
-        Err(error) => return fail(&format!("Couldn't run cargo ({error}). The new commits are pulled. cargo build --release builds them.")),
+        Err(error) => {
+            return fail(&format!(
+                "Couldn't run cargo ({error}). The new commits are pulled. {} builds them.",
+                how.command()
+            ))
+        }
     }
     write_found(
         &cache_file(),
@@ -441,7 +655,7 @@ fn update_checkout(repo: &Path, release: bool, check_only: bool, style: Style) -
 }
 
 /// A release binary: download the newest archive for this device and put it where this one is.
-fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
+fn update_binary(path: &Path, check_only: bool, wanted: &Wanted, style: Style) -> ExitCode {
     let Some(target) = target() else {
         return fail(&format!(
             "There is no rvrs release for {} on {}.",
@@ -451,6 +665,7 @@ fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
     };
     // A local archive stands in for the download, which is how this is tested.
     let local = std::env::var_os("RVRS_UPDATE_ARCHIVE").map(PathBuf::from);
+    let mut release = None;
     if local.is_none() {
         let latest = with_spinner(style, "Looking for a newer release", latest_release);
         let Some(latest) = latest else {
@@ -458,7 +673,8 @@ fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
                 "Couldn't get the newest release from github.com/{REPO}/releases. Either none is published yet or GitHub didn't answer."
             ));
         };
-        if !is_newer(&latest, VERSION) {
+        let newer = is_newer(&latest, VERSION);
+        if !newer && !wanted.changes() {
             write_found(
                 &cache_file(),
                 &Found {
@@ -469,14 +685,20 @@ fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
             println!("{} is up to date.", current());
             return ExitCode::SUCCESS;
         }
-        println!(
-            "{} rvrs {latest} is out. You have {VERSION}.",
-            style.bold("//")
-        );
+        if newer {
+            println!(
+                "{} rvrs {latest} is out. You have {VERSION}.",
+                style.bold("//")
+            );
+        }
+        if wanted.changes() {
+            println!("{} {}", style.bold("//"), wanted.change_words());
+        }
         if check_only {
             println!("Install it with rvrs update.");
             return ExitCode::SUCCESS;
         }
+        release = Some(latest);
     } else if check_only {
         println!("RVRS_UPDATE_ARCHIVE is set, so there is no release to compare with.");
         return ExitCode::SUCCESS;
@@ -493,25 +715,34 @@ fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
     let archive = match &local {
         Some(local) => local.clone(),
         None => {
-            let url =
-                format!("https://github.com/{REPO}/releases/latest/download/rvrs-{target}.tar.gz");
-            let archive = work.join("rvrs.tar.gz");
+            // The checksums first: they say which builds the release has.
+            let name = features::archive(&target, &wanted.left_out);
+            let base = format!("https://github.com/{REPO}/releases/latest/download");
             let sums = work.join("SHA256SUMS");
-            let downloaded = with_spinner(style, "Downloading", || {
-                download(&url, &archive)?;
-                download(
-                    &format!("https://github.com/{REPO}/releases/latest/download/SHA256SUMS"),
-                    &sums,
-                )
-            });
-            if let Err(message) = downloaded {
+            if let Err(message) = with_spinner(style, "Downloading", || {
+                download(&format!("{base}/SHA256SUMS"), &sums)
+            }) {
                 let _ = std::fs::remove_dir_all(&work);
                 return fail(&message);
             }
-            let name = format!("rvrs-{target}.tar.gz");
-            let expected = std::fs::read_to_string(&sums)
-                .ok()
-                .and_then(|text| checksum_for(&text, &name));
+            let sums_text = std::fs::read_to_string(&sums).unwrap_or_default();
+            if checksum_for(&sums_text, &name).is_none() {
+                let _ = std::fs::remove_dir_all(&work);
+                return fail(&no_such_build(
+                    release.as_deref().unwrap_or("The newest release"),
+                    &target,
+                    wanted,
+                    &sums_text,
+                ));
+            }
+            let archive = work.join("rvrs.tar.gz");
+            if let Err(message) = with_spinner(style, "Downloading", || {
+                download(&format!("{base}/{name}"), &archive)
+            }) {
+                let _ = std::fs::remove_dir_all(&work);
+                return fail(&message);
+            }
+            let expected = checksum_for(&sums_text, &name);
             let actual = std::fs::read(&archive)
                 .ok()
                 .map(|bytes| hex(&sha256(&bytes)));
@@ -589,11 +820,34 @@ fn update_binary(path: &Path, check_only: bool, style: Style) -> ExitCode {
         },
     );
     println!(
-        "{} {}",
+        "{} {} \u{2192} {version}",
         style.bold_green("Updated"),
-        format!("{} \u{2192} {version}", current())
+        current()
     );
     ExitCode::SUCCESS
+}
+
+/// Why an update stopped: the release has no build that leaves out what this one does. A
+/// bigger build never takes its place unasked.
+fn no_such_build(release: &str, target: &str, wanted: &Wanted, sums: &str) -> String {
+    let release = if release.starts_with(|c: char| c.is_ascii_digit()) {
+        format!("rvrs {release}")
+    } else {
+        release.to_string()
+    };
+    let builds = features::builds_in(sums, target);
+    let mut text = format!(
+        "{release} has no build without {} for {target}, so the rvrs you have is unchanged. It has {}.",
+        features::and_list(&wanted.left_out),
+        features::builds_text(&builds)
+    );
+    if builds.iter().any(Vec::is_empty) {
+        text.push_str(&format!(
+            " rvrs update --with {} installs the full build.",
+            wanted.left_out.join(",")
+        ));
+    }
+    text
 }
 
 /// The checksum `SHA256SUMS` lists for a file, as sha256sum writes it: "<hex>  <name>".
@@ -830,19 +1084,28 @@ mod tests {
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         std::fs::create_dir_all(repo.join("target/release")).unwrap();
         std::fs::write(repo.join("Cargo.toml"), "").unwrap();
+        let built = |path: &str| match install_of(&repo.join(path)) {
+            Install::Checkout { repo: found, build } if found == repo => Some(build.command()),
+            _ => None,
+        };
         assert_eq!(
-            install_of(&repo.join("target/release/rvrs")),
-            Install::Checkout {
-                repo: repo.clone(),
-                release: true
-            }
+            built("target/release/rvrs").as_deref(),
+            Some("cargo build --release")
+        );
+        assert_eq!(built("target/debug/rvrs").as_deref(), Some("cargo build"));
+        // The small build, and builds for another target, are built again the same way, so the
+        // update replaces the binary that is running.
+        assert_eq!(
+            built("target/small/rvrs").as_deref(),
+            Some("cargo build --profile small")
         );
         assert_eq!(
-            install_of(&repo.join("target/debug/rvrs")),
-            Install::Checkout {
-                repo: repo.clone(),
-                release: false
-            }
+            built("target/armv7-unknown-linux-musleabihf/small/rvrs").as_deref(),
+            Some("cargo build --profile small --target armv7-unknown-linux-musleabihf")
+        );
+        assert_eq!(
+            built("target/x86_64-unknown-linux-musl/release/rvrs").as_deref(),
+            Some("cargo build --release --target x86_64-unknown-linux-musl")
         );
         let _ = std::fs::remove_dir_all(repo);
     }
@@ -904,5 +1167,92 @@ mod tests {
     fn there_is_a_release_name_for_this_device() {
         let target = target().unwrap();
         assert!(target.ends_with("apple-darwin") || target.ends_with("unknown-linux-musl"));
+        assert_eq!(
+            target_for("arm", "linux").as_deref(),
+            Some("armv7-unknown-linux-musleabihf")
+        );
+        assert_eq!(
+            target_for("aarch64", "linux").as_deref(),
+            Some("aarch64-unknown-linux-musl")
+        );
+        assert_eq!(target_for("arm", "macos"), None);
+        assert_eq!(target_for("mips", "linux"), None);
+    }
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn update_reads_check_with_and_without() {
+        assert_eq!(parse(&[]).unwrap(), Asked::default());
+        let asked = parse(&words("--check --without console")).unwrap();
+        assert!(asked.check_only);
+        assert_eq!(asked.without, vec!["console"]);
+        let asked = parse(&words("--with=bgp,console --without mtu")).unwrap();
+        assert_eq!(asked.with, vec!["bgp", "console"]);
+        assert_eq!(asked.without, vec!["mtu"]);
+        assert!(parse(&words("--without"))
+            .unwrap_err()
+            .contains("--without console"));
+        assert!(parse(&words("--with nope"))
+            .unwrap_err()
+            .contains("\u{201C}nope\u{201D}"));
+        assert!(parse(&words("--with console --without console"))
+            .unwrap_err()
+            .contains("console is in both"));
+        assert!(parse(&words("--force"))
+            .unwrap_err()
+            .contains("\u{201C}--force\u{201D}"));
+    }
+
+    #[test]
+    fn the_full_build_updates_to_the_full_build() {
+        // This is how every rvrs from before build features updates, since its binary is the full build
+        // and asks for rvrs-<target>.tar.gz as it always did.
+        let wanted = Wanted::of(&Asked::default());
+        assert_eq!(wanted.left_out, Vec::<&str>::new());
+        assert!(!wanted.changes());
+        assert_eq!(
+            features::archive("aarch64-apple-darwin", &wanted.left_out),
+            "rvrs-aarch64-apple-darwin.tar.gz"
+        );
+        let headless = Wanted::of(&parse(&words("--without console")).unwrap());
+        assert_eq!(headless.left_out, vec!["console"]);
+        assert!(headless.changes());
+        assert_eq!(headless.change_words(), "This update leaves out console.");
+    }
+
+    #[test]
+    fn a_build_that_leaves_out_keeps_leaving_out() {
+        let kept = Wanted::from(&["console"], &Asked::default());
+        assert_eq!(kept.left_out, vec!["console"]);
+        assert!(!kept.changes());
+        let back = Wanted::from(&["console"], &parse(&words("--with console")).unwrap());
+        assert!(back.left_out.is_empty());
+        assert_eq!(back.change_words(), "This update adds console back.");
+        let both = Wanted::from(
+            &["console"],
+            &parse(&words("--with console --without bgp")).unwrap(),
+        );
+        assert_eq!(
+            both.change_words(),
+            "This update leaves out bgp and adds console back."
+        );
+    }
+
+    #[test]
+    fn a_release_without_the_build_leaves_rvrs_alone() {
+        let wanted = Wanted {
+            left_out: vec!["bgp", "console"],
+            removed: vec![],
+            added: vec![],
+        };
+        let sums = "ab  rvrs-x86_64-unknown-linux-musl.tar.gz\n\
+                    cd  rvrs-x86_64-unknown-linux-musl-without-console.tar.gz\n";
+        assert_eq!(
+            no_such_build("0.15.0", "x86_64-unknown-linux-musl", &wanted, sums),
+            "rvrs 0.15.0 has no build without bgp and console for x86_64-unknown-linux-musl, so the rvrs you have is unchanged. It has the full build and the one without console. rvrs update --with bgp,console installs the full build."
+        );
     }
 }

@@ -66,7 +66,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | **token** | A node's credential: one per node, made in the web app or received when the node enrolls, and revoked without touching another node. People sign in with a login. | API key, secret, password |
 | **enroll** | A node joining a workspace by itself: it trades an enrollment token for a token of its own. | register, onboard, adopt, provision, activate |
 | **enrollment token** | What a node enrolls with. It enrolls a set number of nodes before it expires and does nothing else. No image carries one. | join token, provisioning key, bootstrap token, claim code |
-| **build feature** | A part of rvrs a build can leave out: a tool, the TCP probe, the path MTU check, the Console. A node says which ones it has. | capability, module, plugin, feature (for a tool) |
+| **build feature** | A part of rvrs a build can leave out: a tool, the TCP probe, the path MTU check, the Console. A node says which ones it has. Every build has all of them unless it was made without some, and an update keeps what was left out. | capability, module, plugin, feature (for a tool) |
 | **origin** | Where a run was made from: this device or a node, with its interface, source address, public address and network. | source (sources are DNS resolvers), vantage point |
 | **fleet** | Every node of one workspace. | cluster, pool |
 | **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
@@ -123,6 +123,7 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | Term | Meaning | Not |
 | --- | --- | --- |
 | **install** | One copy of one product (the app, the CLI, a node) on one device, known only by a random ID made at first start. Every install is its own entry. Signing in attaches an install to an account, and the account's workspace groups them. The app and the CLI sign in with a login and act for a person: they send runs, read history and ask nodes for runs. A node signs in with a token and acts for its workspace: it sends runs and takes requests. | user, device (in counts), client |
+| **small build** | rvrs without the Console, built for size, for servers and for routers with little flash. | node build, lite, minimal |
 | **product** | Which rvrs an install is: `ios`, `cli` or `node`. Pulses and reports name it. | platform, client, surface |
 | **pulse** | The anonymous daily signal that an install was used: product, version, system, opens, runs per tool. Never a target, address or hostname. | telemetry event, analytics, heartbeat, ping |
 | **waitlist** | The list of email addresses waiting for accounts and nodes. | newsletter, signup |

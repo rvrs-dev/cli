@@ -1,0 +1,9 @@
+# The small build's budget (scripts/check-small-build.sh): per target, the most the stripped
+# binary may weigh, and what it weighed when this line last changed, both in bytes. The router
+# targets get 3.5 MiB, about 1.8 MB gzipped, which leaves room next to OpenWrt on a router with
+# 16 MB of flash (docs/build-features.md). x86_64 code is larger and runs on servers and virtual
+# machines, so it gets 4 MiB. Raise a budget only on purpose, in a commit that says why.
+# target                          budget    recorded
+x86_64-unknown-linux-musl        4194304   3646480
+aarch64-unknown-linux-musl       3670016   2953712
+armv7-unknown-linux-musleabihf   3670016   2821056

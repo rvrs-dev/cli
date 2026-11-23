@@ -13,3 +13,11 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# The small build: every build that leaves out the Console, for servers and for routers with
+# little flash. A run waits on the network, never on the processor, so size wins over speed
+# (docs/build-features.md has the numbers).
+[profile.small]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
