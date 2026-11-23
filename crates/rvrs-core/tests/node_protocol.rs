@@ -1,8 +1,12 @@
 //! Holds the node protocol's paper together (`schema/node-protocol`): every fixture is an example
 //! the OpenAPI document names and matches the schema of the body it stands for, every body and
 //! every schema has an example, the page names the routes the document has, and the report inside
-//! each result is one the CLI reads. No node and no API are built to it yet, so this is the only
-//! thing that keeps the three files in step.
+//! each result is one the CLI reads. The examples of a schedule tell one story: what a person
+//! made, what each of its nodes keeps and the run one of them sends.
+//!
+//! `rvrs node` speaks the protocol and is tested against these fixtures
+//! (`crates/rvrs/src/node/service_tests.rs`), and the rvrs API reads its own copy of them. This
+//! file is what keeps the page, the document and the fixtures in step with each other.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -639,6 +643,7 @@ fn the_report_in_every_result_is_one_the_cli_reads() {
     for name in [
         "result.request.json",
         "result.refused.request.json",
+        "result.scheduled.request.json",
         "run-request.ended.json",
     ] {
         let body = read(&folder().join("fixtures").join(name));
@@ -657,7 +662,219 @@ fn the_report_in_every_result_is_one_the_cli_reads() {
         assert_eq!(run.summary(), report.summary, "{name}");
         read_some += 1;
     }
-    assert_eq!(read_some, 3);
+    assert_eq!(read_some, 4);
+}
+
+#[test]
+fn a_schedules_fixtures_tell_one_story() {
+    let fixture = |name: &str| read(&folder().join("fixtures").join(name));
+    let asked = fixture("schedule.request.json");
+    let made = fixture("schedule.response.json");
+    let by_selector = fixture("schedule.selector.response.json");
+    let first = fixture("node-schedules.response.json");
+    let other = fixture("node-schedules.other.response.json");
+
+    // The schedule is what the person asked for, on the nodes they named.
+    for field in ["name", "tool", "target", "options", "intervalSeconds"] {
+        assert_eq!(asked[field], made[field], "{field}");
+    }
+    let named: BTreeSet<&str> = made["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|node| node["name"].as_str())
+        .collect();
+    let wanted: BTreeSet<&str> = asked["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(named, wanted);
+    assert_eq!(made["nodeCount"], 2);
+    let selected = fixture("schedule.selector.request.json");
+    for field in ["tool", "target", "options", "intervalSeconds", "selector"] {
+        assert_eq!(selected[field], by_selector[field], "{field}");
+    }
+
+    // Each node's copy says about a schedule what the schedule says: the tool, the target, the
+    // options, and the interval the nodes keep.
+    let entry = |copy: &Value, id: &Value| -> Value {
+        copy["schedules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| &entry["schedule"] == id)
+            .unwrap_or_else(|| panic!("no entry for {id}"))
+            .clone()
+    };
+    let mut entries = 0;
+    for copy in [&first, &other] {
+        for kept in copy["schedules"].as_array().unwrap() {
+            let schedule = [&made, &by_selector]
+                .into_iter()
+                .find(|schedule| schedule["id"] == kept["schedule"])
+                .unwrap_or_else(|| panic!("no schedule for {}", kept["schedule"]));
+            for field in ["tool", "target", "options", "everySeconds"] {
+                assert_eq!(kept[field], schedule[field], "{field}");
+            }
+            // A place in the interval is never further away than the interval is long.
+            assert!(
+                kept["startsInMilliseconds"].as_u64().unwrap()
+                    < kept["everySeconds"].as_u64().unwrap() * 1000
+            );
+            entries += 1;
+        }
+    }
+    assert_eq!(entries, 3);
+
+    // The two nodes of the shared schedule get different starts, so they never run it in the
+    // same second. The page tells the same numbers.
+    let (here, there) = (entry(&first, &made["id"]), entry(&other, &made["id"]));
+    assert_ne!(here["startsInMilliseconds"], there["startsInMilliseconds"]);
+    assert_eq!(here["startsInMilliseconds"], 41_250);
+    assert_eq!(there["startsInMilliseconds"], 9_800);
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page
+        .contains("`fra-1` is told its next run starts in 41,250 ms and `cpe-4471` in 9,800 ms"));
+    // The copies differ, so their versions do. The heartbeat's answer names the version of the
+    // copy its node should hold.
+    assert_ne!(first["version"], other["version"]);
+    assert_eq!(
+        fixture("heartbeat.response.json")["schedules"],
+        first["version"]
+    );
+
+    // The cap per target made the selector's schedule longer than the person asked for, and its
+    // nodes keep the longer interval.
+    assert!(
+        by_selector["everySeconds"].as_u64().unwrap()
+            > by_selector["intervalSeconds"].as_u64().unwrap()
+    );
+    assert_eq!(made["everySeconds"], made["intervalSeconds"]);
+
+    // Pausing changes that and when it was changed, and nothing else.
+    let paused = fixture("schedule.paused.response.json");
+    assert_eq!(fixture("schedule.change.request.json")["paused"], true);
+    assert_eq!(paused["paused"], true);
+    for (field, value) in made.as_object().unwrap() {
+        if !["paused", "updatedAt", "lastRunAt"].contains(&field.as_str()) {
+            assert_eq!(&paused[field], value, "{field}");
+        }
+    }
+    // The list has both, each as its own answer has it but for when it last ran.
+    let listed = fixture("schedules.response.json");
+    let ids: Vec<&Value> = listed["schedules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|schedule| &schedule["id"])
+        .collect();
+    assert_eq!(ids, [&by_selector["id"], &made["id"]]);
+}
+
+#[test]
+fn a_scheduled_run_names_its_schedule_and_no_claim() {
+    let fixture = |name: &str| read(&folder().join("fixtures").join(name));
+    let result = fixture("result.scheduled.request.json");
+    let schedule = fixture("schedule.response.json");
+    // The run is one of the schedule the two nodes share: its id beside the report, and the
+    // tool and the target the schedule names, the tool without regard to case.
+    assert_eq!(result["schedule"], schedule["id"]);
+    assert!(result.get("claim").is_none());
+    assert!(result["startedAgoMilliseconds"].is_u64());
+    let report: Report = serde_json::from_value(result["report"].clone()).unwrap();
+    assert_eq!(
+        report.tool.to_lowercase(),
+        schedule["tool"].as_str().unwrap()
+    );
+    assert_eq!(report.target, schedule["target"].as_str().unwrap());
+    assert_eq!(report.origin.kind, "node");
+    // A report's id never repeats on its node, so it is no id a claimed run's report has.
+    assert_ne!(
+        result["report"]["id"],
+        fixture("result.request.json")["report"]["id"]
+    );
+
+    let document = document();
+    let input = &document["components"]["schemas"]["ResultInput"];
+    assert_eq!(input["properties"]["schedule"]["format"], "uuid");
+    let required = input["required"].as_array().unwrap();
+    assert!(!required.iter().any(|field| field == "schedule"));
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains("A run with `claim` carries no `schedule`."));
+}
+
+#[test]
+fn a_node_keeps_schedules_at_revision_2() {
+    use rvrs_core::node::schedules::{Copy, AT_MOST};
+    let fixture = |name: &str| read(&folder().join("fixtures").join(name));
+    let document = document();
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+
+    // The heartbeat says the revision this build speaks, and the page says what it means.
+    assert_eq!(
+        fixture("heartbeat.request.json")["protocol"],
+        rvrs_core::node::PROTOCOL
+    );
+    assert!(page.contains("Revision 2 is a node that keeps schedules"));
+
+    // An API from before schedules names no version and answers the read with 404, so a node
+    // can count on neither.
+    let node = &document["components"]["schemas"]["Node"];
+    assert_eq!(node["properties"]["schedules"]["type"], "string");
+    let required = node["required"].as_array().unwrap();
+    assert!(!required.iter().any(|field| field == "schedules"));
+    assert!(page.contains("An API from before schedules answers 404."));
+
+    // The stream's example wakes the node for its schedules, with nothing about them.
+    let stream = std::fs::read_to_string(folder().join("fixtures/events.txt")).unwrap();
+    let woken: Vec<(String, String)> = events(&stream)
+        .into_iter()
+        .filter(|(name, _)| name == "schedules")
+        .collect();
+    assert_eq!(woken, [("schedules".to_string(), "{}".to_string())]);
+
+    // The numbers the page promises are the ones the document and the examples carry, and the
+    // ones the node reads a copy by.
+    assert!(page.contains(
+        "| A node's copy of its schedules | 50 schedules, good for 604,800 s | `keepSeconds` in the copy |"
+    ));
+    let copies = &document["components"]["schemas"]["NodeSchedules"];
+    assert_eq!(copies["properties"]["schedules"]["maxItems"], AT_MOST);
+    for name in [
+        "node-schedules.response.json",
+        "node-schedules.other.response.json",
+    ] {
+        let answer = fixture(name);
+        assert_eq!(answer["keepSeconds"], 604_800, "{name}");
+        // What rvrs node reads from the example is the example.
+        let copy = Copy::read(&answer).unwrap_or_else(|| panic!("{name}: no copy"));
+        assert_eq!(copy.version, answer["version"].as_str().unwrap(), "{name}");
+        assert_eq!(
+            copy.schedules.len(),
+            answer["schedules"].as_array().unwrap().len(),
+            "{name}"
+        );
+        for (read, written) in copy
+            .schedules
+            .iter()
+            .zip(answer["schedules"].as_array().unwrap())
+        {
+            assert_eq!(read.schedule, written["schedule"].as_str().unwrap());
+            assert_eq!(
+                read.starts_in_milliseconds,
+                written["startsInMilliseconds"].as_u64().unwrap()
+            );
+        }
+    }
+    let interval =
+        &document["components"]["schemas"]["ScheduleInput"]["properties"]["intervalSeconds"];
+    assert_eq!(
+        (interval["minimum"].as_u64(), interval["maximum"].as_u64()),
+        (Some(60), Some(86_400))
+    );
+    assert!(page.contains("| A schedule's interval | 60 to 86,400 s |"));
 }
 
 #[test]

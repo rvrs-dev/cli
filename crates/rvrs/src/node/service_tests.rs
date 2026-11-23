@@ -353,7 +353,7 @@ fn it_says_what_it_is_then_holds_its_stream_and_claims_on_hello() {
     assert!(fake.until(|fake| !fake.calls_to("/v1/nodes/me/claims").is_empty()));
     let beat = &fake.calls_to("/v1/nodes/me/heartbeats")[0];
     assert_eq!(beat.token, "rvrs_test-token");
-    assert_eq!(beat.body["protocol"], 1);
+    assert_eq!(beat.body["protocol"], 2);
     assert_eq!(
         beat.body["limits"],
         fixture("heartbeat.request.json")["limits"]

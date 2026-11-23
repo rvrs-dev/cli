@@ -289,6 +289,11 @@ impl Refusal {
             self.kind().word()
         )
     }
+
+    /// The same for a schedule the node refuses: the schedule's id and the kind of rule.
+    pub fn schedule_log_line(&self, schedule: &str) -> String {
+        format!("refused schedule {schedule}: {}", self.kind().word())
+    }
 }
 
 /// The tool as a report names it (`schema/run-report.schema.json`): Traceroute, MTR, Ping, DNS,
@@ -500,5 +505,9 @@ mod tests {
         );
         assert!(!line.contains("secret-host"));
         assert!(!line.contains("10.9.8.7"));
+        assert_eq!(
+            refusal.schedule_log_line("7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e"),
+            "refused schedule 7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e: target"
+        );
     }
 }

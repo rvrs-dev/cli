@@ -16,6 +16,8 @@
 //! - [`setup::Setup`] says whether someone set the node up. Without a credential nothing calls
 //!   the API.
 //! - [`Heartbeat`] is all a node says about itself.
+//! - [`schedules::Schedules`] says when a run a node repeats by itself is due, and when one is
+//!   left out.
 //!
 //! `rvrs node` is built on top of this ([`Guard`]). Nothing here opens a socket.
 
@@ -23,6 +25,7 @@ pub mod address;
 pub mod gate;
 pub mod refusal;
 pub mod request;
+pub mod schedules;
 pub mod setup;
 
 use std::net::IpAddr;
@@ -39,8 +42,9 @@ use gate::Gate;
 use refusal::Refusal;
 use request::{Admitted, Request};
 
-/// The revision of the node protocol this build speaks.
-pub const PROTOCOL: u32 = 1;
+/// The revision of the node protocol this build speaks. Revision 2 is a node that keeps
+/// schedules.
+pub const PROTOCOL: u32 = 2;
 
 /// What a node allows itself, whatever it is asked. Its heartbeat says them by these names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
