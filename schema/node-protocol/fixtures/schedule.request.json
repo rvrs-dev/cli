@@ -1,0 +1,13 @@
+{
+  "name": "Evening jitter",
+  "tool": "ping",
+  "target": "example.com",
+  "options": {
+    "packets": 10
+  },
+  "intervalSeconds": 60,
+  "nodes": [
+    "fra-1",
+    "cpe-4471"
+  ]
+}

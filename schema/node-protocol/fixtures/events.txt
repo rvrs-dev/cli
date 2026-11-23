@@ -8,3 +8,6 @@ data: {}
 
 : keep-alive
 
+event: schedules
+data: {}
+

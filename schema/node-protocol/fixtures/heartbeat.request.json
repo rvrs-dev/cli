@@ -1,6 +1,6 @@
 {
   "version": "0.14.2",
-  "protocol": 1,
+  "protocol": 2,
   "system": {
     "os": "linux",
     "arch": "aarch64"
