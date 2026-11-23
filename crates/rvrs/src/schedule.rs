@@ -451,15 +451,23 @@ fn refused(status: u16, body: &Value, id: Option<&str>, nodes: &[String]) -> Str
                 .to_string()
         }
         (403, "FORBIDDEN") => NODES_TOKEN.to_string(),
-        (404, "NODE_NOT_FOUND") => match nodes {
-            [one] => format!(
-                "This workspace has no node called \u{201C}{one}\u{201D}. List them with rvrs nodes."
-            ),
-            _ => format!(
-                "This workspace lacks one of the nodes {}. List them with rvrs nodes.",
-                nodes.join(", ")
-            ),
-        },
+        // The API names the node it didn't find in `details.node`. An API that doesn't leaves the
+        // CLI with the names it sent.
+        (404, "NODE_NOT_FOUND") => {
+            let named = body["error"]["details"]["node"].as_str().or(match nodes {
+                [one] => Some(one.as_str()),
+                _ => None,
+            });
+            match named {
+                Some(one) => format!(
+                    "This workspace has no node called \u{201C}{one}\u{201D}. List them with rvrs nodes."
+                ),
+                None => format!(
+                    "This workspace lacks one of the nodes {}. List them with rvrs nodes.",
+                    nodes.join(", ")
+                ),
+            }
+        }
         (404, "SCHEDULE_NOT_FOUND") => format!(
             "You have no schedule with the id {}. List them with rvrs schedules.",
             id.unwrap_or("you gave")
@@ -1078,6 +1086,15 @@ mod tests {
         assert_eq!(
             refused(404, &error("NODE_NOT_FOUND"), None, &words("fra-1 fra-9")),
             "This workspace lacks one of the nodes fra-1, fra-9. List them with rvrs nodes."
+        );
+        let named = json!({ "error": {
+            "code": "NODE_NOT_FOUND",
+            "message": "x.",
+            "details": { "node": "fra-9" },
+        } });
+        assert_eq!(
+            refused(404, &named, None, &words("fra-1 fra-9")),
+            "This workspace has no node called \u{201C}fra-9\u{201D}. List them with rvrs nodes."
         );
         assert_eq!(
             refused(403, &error("SCHEDULE_LIMIT"), None, &[]),

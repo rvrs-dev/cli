@@ -275,7 +275,7 @@ POST /v1/schedules
 - `PATCH /v1/schedules/{id}` changes `name`, `options`, `intervalSeconds`, where it runs and `paused`. A paused schedule runs on no node and keeps its runs.
 - Making a schedule that says the same as one the person has, in tool, target, options, interval and where it runs, answers 200 with that one. Two of them would send every run twice.
 - A schedule belongs to the person who made it, and so do its runs. Anyone else gets 404 `SCHEDULE_NOT_FOUND`.
-- 404 `NODE_NOT_FOUND` says `nodes` names a node the workspace doesn't have. 403 `SCHEDULE_LIMIT` says the workspace has as many schedules as it may.
+- 404 `NODE_NOT_FOUND` says `nodes` names a node the workspace doesn't have, and `details.node` is the name it didn't find. 403 `SCHEDULE_LIMIT` says the workspace has as many schedules as it may.
 - Deleting a schedule ends it on every node and keeps the runs it made.
 
 The answer is the schedule as `GET /v1/schedules/{id}` gives it. `nodes` lists the nodes it names, with the name each has now. `nodeCount` is how many nodes it runs on at the moment. `everySeconds` is the interval the nodes keep, which is `intervalSeconds` unless the cap below made it longer. `lastRunAt` is when the API last stored one of its runs.
@@ -303,7 +303,8 @@ A node reads its copy:
 
 - after every `hello`, which is every time it connects,
 - after every `schedules` event,
-- and when a heartbeat's answer names a `schedules` version other than the one it holds.
+- when a heartbeat's answer names a `schedules` version other than the one it holds,
+- and once when its copy is older than it is good for, or the hour it waits after a 403 is over, so a node whose network lets no stream through still gets a copy.
 
 What it does with it:
 
@@ -540,7 +541,7 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - A node's newest stream is the one that counts. On the same instance of the stream service the older one ends at once, and on another instance within 15 seconds.
 - Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 - A node's offset into a schedule's interval is a hash of the schedule's id and the node's id, in milliseconds. Nothing is stored per node and schedule.
-- A change to a schedule raises a number on its workspace, and a node's copy is behind while the number it last read is lower. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
+- A change to a schedule that goes by a selector or the fleet raises a number on its workspace, and a node's copy is behind while the number it last read is another. A schedule that names its nodes marks those nodes as behind and no other, and so does a change to a node's tags. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
 - How many nodes a schedule runs on, and the interval the cap leaves it, are counted when a schedule changes and, within 15 seconds, when nodes or their tags did. A fleet that enrolls is counted once per pass and never once per node.
 
 ## Left out on purpose
