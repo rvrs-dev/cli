@@ -16,6 +16,9 @@
 //! - A schedule that fails the node's own check is refused once, until the copy says something
 //!   else about it.
 //! - A copy is good for `keepSeconds`. After that nothing starts until the copy was read again.
+//!   A restart never makes a copy fresh: the node keeps the copy's age beside it ([`Age`]) and
+//!   starts with what is left.
+//! - A schedule that leaves the copy ends at once. A run of it that is going is stopped.
 
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -130,6 +133,64 @@ impl Copy {
     }
 }
 
+/// The most of a copy's use a crash can leave unwritten: the node writes the age at least this
+/// often while it runs. A start from the kept copy counts it as used.
+pub const AGE_WRITTEN_EVERY_SECONDS: u64 = 600;
+
+/// How old a kept copy is, written beside it. A node with a disk starts from its kept copy, and
+/// without this every start would make the copy good for its whole `keepSeconds` again, so a
+/// node that restarts now and then without its uplink would run a deleted schedule for good.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Age {
+    /// When the copy's answer arrived, in seconds since 1970 by the node's own clock, which may
+    /// be wrong.
+    pub read_at: u64,
+    /// How long the node has run with this copy since its answer, by a clock that only counts
+    /// forward.
+    pub used_seconds: u64,
+}
+
+impl Age {
+    /// The age of an answer that arrives now.
+    pub fn new(wall: u64) -> Age {
+        Age {
+            read_at: wall,
+            used_seconds: 0,
+        }
+    }
+
+    /// Reads the age a kept copy carries. `None` is a file without one, which an older build
+    /// wrote, and such a file is no copy.
+    pub fn read(value: &Value) -> Option<Age> {
+        Some(Age {
+            read_at: value["readAt"].as_u64()?,
+            used_seconds: value["usedSeconds"].as_u64()?,
+        })
+    }
+
+    /// How old the copy is at a start from the kept file, in seconds. `wall` is the clock's
+    /// time now, in seconds since 1970. It is the larger of two counts. The time the node ran
+    /// with the copy, plus what a crash could have left unwritten. And the time since the answer
+    /// by the clock, which also counts the time the node was off. A clock that reads earlier
+    /// than the answer is not synchronized and counts nothing.
+    pub fn at_start(&self, wall: u64) -> u64 {
+        let ran = self.used_seconds.saturating_add(AGE_WRITTEN_EVERY_SECONDS);
+        let by_the_clock = wall.saturating_sub(self.read_at);
+        ran.max(by_the_clock)
+    }
+}
+
+/// What an answer changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Replaced {
+    /// The version is another than the one the node held.
+    pub changed: bool,
+    /// The schedules that left the copy while a run of theirs was going. The node stops those
+    /// runs now and sends what they measured.
+    pub stop: Vec<String>,
+}
+
 /// Why a due run was left out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeftOut {
@@ -174,6 +235,10 @@ pub struct Schedules {
     kept: Vec<Kept>,
     /// The copy is good until then. None while the node holds no copy.
     good_until: Option<Instant>,
+    /// How long the copy is good for after its answer.
+    keep: Duration,
+    /// When the copy's answer arrived, by the node's own clock, in seconds since 1970.
+    read_at: u64,
     /// Nothing starts until the copy was read again.
     held: bool,
     /// The schedules with a run that is still going, also one that left the copy meanwhile.
@@ -188,7 +253,18 @@ impl Schedules {
 
     /// Starts from a copy the node kept, without an answer: each schedule at a random time
     /// within its interval. `random` gives a random number each time it is called.
-    pub fn from_kept(copy: &Copy, now: Instant, mut random: impl FnMut() -> u64) -> Schedules {
+    ///
+    /// The copy is as old as its `age` says at this start ([`Age::at_start`]), with `wall` the
+    /// clock's time in seconds since 1970, and is good for what is left of `keepSeconds`. A copy
+    /// with nothing left is held as one that ran out while the node ran: no scheduled run
+    /// starts until the node has read the copy again.
+    pub fn from_kept(
+        copy: &Copy,
+        age: Age,
+        now: Instant,
+        wall: u64,
+        mut random: impl FnMut() -> u64,
+    ) -> Schedules {
         let kept = copy
             .schedules
             .iter()
@@ -200,13 +276,26 @@ impl Schedules {
                 entry: entry.clone(),
             })
             .collect();
+        let left = copy.keep_seconds.saturating_sub(age.at_start(wall));
         Schedules {
             version: Some(copy.version.clone()),
             kept,
-            good_until: Some(now + Duration::from_secs(copy.keep_seconds)),
+            good_until: Some(now + Duration::from_secs(left)),
+            keep: Duration::from_secs(copy.keep_seconds),
+            read_at: age.read_at,
             held: false,
             going: BTreeSet::new(),
         }
+    }
+
+    /// How old the copy the node holds is now, to write beside the kept copy. `None` while the
+    /// node holds no copy.
+    pub fn age(&self, now: Instant) -> Option<Age> {
+        let left = self.good_until?.saturating_duration_since(now);
+        Some(Age {
+            read_at: self.read_at,
+            used_seconds: self.keep.saturating_sub(left).as_secs(),
+        })
     }
 
     /// The version of the copy the node holds. A heartbeat's answer that names another one
@@ -224,13 +313,19 @@ impl Schedules {
         self.kept.is_empty()
     }
 
-    /// An answer arrived. It replaces the copy the node held, whole: a schedule that is no
-    /// longer in it ends at once, and every other one's next start is `startsInMilliseconds`
-    /// from now. A start that would come less than half an interval after the schedule's last
-    /// one is left out, so an answer that moves a schedule's place in the interval never has
-    /// two of its runs close together. A schedule the node refused stays refused while the copy
-    /// says the same about it. True when the version is another than the one the node held.
-    pub fn replace(&mut self, copy: &Copy, now: Instant) -> bool {
+    /// An answer arrived, at `now` and at `wall` seconds since 1970 by the node's clock. It
+    /// replaces the copy the node held, whole, and the copy's age starts over.
+    ///
+    /// A schedule that is no longer in the copy ends at once: it was paused or deleted, or the
+    /// node no longer matches it. No further run of it starts, and a run of it that is going is
+    /// named in [`Replaced::stop`], for the node to stop now. A schedule that stays in the copy
+    /// keeps its going run, also when the copy says another interval or other options.
+    ///
+    /// Every schedule's next start is `startsInMilliseconds` from now. A start that would come
+    /// less than half an interval after the schedule's last one is left out, so an answer that
+    /// moves a schedule's place in the interval never has two of its runs close together. A
+    /// schedule the node refused stays refused while the copy says the same about it.
+    pub fn replace(&mut self, copy: &Copy, now: Instant, wall: u64) -> Replaced {
         let before = std::mem::take(&mut self.kept);
         self.kept = copy
             .schedules
@@ -260,9 +355,28 @@ impl Schedules {
             .collect();
         let changed = self.version.as_deref() != Some(copy.version.as_str());
         self.version = Some(copy.version.clone());
-        self.good_until = Some(now + Duration::from_secs(copy.keep_seconds));
+        self.keep = Duration::from_secs(copy.keep_seconds);
+        self.good_until = Some(now + self.keep);
+        self.read_at = wall;
         self.held = false;
-        changed
+        Replaced {
+            changed,
+            stop: self.gone(),
+        }
+    }
+
+    /// The schedules with a run that is going and no place in the copy.
+    fn gone(&self) -> Vec<String> {
+        self.going
+            .iter()
+            .filter(|schedule| {
+                !self
+                    .kept
+                    .iter()
+                    .any(|kept| kept.entry.schedule == **schedule)
+            })
+            .cloned()
+            .collect()
     }
 
     /// The fleet was stopped. The node keeps its copy and starts no run of it until it has read
@@ -271,15 +385,18 @@ impl Schedules {
         self.held = true;
     }
 
-    /// The node holds no schedules any more: its token is gone, or the API has none for it.
-    pub fn clear(&mut self) {
+    /// The node holds no schedules any more: its token is gone, or the API has none for it. The
+    /// answer names the schedules with a run that is going, for the node to stop now.
+    pub fn clear(&mut self) -> Vec<String> {
         self.version = None;
         self.kept.clear();
         self.good_until = None;
         self.held = false;
+        self.gone()
     }
 
-    /// True when the node holds schedules and its copy is older than it is good for.
+    /// True when the node holds schedules and its copy is older than it is good for. Nothing
+    /// starts then. A run that is going goes on to its end.
     pub fn expired(&self, now: Instant) -> bool {
         !self.kept.is_empty() && self.good_until.is_some_and(|until| now >= until)
     }
@@ -371,6 +488,9 @@ mod tests {
     const FULL: [&str; 7] = ["traceroute", "ping", "mtr", "dns", "bgp", "tcp", "mtu"];
     const PING: &str = "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e";
     const MTR: &str = "c4d8e1f2-6a7b-4c9d-8e0f-1a2b3c4d5e6f";
+    /// The node's clock when an answer arrives, in seconds since 1970.
+    const WALL: u64 = 1_795_000_000;
+    const DAY: u64 = 86_400;
 
     fn fixture(name: &str) -> Value {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -508,7 +628,11 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        assert!(schedules.replace(&copy("node-schedules.response.json"), now));
+        assert!(
+            schedules
+                .replace(&copy("node-schedules.response.json"), now, WALL)
+                .changed
+        );
         assert_eq!(schedules.version(), Some("5d0c2a9e41b7f630"));
         assert_eq!(schedules.len(), 1);
         // Nothing before 41,250 ms, one run at it, and then one every 60 seconds.
@@ -526,7 +650,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&copy("node-schedules.response.json"), now);
+        schedules.replace(&copy("node-schedules.response.json"), now, WALL);
         let due = schedules.due(&mut guard, now + seconds(42));
         let [Due::Start {
             schedule,
@@ -551,7 +675,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("example.com", 60, 10_000), now);
+        schedules.replace(&one("example.com", 60, 10_000), now, WALL);
         assert_eq!(
             started(&mut schedules, &mut guard, now + seconds(10)),
             [PING]
@@ -575,7 +699,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("example.com", 60, 10_000), now);
+        schedules.replace(&one("example.com", 60, 10_000), now, WALL);
         assert_eq!(
             started(&mut schedules, &mut guard, now + seconds(10)),
             [PING]
@@ -583,7 +707,11 @@ mod tests {
         // A new answer 5 s later puts the next start 20 s after the last one. That is less than
         // half of 60 s, so it is left out, and the one after it runs.
         let answered = now + seconds(15);
-        assert!(!schedules.replace(&one("example.com", 60, 15_000), answered));
+        assert!(
+            !schedules
+                .replace(&one("example.com", 60, 15_000), answered, WALL)
+                .changed
+        );
         assert!(schedules.due(&mut guard, answered + seconds(15)).is_empty());
         assert!(started(&mut schedules, &mut guard, answered + seconds(74)).is_empty());
         assert_eq!(
@@ -592,7 +720,7 @@ mod tests {
         );
         // An answer that puts it 31 s after the last start changes nothing about that run.
         let again = answered + seconds(75);
-        schedules.replace(&one("example.com", 60, 31_000), again);
+        schedules.replace(&one("example.com", 60, 31_000), again, WALL);
         assert_eq!(
             started(&mut schedules, &mut guard, again + seconds(31)),
             [PING]
@@ -604,7 +732,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("example.com", 60, 0), now);
+        schedules.replace(&one("example.com", 60, 0), now, WALL);
         assert!(matches!(
             schedules.due(&mut guard, now)[..],
             [Due::Start { .. }]
@@ -636,7 +764,7 @@ mod tests {
         };
         let mut guard = Guard::new(limits, &FULL, Allowed::none());
         let mut schedules = Schedules::none();
-        schedules.replace(&two(), now);
+        schedules.replace(&two(), now, WALL);
         // A run someone asked for takes the node's one place.
         let asked = one("example.net", 60, 0).schedules[0].request();
         assert!(guard.admit(&asked, now).is_ok());
@@ -673,7 +801,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("192.168.1.1", 60, 0), now);
+        schedules.replace(&one("192.168.1.1", 60, 0), now, WALL);
         let due = schedules.due(&mut guard, now);
         let [Due::Refuse {
             schedule, refusal, ..
@@ -692,16 +820,16 @@ mod tests {
         }
         // A copy that says the same about it changes nothing.
         let later = now + seconds(400);
-        schedules.replace(&one("192.168.1.1", 60, 0), later);
+        schedules.replace(&one("192.168.1.1", 60, 0), later, WALL);
         assert!(schedules.due(&mut guard, later).is_empty());
         // A copy that says something else is checked again: once more refused, then a target
         // the node probes.
-        schedules.replace(&one("192.168.1.2", 60, 0), later);
+        schedules.replace(&one("192.168.1.2", 60, 0), later, WALL);
         assert!(matches!(
             schedules.due(&mut guard, later)[..],
             [Due::Refuse { .. }]
         ));
-        schedules.replace(&one("example.com", 60, 0), later);
+        schedules.replace(&one("example.com", 60, 0), later, WALL);
         assert_eq!(started(&mut schedules, &mut guard, later), [PING]);
     }
 
@@ -710,7 +838,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("example.com", 60, 0), now);
+        schedules.replace(&one("example.com", 60, 0), now, WALL);
         assert_eq!(started(&mut schedules, &mut guard, now), [PING]);
         schedules.refuse(PING);
         assert!(schedules.due(&mut guard, now + seconds(60)).is_empty());
@@ -723,7 +851,7 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&two(), now);
+        schedules.replace(&two(), now, WALL);
         assert_eq!(schedules.len(), 2);
         // The ping's run is going when a copy without the ping arrives.
         assert!(matches!(
@@ -735,9 +863,12 @@ mod tests {
             keep_seconds: 604_800,
             schedules: vec![two().schedules[1].clone()],
         };
-        assert!(schedules.replace(&without, now + seconds(11)));
+        let replaced = schedules.replace(&without, now + seconds(11), WALL);
+        assert!(replaced.changed);
         assert_eq!(schedules.len(), 1);
-        // Its run ends and is sent like any. No further run of it starts.
+        // The schedule was paused or deleted, so its run is to be stopped now. What it measured
+        // is sent like any result, and no further run of it starts.
+        assert_eq!(replaced.stop, [PING]);
         guard.finish();
         schedules.finished(PING);
         assert!(schedules.due(&mut guard, now + seconds(70)).is_empty());
@@ -753,7 +884,8 @@ mod tests {
         let kept = two();
         // The random numbers put the ping 7 s in and the MTR 1,000 s in.
         let mut numbers = [60_000 * 5 + 7_000, 1_200_000 * 3 + 1_000_000].into_iter();
-        let mut schedules = Schedules::from_kept(&kept, now, || numbers.next().unwrap());
+        let mut schedules =
+            Schedules::from_kept(&kept, Age::new(WALL), now, WALL, || numbers.next().unwrap());
         assert_eq!(schedules.version(), Some("b81e07c93a2f4d16"));
         let mut guard = guard();
         assert!(started(&mut schedules, &mut guard, now + seconds(6)).is_empty());
@@ -771,7 +903,7 @@ mod tests {
         );
         // The answer that arrives later puts each one at the API's place in the interval.
         let answered = now + seconds(1001);
-        schedules.replace(&kept, answered);
+        schedules.replace(&kept, answered, WALL);
         assert!(started(&mut schedules, &mut guard, answered + seconds(9)).is_empty());
     }
 
@@ -782,7 +914,7 @@ mod tests {
         let mut short = one("example.com", 60, 0);
         short.keep_seconds = 150;
         let mut schedules = Schedules::none();
-        schedules.replace(&short, now);
+        schedules.replace(&short, now, WALL);
         assert_eq!(started(&mut schedules, &mut guard, now), [PING]);
         assert_eq!(
             started(&mut schedules, &mut guard, now + seconds(120)),
@@ -793,7 +925,7 @@ mod tests {
         assert!(schedules.expired(now + seconds(150)));
         assert!(schedules.due(&mut guard, now + seconds(180)).is_empty());
         assert!(schedules.due(&mut guard, now + seconds(240)).is_empty());
-        schedules.replace(&short, now + seconds(250));
+        schedules.replace(&short, now + seconds(250), WALL);
         assert!(!schedules.expired(now + seconds(250)));
         assert_eq!(
             started(&mut schedules, &mut guard, now + seconds(250)),
@@ -808,13 +940,13 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&one("example.com", 60, 0), now);
+        schedules.replace(&one("example.com", 60, 0), now, WALL);
         schedules.hold();
         // The copy is kept, and no run of it starts.
         assert_eq!(schedules.len(), 1);
         assert_eq!(schedules.version(), Some("example.com-60"));
         assert!(schedules.due(&mut guard, now + seconds(60)).is_empty());
-        schedules.replace(&one("example.com", 60, 0), now + seconds(3600));
+        schedules.replace(&one("example.com", 60, 0), now + seconds(3600), WALL);
         assert_eq!(
             started(&mut schedules, &mut guard, now + seconds(3600)),
             [PING]
@@ -826,10 +958,218 @@ mod tests {
         let now = Instant::now();
         let mut guard = guard();
         let mut schedules = Schedules::none();
-        schedules.replace(&copy("node-schedules.other.response.json"), now);
-        schedules.clear();
+        schedules.replace(&two(), now, WALL);
+        // A run of one of them is going. It is to be stopped, since the node has no schedules.
+        assert!(matches!(
+            schedules.due(&mut guard, now + seconds(10))[..],
+            [Due::Start { .. }]
+        ));
+        assert_eq!(schedules.clear(), [PING]);
         assert!(schedules.is_empty());
         assert_eq!(schedules.version(), None);
         assert!(schedules.due(&mut guard, now + seconds(3600)).is_empty());
+    }
+
+    #[test]
+    fn a_schedule_that_stays_in_the_copy_keeps_its_going_run() {
+        let now = Instant::now();
+        let mut guard = guard();
+        let mut schedules = Schedules::none();
+        schedules.replace(&one("example.com", 60, 0), now, WALL);
+        assert!(matches!(
+            schedules.due(&mut guard, now)[..],
+            [Due::Start { .. }]
+        ));
+        // The same copy again, then one with another interval and one with other options: the
+        // schedule is still there, so its run goes on.
+        assert!(schedules
+            .replace(&one("example.com", 60, 0), now, WALL)
+            .stop
+            .is_empty());
+        let other_interval = schedules.replace(&one("example.com", 300, 0), now + seconds(1), WALL);
+        assert!(other_interval.changed && other_interval.stop.is_empty());
+        let mut other_options = one("example.com", 300, 0);
+        other_options.schedules[0]
+            .options
+            .insert("packets".into(), 5.into());
+        assert!(schedules
+            .replace(&other_options, now + seconds(2), WALL)
+            .stop
+            .is_empty());
+        // A copy that ran out starts no new run. It stops none either: nothing names the run.
+        let mut short = one("example.com", 60, 0);
+        short.keep_seconds = 10;
+        assert!(schedules
+            .replace(&short, now + seconds(3), WALL)
+            .stop
+            .is_empty());
+        assert!(schedules.expired(now + seconds(13)));
+        assert!(schedules.due(&mut guard, now + seconds(60)).is_empty());
+        // A copy without the schedule stops it, once, and a later one has nothing left to stop.
+        let empty = Copy {
+            version: "none".into(),
+            keep_seconds: 604_800,
+            schedules: Vec::new(),
+        };
+        assert_eq!(
+            schedules.replace(&empty, now + seconds(70), WALL).stop,
+            [PING]
+        );
+        guard.finish();
+        schedules.finished(PING);
+        assert!(schedules
+            .replace(&empty, now + seconds(80), WALL)
+            .stop
+            .is_empty());
+    }
+
+    #[test]
+    fn the_age_of_a_copy_counts_while_the_node_runs_and_an_answer_starts_it_over() {
+        let now = Instant::now();
+        let mut schedules = Schedules::none();
+        assert_eq!(schedules.age(now), None);
+        schedules.replace(&one("example.com", 60, 0), now, WALL);
+        assert_eq!(schedules.age(now), Some(Age::new(WALL)));
+        assert_eq!(
+            schedules.age(now + seconds(3 * DAY + 5)),
+            Some(Age {
+                read_at: WALL,
+                used_seconds: 3 * DAY + 5
+            })
+        );
+        // A copy is never older than it is good for.
+        assert_eq!(
+            schedules.age(now + seconds(30 * DAY)).unwrap().used_seconds,
+            7 * DAY
+        );
+        // The next answer is a new copy with no age.
+        let again = now + seconds(3 * DAY);
+        schedules.replace(&one("example.com", 60, 0), again, WALL + 3 * DAY);
+        assert_eq!(schedules.age(again), Some(Age::new(WALL + 3 * DAY)));
+        // The age travels as two fields beside the copy, and a file without them has none.
+        let written = serde_json::to_value(Age {
+            read_at: WALL,
+            used_seconds: 77,
+        })
+        .unwrap();
+        assert_eq!(written, json!({ "readAt": WALL, "usedSeconds": 77 }));
+        assert_eq!(Age::read(&written).unwrap().used_seconds, 77);
+        assert_eq!(Age::read(&json!({ "version": "v", "schedules": [] })), None);
+        assert_eq!(Age::read(&json!({ "readAt": WALL })), None);
+        assert_eq!(
+            Age::read(&json!({ "readAt": "now", "usedSeconds": 0 })),
+            None
+        );
+    }
+
+    #[test]
+    fn a_copy_used_for_six_days_expires_a_day_after_a_restart() {
+        let read = Instant::now();
+        let kept = one("example.com", 60, 0);
+        let mut schedules = Schedules::none();
+        schedules.replace(&kept, read, WALL);
+        // Six days later the node stops, with the copy's age written, and starts again.
+        let age = schedules.age(read + seconds(6 * DAY)).unwrap();
+        assert_eq!(age.used_seconds, 6 * DAY);
+        let start = Instant::now();
+        let mut schedules = Schedules::from_kept(&kept, age, start, WALL + 6 * DAY, || 0);
+        let mut guard = guard();
+        assert_eq!(started(&mut schedules, &mut guard, start), [PING]);
+        // One day is left of the seven, less the ten minutes a crash could have left unwritten.
+        // The restart did not make the copy good for seven days again.
+        let left = DAY - AGE_WRITTEN_EVERY_SECONDS;
+        assert!(!schedules.expired(start + seconds(left - 1)));
+        assert_eq!(
+            started(&mut schedules, &mut guard, start + seconds(left - 60)),
+            [PING]
+        );
+        assert!(schedules.expired(start + seconds(left)));
+        assert!(schedules.due(&mut guard, start + seconds(left)).is_empty());
+        assert!(schedules
+            .due(&mut guard, start + seconds(2 * DAY))
+            .is_empty());
+    }
+
+    #[test]
+    fn restarts_without_the_api_never_use_a_copy_for_more_than_it_is_good_for() {
+        let kept = one("example.com", 60, 0);
+        let mut age = Age::new(WALL);
+        let mut good_hours = 0;
+        // A node without its uplink that restarts every 40 hours, for a month. Its clock is not
+        // synchronized and reads a time before the answer, so only the time it ran counts.
+        for _ in 0..20 {
+            let start = Instant::now();
+            let schedules = Schedules::from_kept(&kept, age, start, WALL - 5 * DAY, || 0);
+            for hour in 0..40 {
+                if !schedules.expired(start + seconds(hour * 3600)) {
+                    good_hours += 1;
+                }
+            }
+            age = schedules.age(start + seconds(40 * 3600)).unwrap();
+        }
+        assert!(good_hours <= 7 * 24, "{good_hours}");
+        // Most of the seven days were used: each restart costs the ten minutes it may have lost.
+        assert!(good_hours >= 6 * 24, "{good_hours}");
+        assert_eq!(age.used_seconds, 7 * DAY);
+        // From then on every start finds the copy run out.
+        let start = Instant::now();
+        let mut schedules = Schedules::from_kept(&kept, age, start, WALL - 5 * DAY, || 0);
+        assert!(schedules.expired(start));
+        assert!(schedules.due(&mut guard(), start + seconds(60)).is_empty());
+    }
+
+    #[test]
+    fn a_clock_that_moved_on_past_the_copys_time_finds_it_expired_at_the_start() {
+        let kept = one("example.com", 60, 0);
+        // The node ran an hour with the copy and was then off for eight days.
+        let age = Age {
+            read_at: WALL,
+            used_seconds: 3600,
+        };
+        assert_eq!(age.at_start(WALL + 8 * DAY), 8 * DAY);
+        let start = Instant::now();
+        let mut schedules = Schedules::from_kept(&kept, age, start, WALL + 8 * DAY, || 0);
+        let mut guard = guard();
+        // It holds the copy, and no scheduled run starts until it has read the copy again.
+        assert_eq!(schedules.len(), 1);
+        assert_eq!(schedules.version(), Some("example.com-60"));
+        assert!(schedules.expired(start));
+        assert!(schedules.due(&mut guard, start + seconds(120)).is_empty());
+        schedules.replace(&kept, start + seconds(130), WALL + 8 * DAY + 130);
+        assert!(!schedules.expired(start + seconds(130)));
+        assert_eq!(
+            started(&mut schedules, &mut guard, start + seconds(130)),
+            [PING]
+        );
+        // Off for two days only, the clock still counts more than the hour it ran.
+        let start = Instant::now();
+        let schedules = Schedules::from_kept(&kept, age, start, WALL + 2 * DAY, || 0);
+        assert!(!schedules.expired(start + seconds(5 * DAY - 1)));
+        assert!(schedules.expired(start + seconds(5 * DAY)));
+    }
+
+    #[test]
+    fn a_clock_behind_the_copys_answer_counts_nothing() {
+        let kept = one("example.com", 60, 0);
+        let age = Age {
+            read_at: WALL,
+            used_seconds: DAY,
+        };
+        // A router that booted without a synchronized clock reads 1970. Only the day the node
+        // ran with the copy counts, and the ten minutes a crash could have lost.
+        for wall in [250, WALL - 400 * DAY, WALL - 1, WALL] {
+            assert_eq!(
+                age.at_start(wall),
+                DAY + AGE_WRITTEN_EVERY_SECONDS,
+                "{wall}"
+            );
+            let start = Instant::now();
+            let schedules = Schedules::from_kept(&kept, age, start, wall, || 0);
+            let left = 6 * DAY - AGE_WRITTEN_EVERY_SECONDS;
+            assert!(!schedules.expired(start + seconds(left - 1)), "{wall}");
+            assert!(schedules.expired(start + seconds(left)), "{wall}");
+            // The answer's own time stays with the copy, for the next start.
+            assert_eq!(schedules.age(start).unwrap().read_at, WALL);
+        }
     }
 }

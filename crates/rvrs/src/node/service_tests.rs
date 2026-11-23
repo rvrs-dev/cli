@@ -828,6 +828,33 @@ fn quick_node(fake: &Fake, name: &str) -> Started {
     node_from(fake, name, lasting(Duration::ZERO), |_| {})
 }
 
+/// The node's clock now, in seconds since 1970.
+fn wall() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+/// A copy as a node keeps it in its state folder: without when its runs start, and with its
+/// age, the time of its answer and how long the node has run with it.
+fn kept_copy(every: u64, read_at: u64, used_seconds: u64) -> Value {
+    let mut kept = copy_every(every, 0);
+    kept["schedules"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("startsInMilliseconds");
+    kept["readAt"] = read_at.into();
+    kept["usedSeconds"] = used_seconds.into();
+    kept
+}
+
+/// What the node's state folder holds as its copy.
+fn kept_in(started: &Started) -> Value {
+    serde_json::from_str(&std::fs::read_to_string(started.state.join("schedules.json")).unwrap())
+        .unwrap()
+}
+
 fn waiting_in(started: &Started) -> usize {
     std::fs::read_dir(started.state.join("outbox"))
         .map(|files| files.count())
@@ -1045,12 +1072,10 @@ fn a_node_with_a_disk_starts_its_schedules_from_the_copy_it_kept() {
     let fake = fake_with_schedules(Reply::Json(200, copy_every(1, 100)));
     // The API is out of reach from the start.
     fake.script().away = true;
+    let read_at = wall();
     let started = node_from(&fake, "kept", lasting(Duration::ZERO), |state| {
-        let mut kept = copy_every(1, 0);
-        kept["schedules"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("startsInMilliseconds");
+        // The node ran 100 seconds with this copy before it stopped.
+        let kept = kept_copy(1, read_at, 100);
         std::fs::write(state.join("schedules.json"), kept.to_string()).unwrap();
     });
     // No answer ever came, and the schedule runs: its results wait in the outbox.
@@ -1063,6 +1088,174 @@ fn a_node_with_a_disk_starts_its_schedules_from_the_copy_it_kept() {
         .find_map(|file| serde_json::from_slice(&std::fs::read(file.path()).ok()?).ok())
         .unwrap();
     assert_eq!(result["schedule"], SCHEDULE);
+    // The start counted the ten minutes a crash could have left unwritten, and wrote that at
+    // once: the copy is older on disk than it was, and its answer's time is the same.
+    let kept = kept_in(&started);
+    assert!(kept["usedSeconds"].as_u64().unwrap() >= 700, "{kept}");
+    assert!(kept["usedSeconds"].as_u64().unwrap() < 800, "{kept}");
+    assert_eq!(kept["readAt"], read_at);
+    started.stop();
+}
+
+#[test]
+fn a_kept_copy_without_its_age_is_no_copy() {
+    let fake = fake_with_schedules(Reply::Json(200, copy_every(1, 100)));
+    fake.script().away = true;
+    // What a build from before the age wrote: the copy alone.
+    let started = node_from(&fake, "noage", lasting(Duration::ZERO), |state| {
+        let mut kept = kept_copy(1, 0, 0);
+        kept.as_object_mut().unwrap().remove("readAt");
+        kept.as_object_mut().unwrap().remove("usedSeconds");
+        std::fs::write(state.join("schedules.json"), kept.to_string()).unwrap();
+    });
+    // The node starts without schedules, so nothing runs while the API is away.
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(waiting_in(&started), 0);
+    assert!(!started.said("it kept"));
+    assert!(!started.said(&format!("schedule {SCHEDULE}")));
+    started.stop();
+}
+
+#[test]
+fn a_kept_copy_older_than_it_is_good_for_starts_no_run() {
+    let fake = fake_with_schedules(Reply::Json(200, copy_every(1, 100)));
+    fake.script().away = true;
+    // The node ran an hour with the copy and was then off for eight days.
+    let read_at = wall() - 8 * 86_400;
+    let started = node_from(&fake, "tooold", lasting(Duration::ZERO), |state| {
+        let kept = kept_copy(1, read_at, 3600);
+        std::fs::write(state.join("schedules.json"), kept.to_string()).unwrap();
+    });
+    assert!(fake.until(|_| {
+        started.said("The node's copy of its schedules is older than it is good for.")
+    }));
+    // The restart did not make the copy fresh: no scheduled run starts.
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(waiting_in(&started), 0);
+    assert!(!started.said("it kept"));
+    // The file says how old the copy is, so the next start finds the same.
+    let kept = kept_in(&started);
+    assert_eq!(kept["usedSeconds"], 604_800);
+    assert_eq!(kept["readAt"], read_at);
+    started.stop();
+}
+
+#[test]
+fn the_copys_age_is_written_with_the_copy_and_when_the_node_stops() {
+    // A schedule whose first run is an hour away, so nothing runs here.
+    let fake = fake_with_schedules(Reply::Json(200, copy_every(3600, 3_599_000)));
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    let started = quick_node(&fake, "agestop");
+    assert!(fake.until(|_| started.state.join("schedules.json").exists()));
+    let before = wall();
+    let kept = kept_in(&started);
+    // An answer is a copy with no age.
+    assert_eq!(kept["usedSeconds"], 0);
+    assert!(kept["readAt"].as_u64().unwrap().abs_diff(before) <= 2);
+    std::thread::sleep(Duration::from_millis(2200));
+    let state = started.state.clone();
+    started.stop.store(true, Ordering::Relaxed);
+    let mut started = started;
+    assert_eq!(
+        started.ended.take().unwrap().join().unwrap(),
+        Ended::Stopped
+    );
+    // A node that stops says how long it ran with the copy.
+    let stopped: Value =
+        serde_json::from_str(&std::fs::read_to_string(state.join("schedules.json")).unwrap())
+            .unwrap();
+    assert!(stopped["usedSeconds"].as_u64().unwrap() >= 2, "{stopped}");
+    assert_eq!(stopped["readAt"], kept["readAt"]);
+    assert_eq!(stopped["version"], kept["version"]);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_schedule_that_leaves_the_copy_stops_its_run_that_is_going() {
+    let fake = fake_with_schedules(Reply::Json(200, empty_copy()));
+    fake.script()
+        .schedules
+        .push_back(Reply::Json(200, copy_every(1, 100)));
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    // A run here goes on for half a minute unless it is told to stop.
+    let started = node_from(&fake, "stoprun", lasting(Duration::from_secs(30)), |_| {});
+    assert!(fake.until(|fake| fake.calls_to(SCHEDULES_PATH).len() == 1));
+    // The run has started. Then the schedule is paused or deleted: the node is told its
+    // schedules changed, and its copy no longer has this one.
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(fake.calls_to("/v1/runs").is_empty());
+    fake.script().write.push_back(SCHEDULES.into());
+    // The run ends now, long before its half minute, and what it measured is sent with the
+    // outcome stopped and the schedule's id.
+    assert!(fake.until(|fake| !fake.calls_to("/v1/runs").is_empty()));
+    let result = &fake.calls_to("/v1/runs")[0].body;
+    assert_eq!(result["schedule"], SCHEDULE);
+    assert_eq!(result["report"]["outcome"], "stopped");
+    assert_eq!(result["report"]["target"], "example.com");
+    assert!(result.get("claim").is_none());
+    assert!(started.said(&format!(
+        "schedule {SCHEDULE}: no longer in the node's copy, so its run is stopped"
+    )));
+    assert!(started.said(&format!("schedule {SCHEDULE}: stopped")));
+    // No later run of it starts.
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(fake.calls_to("/v1/runs").len(), 1);
+    started.stop();
+}
+
+#[test]
+fn a_run_keeps_the_revision_the_node_held_when_it_started() {
+    let fake = fake_with_schedules(Reply::Json(200, copy_every(1, 100)));
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    // A run here takes two seconds.
+    let started = node_from(&fake, "revision", lasting(Duration::from_secs(2)), |_| {});
+    assert!(fake.until(|fake| fake.calls_to(SCHEDULES_PATH).len() == 1));
+    // The first scheduled run has started, under revision 3. Now a tag is edited on the web:
+    // the next heartbeat's answer says revision 4.
+    std::thread::sleep(Duration::from_millis(400));
+    let mut answer = fixture("heartbeat.response.json");
+    answer.as_object_mut().unwrap().remove("events");
+    answer.as_object_mut().unwrap().remove("schedules");
+    answer["node"]["metadataRevision"] = 4.into();
+    fake.script().heartbeat = Reply::Json(200, answer);
+    // A result the API will never take makes the node send a heartbeat, to say what it
+    // dropped. That result is for a run the node refuses, checked under revision 3.
+    fake.script()
+        .results
+        .push_back(refused(422, "VALIDATION_ERROR"));
+    fake.script()
+        .claims
+        .push_back(claim_with("ping", "192.168.1.1"));
+    fake.script().write.push_back(WORK.into());
+    assert!(fake.until(|fake| fake.calls_to("/v1/nodes/me/heartbeats").len() >= 2));
+    assert!(fake.until(|fake| fake.calls_to("/v1/runs").len() >= 3));
+    let calls = fake.calls.lock().unwrap().clone();
+    let sent: Vec<&Call> = calls
+        .iter()
+        .filter(|call| call.path == "/v1/runs")
+        .collect();
+    let revision = |call: &Call| call.body["report"]["origin"]["metadataRevision"].clone();
+    assert_eq!(sent[0].body["report"]["outcome"], "refused");
+    assert_eq!(revision(sent[0]), 3);
+    // The run that was going when the revision changed ended after the heartbeat that said 4,
+    // and carries the 3 it started under.
+    let second_heartbeat = calls
+        .iter()
+        .enumerate()
+        .filter(|(_, call)| call.path == "/v1/nodes/me/heartbeats")
+        .nth(1)
+        .map(|(position, _)| position)
+        .unwrap();
+    let first_run = calls
+        .iter()
+        .position(|call| call.path == "/v1/runs" && call.body["schedule"] == SCHEDULE)
+        .unwrap();
+    assert!(second_heartbeat < first_run);
+    assert_eq!(sent[1].body["schedule"], SCHEDULE);
+    assert_eq!(revision(sent[1]), 3);
+    // The run that started after it carries 4.
+    assert_eq!(sent[2].body["schedule"], SCHEDULE);
+    assert_eq!(revision(sent[2]), 4);
     started.stop();
 }
 
@@ -1072,11 +1265,8 @@ fn a_token_the_api_does_not_know_ends_the_schedules_and_the_kept_copy() {
     fake.script().streams.push_back(vec![HELLO.into()]);
     let mut started = node_from(&fake, "nocopy", lasting(Duration::ZERO), |state| {
         // An interval long enough that nothing is due before the API answers.
-        std::fs::write(
-            state.join("schedules.json"),
-            copy_every(3600, 0).to_string(),
-        )
-        .unwrap();
+        let kept = kept_copy(3600, wall(), 0);
+        std::fs::write(state.join("schedules.json"), kept.to_string()).unwrap();
     });
     let ended = started.ended.take().unwrap().join().unwrap();
     assert_eq!(ended, Ended::NoToken);

@@ -8,9 +8,10 @@
 //!
 //! A node also repeats runs by itself: its schedules (`rvrs_core::node::schedules`). It reads its
 //! copy of them after every `hello`, after every `schedules` event and when a heartbeat's answer
-//! names another version, keeps the copy beside the outbox, and starts each run when it is due,
-//! with the API in reach or not. A scheduled run passes the same check as a run that was asked
-//! for, and its result waits in the same outbox.
+//! names another version, keeps the copy beside the outbox with its age, and starts each run when
+//! it is due, with the API in reach or not. A scheduled run passes the same check as a run that
+//! was asked for, and its result waits in the same outbox. A schedule that leaves the copy ends
+//! at once: a run of it that is going is stopped, and what it measured is sent.
 //!
 //! Nothing here trusts a wake-up to arrive. The node claims after every `hello` and every `work`,
 //! every third of the lease while it holds a run, after a stream that failed to open, and at a
@@ -31,7 +32,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rvrs_core::model::{Run, Tool};
 use rvrs_core::node::refusal::{Identity, Refusal};
 use rvrs_core::node::request::{Admitted, Request};
-use rvrs_core::node::schedules::{Copy, Due, LeftOut, Schedules};
+use rvrs_core::node::schedules::{Age, Copy, Due, LeftOut, Schedules, AGE_WRITTEN_EVERY_SECONDS};
 use rvrs_core::node::{Guard, Heartbeat, Outbox as SaidOutbox, Stopped, System, PROTOCOL};
 use rvrs_core::node_config::NodeDeclaration;
 use rvrs_core::report::Report;
@@ -157,6 +158,9 @@ struct Made {
     request: Request,
     /// The schedule the node made the run by. None for a run that was asked for.
     schedule: Option<String>,
+    /// The revision of the node's tags and location when the run started. The report carries
+    /// this one, whatever the API said while the run was going.
+    revision: Option<u32>,
     started: Instant,
     what: Result<Run, Refusal>,
 }
@@ -315,6 +319,10 @@ struct Node {
     read_window: u64,
     /// The log said that the copy is older than it is good for.
     said_expired: bool,
+    /// The copy's age is written to the kept copy then.
+    next_age: Instant,
+    /// The log said that the kept copy can't be written.
+    said_unkept: bool,
     sender: Sender<Event>,
     receiver: Receiver<Event>,
     stream: Option<Stream>,
@@ -655,11 +663,19 @@ impl Node {
         self.next_send = Instant::now();
     }
 
-    fn refuse(&mut self, refusal: &Refusal, request: &Request, started: Instant) {
+    /// Answers a run the node won't make with a report that says why. `revision` is the
+    /// revision the node held when it checked the run.
+    fn refuse(
+        &mut self,
+        refusal: &Refusal,
+        request: &Request,
+        started: Instant,
+        revision: Option<u32>,
+    ) {
         self.say(&refusal.log_line(request));
         let id = report_id(request);
         let mut report = refusal.report(request, &self.identity(), id, unix_seconds());
-        report.origin.metadata_revision = self.revision;
+        report.origin.metadata_revision = revision;
         self.keep(claimed(&report, request), started);
     }
 
@@ -671,11 +687,12 @@ impl Node {
         schedule: &str,
         request: &Request,
         started: Instant,
+        revision: Option<u32>,
     ) {
         self.say(&refusal.schedule_log_line(schedule));
         let id = scheduled_report_id();
         let mut report = refusal.report(request, &self.identity(), id, unix_seconds());
-        report.origin.metadata_revision = self.revision;
+        report.origin.metadata_revision = revision;
         self.keep(json!({ "report": report, "schedule": schedule }), started);
     }
 
@@ -698,7 +715,7 @@ impl Node {
         }
         let admitted = match self.guard.admit(&request, now) {
             Ok(admitted) => admitted,
-            Err(refusal) => return self.refuse(&refusal, &request, now),
+            Err(refusal) => return self.refuse(&refusal, &request, now, self.revision),
         };
         let stop = Arc::new(AtomicBool::new(false));
         self.runs.insert(
@@ -716,7 +733,8 @@ impl Node {
         self.make(request, None, admitted, stop, now);
     }
 
-    /// Makes an admitted run on a thread of its own, which hands the run back to the loop.
+    /// Makes an admitted run on a thread of its own, which hands the run back to the loop. The
+    /// run keeps the revision of the node's tags and location that holds now, at its start.
     fn make(
         &self,
         request: Request,
@@ -728,6 +746,7 @@ impl Node {
         let guard = self.guard.clone();
         let hands = Arc::clone(&self.hands);
         let sender = self.sender.clone();
+        let revision = self.revision;
         std::thread::spawn(move || {
             // The name is resolved once, here, and the address is checked before anything is
             // sent. The engine gets the address.
@@ -742,6 +761,7 @@ impl Node {
             let _ = sender.send(Event::Made(Box::new(Made {
                 request,
                 schedule,
+                revision,
                 started: now,
                 what,
             })));
@@ -749,8 +769,10 @@ impl Node {
     }
 
     /// The report of a run the node made, as the node sends it: under the id given, with the
-    /// target as it was asked and the node as its origin.
-    fn report_of(&self, run: &Run, id: String, target: &str) -> Report {
+    /// target as it was asked and the node as its origin. `revision` is the revision of the
+    /// node's tags and location when the run started. A tag edited while a long run was going
+    /// belongs to the runs that start after it.
+    fn report_of(&self, run: &Run, id: String, target: &str, revision: Option<u32>) -> Report {
         let mut report = Report::of(run);
         report.id = id;
         // The report names the target as it was asked, whatever the tool made of it.
@@ -758,8 +780,44 @@ impl Node {
         report.origin.kind = "node".into();
         report.origin.node = Some(self.name.clone());
         report.origin.node_id = self.id.clone();
-        report.origin.metadata_revision = self.revision;
+        report.origin.metadata_revision = revision;
         report
+    }
+
+    /// Stops the runs of schedules that left the node's copy: paused, deleted, or no longer the
+    /// node's. Each run ends now, and what it measured is sent with the outcome `stopped` and
+    /// the schedule's id, as a run the API says to stop is.
+    fn stop_scheduled(&mut self, schedules: &[String]) {
+        for schedule in schedules {
+            if let Some(stop) = self.scheduled.get(schedule) {
+                stop.store(true, Ordering::Relaxed);
+                self.say(&format!(
+                    "schedule {schedule}: no longer in the node's copy, so its run is stopped"
+                ));
+            }
+        }
+    }
+
+    /// Says once that the kept copy can't be written, and again only after a write that worked.
+    fn kept_on_disk(&mut self, on_disk: bool) {
+        if on_disk {
+            self.said_unkept = false;
+        } else if !self.said_unkept {
+            self.said_unkept = true;
+            self.say("The node's state folder can't be written. Its copy of its schedules is kept in memory and is gone when the node stops.");
+        }
+    }
+
+    /// Writes how old the node's copy is beside the kept copy: when the node starts from it,
+    /// every ten minutes while it runs, and when it stops. A restart then finds the copy as old
+    /// as it is and never good for its whole time again.
+    fn keep_age(&mut self) {
+        let now = Instant::now();
+        self.next_age = now + Duration::from_secs(AGE_WRITTEN_EVERY_SECONDS);
+        if let Some(age) = self.schedules.age(now) {
+            let on_disk = self.kept.save_age(age);
+            self.kept_on_disk(on_disk);
+        }
     }
 
     /// Reads the node's copy of its schedules. The loop makes the call and waits for its
@@ -770,18 +828,22 @@ impl Node {
         let answer = match self.api.schedules() {
             Answer::Taken(answer) => match Copy::read(&answer) {
                 Some(copy) => {
-                    // Every next start counts from the moment of the answer.
-                    let changed = self.schedules.replace(&copy, Instant::now());
+                    // Every next start counts from the moment of the answer, and so does the
+                    // copy's age.
+                    let (answered, wall) = (Instant::now(), unix_seconds());
+                    let replaced = self.schedules.replace(&copy, answered, wall);
+                    self.stop_scheduled(&replaced.stop);
                     self.read_window = self.numbers.reconnect;
                     self.said_expired = false;
-                    let on_disk = self.kept.save(&copy);
-                    if changed {
+                    self.next_age = answered + Duration::from_secs(AGE_WRITTEN_EVERY_SECONDS);
+                    if replaced.changed {
                         self.say(&format!(
-                            "The node keeps {}{}.",
-                            counted(self.schedules.len()),
-                            if on_disk { "" } else { ", in memory" }
+                            "The node keeps {}.",
+                            counted(self.schedules.len())
                         ));
                     }
+                    let on_disk = self.kept.save(&copy, Age::new(wall));
+                    self.kept_on_disk(on_disk);
                     return;
                 }
                 // A good status without a copy in it is no answer of the API's.
@@ -806,7 +868,8 @@ impl Node {
                         if self.schedules.version().is_some() {
                             self.say("The API has no schedules for this node. The node holds none and asks again when it next connects.");
                         }
-                        self.schedules.clear();
+                        let going = self.schedules.clear();
+                        self.stop_scheduled(&going);
                         self.kept.remove();
                     }
                     429 => {
@@ -851,7 +914,7 @@ impl Node {
                     schedule,
                     request,
                     refusal,
-                } => self.refuse_schedule(&refusal, &schedule, &request, now),
+                } => self.refuse_schedule(&refusal, &schedule, &request, now, self.revision),
                 Due::LeftOut { schedule, why } => match why {
                     LeftOut::AtALimit => self.say(&format!(
                         "schedule {schedule}: left out, the node is at one of its limits"
@@ -865,7 +928,7 @@ impl Node {
     }
 
     /// A scheduled run ended. Its report goes to the outbox with the schedule's id beside it,
-    /// also when the schedule left the copy while the run was going.
+    /// also when the schedule left the copy while the run was going and the run was stopped.
     fn on_scheduled(&mut self, schedule: &str, made: Made) {
         self.schedules.finished(schedule);
         self.scheduled.remove(schedule);
@@ -874,11 +937,22 @@ impl Node {
             // The name resolved to an address the node sends nothing to.
             Err(refusal) => {
                 self.schedules.refuse(schedule);
-                return self.refuse_schedule(&refusal, schedule, &made.request, made.started);
+                return self.refuse_schedule(
+                    &refusal,
+                    schedule,
+                    &made.request,
+                    made.started,
+                    made.revision,
+                );
             }
         };
         (self.count)(Counted::Run(run.tool));
-        let mut report = self.report_of(&run, scheduled_report_id(), &made.request.target);
+        let mut report = self.report_of(
+            &run,
+            scheduled_report_id(),
+            &made.request.target,
+            made.revision,
+        );
         if let Err(unfit) = self.guard.fit(&mut report) {
             self.outbox.lost();
             self.say(&format!("schedule {schedule}: not sent. {unfit}"));
@@ -906,10 +980,17 @@ impl Node {
         }
         let run = match made.what {
             Ok(run) => run,
-            Err(refusal) => return self.refuse(&refusal, &made.request, made.started),
+            Err(refusal) => {
+                return self.refuse(&refusal, &made.request, made.started, made.revision)
+            }
         };
         (self.count)(Counted::Run(run.tool));
-        let mut report = self.report_of(&run, report_id(&made.request), &made.request.target);
+        let mut report = self.report_of(
+            &run,
+            report_id(&made.request),
+            &made.request.target,
+            made.revision,
+        );
         if let Some(verdict) = &held.unknown_verdict {
             report.outcome = "stopped".into();
             report.error = Some(format!(
@@ -988,6 +1069,10 @@ impl Node {
 
     /// Everything that is due now.
     fn tick(&mut self, now: Instant) {
+        // The copy's age counts while the node runs, also while it may not call the API.
+        if now >= self.next_age {
+            self.keep_age();
+        }
         if let Some(until) = self.paused_until {
             if now < until {
                 return;
@@ -1051,15 +1136,19 @@ impl Node {
                 self.outbox.unreadable()
             ));
         }
-        if !self.schedules.is_empty() {
+        if !self.schedules.is_empty() && !self.schedules.expired(Instant::now()) {
             self.say(&format!(
                 "The node starts with the {} it kept.",
                 counted(self.schedules.len())
             ));
         }
+        // What this start counts as used is written at once, so a node that restarts every few
+        // minutes still uses its copy up.
+        self.keep_age();
         loop {
             if self.stop.load(Ordering::Relaxed) {
                 self.stop_runs();
+                self.keep_age();
                 return Ended::Stopped;
             }
             if let Some(ended) = self.ended {
@@ -1090,10 +1179,11 @@ pub fn run(settings: Settings) -> Ended {
     let now = Instant::now();
     let numbers = Numbers::default();
     // A node with a disk starts from the copy it kept, each schedule at a random time within
-    // its interval, so it measures also when the API is out of reach at the start.
+    // its interval, so it measures also when the API is out of reach at the start. The copy is
+    // as old as its age says, and a file without an age is no copy.
     let mut kept = settings.schedules;
     let schedules = match kept.load() {
-        Some(copy) => Schedules::from_kept(&copy, now, random),
+        Some((copy, age)) => Schedules::from_kept(&copy, age, now, unix_seconds(), random),
         None => Schedules::none(),
     };
     Node {
@@ -1120,6 +1210,8 @@ pub fn run(settings: Settings) -> Ended {
         next_read: None,
         read_window: numbers.reconnect,
         said_expired: false,
+        next_age: now + Duration::from_secs(AGE_WRITTEN_EVERY_SECONDS),
+        said_unkept: false,
         sender,
         receiver,
         stream: None,
