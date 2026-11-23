@@ -62,7 +62,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | Term | Meaning | Not |
 | --- | --- | --- |
 | **this device** | The phone, tablet or computer rvrs is running on, in the app and on the command line alike. The default origin. | local, localhost, this machine, client |
-| **node** | A machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary as the CLI (`rvrs node`), and `--node <name>` or the app's "Run from" picks one. It signs in with a token, and its runs belong to the workspace. | probe, agent, remote node, sensor, vantage point |
+| **node** | A machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary as the CLI (`rvrs node`), and `--node <name>` or the app's "Run from" picks one. It signs in with a token, and its runs belong to the workspace. | probe, agent, sensor, vantage point |
 | **token** | A node's credential: one per node, made in the web app or received when the node enrolls, and revoked without touching another node. People sign in with a login. | API key, secret, password |
 | **enroll** | A node joining a workspace by itself: it trades an enrollment token for a token of its own. | register, onboard, adopt, provision, activate |
 | **enrollment token** | What a node enrolls with. It enrolls a set number of nodes before it expires and does nothing else. No image carries one. | join token, provisioning key, bootstrap token, claim code |

@@ -44,7 +44,6 @@ my @RULES = (
     [qr/\bvantage(?: points?)?\b/i, '"vantage point": the glossary says origin', 'prose'],
     [qr/\bprobes? (?:appliances?|devices?|box(?:es)?|hardware|locations?|sites?)\b/i, 'a probe is a packet, never a place: the glossary says node', 'prose'],
     [qr/\bweb console\b/i, '"Web Console": the glossary says web app, and Console is where a run starts', 'prose'],
-    [qr/\bremote nodes?\b/i, '"remote node": the glossary says node', 'prose'],
     [qr/\bbookmarks?\b/i, '"bookmark": the glossary says saved run or favorite', 'prose'],
     [qr/\blog(?:ged|ging)?[ -](?:in|out)\b/i, '"log in": the glossary says sign in', 'prose'],
     [qr/\btelemetry\b/i, '"telemetry": the glossary says pulse', 'prose'],
