@@ -1,6 +1,6 @@
 # Nodes and accounts
 
-A node is a machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary (`rvrs node`), started with a token the person makes under Installs at app.rvrs.dev. An account keeps a person's runs and library the same on every device they sign in on, and its workspace holds their nodes. Schedules, alerts and `--fleet` are planned.
+A node is a machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary (`rvrs node`), started with a token the person makes under Installs at app.rvrs.dev. An account keeps a person's runs and library the same on every device they sign in on, and its workspace holds their nodes. A schedule has nodes repeat a run at an interval. Alerts and `--fleet` on a tool are planned.
 
 ## Check before you say anything
 
@@ -13,7 +13,7 @@ rvrs status
   – Nodes            runs come from this device · sign in to ask a node
 ```
 
-Signed in, the Nodes line counts them: `2 nodes · 1 online`, or `no nodes yet`. `rvrs nodes` lists each with whether it is online, when it was last seen, its version and its tags. Ask a node only when the line counts one that is online. `--fleet` and `rvrs schedule` refuse, send nothing and exit non-zero. Do not run them to find out, and do not describe them as working. `rvrs help` marks each one Soon.
+Signed in, the Nodes line counts them: `2 nodes · 1 online`, or `no nodes yet`. `rvrs nodes` lists each with whether it is online, when it was last seen, its version and its tags. Ask a node only when the line counts one that is online. `--fleet` on a tool and `rvrs alerts` refuse, send nothing and exit non-zero. Do not run them to find out, and do not describe them as working. `rvrs help` marks each one Soon.
 
 ## When to use a node
 
@@ -41,6 +41,30 @@ Say what this device does show and what the other origin would add. With no node
 6. Save one run per origin into the case.
 
 A node probes from someone's network. Send it only toward targets the person may test from there, and never toward private names or addresses of a different network than the node's own.
+
+## A schedule
+
+A schedule is a run the person's nodes repeat at an interval, such as a ping every minute through the night. Each node keeps the schedule and repeats the run by itself, also while its uplink is gone, and sends the results once it is back.
+
+A schedule goes on until someone pauses or deletes it. Make one only when the person asks for a run that repeats, and say first which nodes will probe which target and how often. `rvrs schedule` is in rvrs 0.17 and newer, and `rvrs help` lists it there. An older rvrs refuses the command, and `rvrs update` gets a newer one. It takes a login, as `--node` does.
+
+```bash
+rvrs schedule add ping -c 10 <target> --every 1m --node <name>
+rvrs schedule add mtr <target> --every 5m --fleet "isp=telia"
+rvrs schedules --json
+rvrs schedule pause <id>
+rvrs schedule rm <id>
+```
+
+1. `--every` is the time between two runs on one node, from 60 seconds to 24 hours: `300`, `90s`, `5m`, `2h`. Pick the longest interval that still answers the question.
+2. Say where it runs in exactly one way: `--node <name>`, repeated for more nodes, `--fleet <selector>` for every node whose tags match, or `--all-nodes`. `rvrs nodes` shows the names and the tags.
+3. The tool's flags are the ones that travel with `--node`. The command refuses any other with a sentence.
+4. `add` prints the schedule with its id and "Made the schedule.", or says the person already has this one. `--json` prints the schedule as data: `id`, `intervalSeconds`, `everySeconds`, `nodeCount`, `paused`, `lastRunAt`.
+5. `everySeconds` is the interval the nodes keep. It is longer than `intervalSeconds` when many nodes would start more runs at one target than a workspace may, and the command says so with both numbers. Report the interval the nodes keep.
+6. `rvrs schedules` lists what the person made. `rvrs schedule show <id>` shows one, `pause` has no node run it, `resume` has its nodes run it again, and `rm` deletes it and keeps the runs it made. The start of an id is enough.
+7. The runs of a schedule are kept in the person's account as that schedule's runs. They stay out of `rvrs history`, and no command of the CLI lists them yet, so do not look for them there.
+
+Pause or delete a schedule you made for a question once the question is answered, after asking.
 
 ## Accounts
 

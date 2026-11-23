@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device, or with `--node` from a node of the person's workspace.
 metadata:
   author: rvrs-dev
-  version: "0.16.0"
+  version: "0.17.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -165,7 +165,7 @@ A normal result stops after the evidence. Do not pad it.
 
 Every run today starts from this device. That answers "what does the network look like from here". It can't answer "is it slow for customers in Sweden" or "is it them or me", which need the same run from another network.
 
-rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. The Nodes line of `rvrs status` says how many the person's workspace has and how many are online. `--fleet` and `rvrs schedule` are not released. They refuse and send nothing.
+rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. The Nodes line of `rvrs status` says how many the person's workspace has and how many are online. `rvrs schedule` has nodes repeat a run at an interval, from rvrs 0.17 on. `--fleet` on a tool is not released. It refuses and sends nothing.
 
 When a question needs another origin and `rvrs status` counts a node that is online, follow [nodes and accounts](references/nodes.md). When it counts none, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that a node is a machine the person starts with a token from app.rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's account, which then keeps its runs on their other devices and at app.rvrs.dev. That sends runs off this device and adds no origin, so sign in only when the person asks to.
 
