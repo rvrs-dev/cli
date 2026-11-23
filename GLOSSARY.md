@@ -15,6 +15,7 @@ One word per thing, in every repo, document, screen, command and API field. The 
 | **report** | A run as data (`RunReport`): `measured`, `hops`, `records` and `outcome` are observations, `interpretation` holds the inferences, `sentence` is one plain line. It is what `--json` prints, what Shortcuts receive, what the API stores and what MCP will return. | payload, export, result (for the data format) |
 | **outcome** | How a run ended: reached, exhausted, stopped or failed. A run a node was asked for and would not make ended refused. | status, result |
 | **state** | Where a run stands: requested, running, ended or expired. A run made on this device is ended as soon as it is kept. A run asked of a node waits (requested), is being made (running) and ends, or expires when the node never made it. | status, phase, progress |
+| **trigger** | How a run came to be made: manual when a person started it on a device, request when a person asked a node for it, schedule when a node made it on a schedule. | source (sources are DNS resolvers), origin (where a run was made from), cause |
 | **status line** | The line of facts under a result's title, while the run is live and after it has ended: "Running · 4 hops so far", "Reached 1.1.1.1 · 6 hops · 10.3 ms". | headline, subtitle |
 | **summary** | A run in one line of facts: "6 hops · 12.4 ms". | headline, title |
 | **interpretation** | What a result likely means. Always worded as an inference and kept apart from what was measured. | insight (as a noun for output), diagnosis, analysis |
@@ -73,7 +74,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | **allowed range** | A range of private or shared address space a node's owner lets it send packets to, for diagnostics on their own network. It is written where the node is set up, and the API never sets one. | allowlist, whitelist, exception, exemption |
 | **node's owner** | Whoever set a node up on its device and writes its settings there: its limits and its allowed ranges. An owner of a workspace is a role in the web app and may be someone else. | operator, host, admin |
 | **stop a fleet** | An admin holding every node of a workspace at once: their tokens are refused until the fleet is resumed, and none is revoked. A run is stopped by whoever asked for it. | pause, suspend, disable, kill switch |
-| **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
+| **schedule** | A run a node repeats at an interval: a tool, a target and where it runs, which is the nodes it names, the nodes a selector matches, or the fleet. Each node keeps the schedules it runs and repeats them by itself. The runs it makes are scheduled runs. | check, monitor, job, cron |
 | **alert** | The message sent when a scheduled run's result changes. | notification (those are the system's), alarm |
 
 ## Between a node and the API
@@ -101,7 +102,7 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | **favorite** | A host kept on purpose. A favorite is a host and never a run. | saved target, saved run |
 | **library** | What a person keeps on purpose, as their account holds it: favorites, saved runs and cases. The same on every device they sign in on. A word of the API and the docs; a screen says Favorites, Saved or Cases. | collection, bookmarks, sync data |
 | **tag** | A key and a value on an install, such as `isp=telia`, `line=ftth` or `region=dk-south`, to filter and pick origins by. A node declares its tags in its configuration and a person edits them on the web, and a run keeps its origin's tags as they were when it was made. | label, category, folder |
-| **selector** | A filter on tags: `isp=telia`, `isp!=telia`, `isp` or `!isp`, joined by commas to mean and. | query, label selector |
+| **selector** | A filter on tags: `isp=telia`, `isp!=telia`, `isp`, `!isp`, `line in (ftth,cable)` or `line notin (dsl,lte)`, joined by commas to mean and. | query, label selector |
 | **comment** | Text with its author and time, written on an install, a run or a case, so the people who read it later know what happened. | note, annotation, message (messages go to the rvrs team) |
 | **location** | Where an install is: coordinates at a precision (exact, area or city) and a place such as "Esbjerg, DK". A person or a node's configuration sets it. A location suggested from an address is approximate and is never kept until a person saves it. | position, geolocation, GPS |
 | **comparison** | Two or more runs of the same tool side by side, often from one case: the same target from different origins, or the same origin at different times. | diff (a diff is what a comparison shows), benchmark |
