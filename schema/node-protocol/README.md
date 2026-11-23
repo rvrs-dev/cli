@@ -422,14 +422,14 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 - The event stream is a service of its own, named in the heartbeat's answer. Releasing the API leaves the streams open. An instance that holds streams and stops closes them over a minute, so its nodes come back spread out.
 - Postgres is the queue. A request for a run is stored and announced with `NOTIFY` in one transaction.
-- Each API instance holds one `LISTEN` connection and writes `work` to the nodes whose streams it holds.
-- Every 15 seconds each instance asks, in one query for all its streams, which of their nodes have a run waiting, and writes `work` to those. That is the repeat. Its cost grows with the runs that wait and not with the nodes that have nothing to do.
-- The API starts listening before it looks for waiting runs, so a request can't fall between the two.
+- Each instance of the stream service holds one `LISTEN` connection and writes `work` to the nodes whose streams it holds. The rest of the API only sends `NOTIFY`.
+- Every 15 seconds each instance of the stream service asks, in one query for all its streams, which of their nodes have a run waiting, and writes `work` to those. That is the repeat. Its cost grows with the runs that wait and not with the nodes that have nothing to do.
+- The stream service starts listening before it looks for waiting runs, so a request can't fall between the two.
 - A claim takes its runs in one short transaction (`FOR UPDATE SKIP LOCKED`), so two claims never get the same attempt. The index it reads holds only the runs that wait or are held.
 - A node's token is derived from its `key` with a secret only the API holds. So the API answers the same token again without having kept it, and stores its hash alone. A unique index on the enrollment token and the `key` makes two enrolls at once one node.
 - The API checks the workspace and the node on every enroll, claim and result. A node can't claim or answer another node's run.
 - Revoking a node ends its stream at once, and every later call of its token answers 401.
-- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the instances end the streams of that workspace's nodes.
+- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 
 ## Left out on purpose
 
