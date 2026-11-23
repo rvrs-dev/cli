@@ -1404,23 +1404,116 @@ pub fn groups(run: &Run) -> Vec<Group<'_>> {
         .collect()
 }
 
-pub(crate) fn new_id() -> String {
+/// How many characters a new id has. With 31 letters to pick from that is 128 bits, so an id
+/// never repeats on an install however many runs it makes. The account tells an install's runs
+/// apart by it for good. The six characters ids had until rvrs 0.15 repeated within some ten
+/// thousand runs, and the API answered for the second run with the first one's.
+pub const ID_LENGTH: usize = 26;
+
+/// How many characters of an id a list shows, and a message names a run by. `History::find`
+/// takes the start of an id, so what a list shows is what a person types.
+pub const SHORT_ID: usize = 6;
+
+/// The first `width` characters of an id.
+pub fn short_id(id: &str, width: usize) -> &str {
+    id.char_indices()
+        .nth(width)
+        .map_or(id, |(end, _)| &id[..end])
+}
+
+/// How many characters tell these ids apart: `SHORT_ID`, or more where two of them start
+/// alike. Cut to that width, each id is the start of one run's id only.
+pub fn id_width<'a>(ids: impl Iterator<Item = &'a str>) -> usize {
+    let mut ids: Vec<&str> = ids.collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let alike = |pair: &[&str]| {
+        pair[0]
+            .chars()
+            .zip(pair[1].chars())
+            .take_while(|(a, b)| a == b)
+            .count()
+    };
+    ids.windows(2)
+        .map(|pair| alike(pair) + 1)
+        .max()
+        .unwrap_or(0)
+        .max(SHORT_ID)
+}
+
+/// Random bytes from the system. Where it has no random device, as in a sandbox without `/dev`,
+/// they come from the keys the standard library seeds its hash maps with.
+fn random_bytes<const N: usize>() -> [u8; N] {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
+    use std::io::Read;
+    let mut bytes = [0u8; N];
+    let read = std::fs::File::open("/dev/urandom").and_then(|mut file| file.read_exact(&mut bytes));
+    if read.is_err() {
+        for part in bytes.chunks_mut(8) {
+            let word = RandomState::new().build_hasher().finish().to_le_bytes();
+            part.copy_from_slice(&word[..part.len()]);
+        }
+    }
+    bytes
+}
+
+pub(crate) fn new_id() -> String {
     const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
-    let mut value = RandomState::new().build_hasher().finish();
-    (0..6)
-        .map(|_| {
-            let letter = ALPHABET[(value % ALPHABET.len() as u64) as usize] as char;
-            value /= ALPHABET.len() as u64;
-            letter
-        })
-        .collect()
+    // The largest multiple of 31 a byte holds. A byte past it is left out, since taking it
+    // would make the first letters of the alphabet more likely than the rest.
+    const FAIR: u8 = 248;
+    let mut id = String::with_capacity(ID_LENGTH);
+    while id.len() < ID_LENGTH {
+        for byte in random_bytes::<32>() {
+            if byte < FAIR && id.len() < ID_LENGTH {
+                id.push(ALPHABET[usize::from(byte) % ALPHABET.len()] as char);
+            }
+        }
+    }
+    id
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_id_is_26_letters_and_no_two_are_alike() {
+        let ids: Vec<String> = (0..2000).map(|_| new_id()).collect();
+        for id in &ids {
+            assert_eq!(id.len(), ID_LENGTH);
+            assert!(id
+                .bytes()
+                .all(|letter| b"abcdefghjkmnpqrstuvwxyz23456789".contains(&letter)));
+        }
+        let mut distinct = ids.clone();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct.len(), ids.len());
+        // Every letter turns up, so no part of the alphabet is left out.
+        let letters: std::collections::BTreeSet<u8> =
+            ids.iter().flat_map(|id| id.bytes()).collect();
+        assert_eq!(letters.len(), 31);
+    }
+
+    #[test]
+    fn a_list_shows_six_characters_of_an_id_or_as_many_as_tell_two_apart() {
+        assert_eq!(short_id("k3m9abzzzz", 6), "k3m9ab");
+        // An id from before 0.15 has six characters and is shown whole.
+        assert_eq!(short_id("abc234", 8), "abc234");
+        assert_eq!(id_width(std::iter::empty()), SHORT_ID);
+        assert_eq!(id_width(["k3m9abxx", "p7q2rsxx"].into_iter()), 6);
+        // Two ids that start alike for seven characters need eight.
+        assert_eq!(
+            id_width(["k3m9abc1", "k3m9abc2", "p7q2rsxx"].into_iter()),
+            8
+        );
+        // An old id that is the start of a new one: the new one needs one character more.
+        assert_eq!(id_width(["abc234", "abc234k9"].into_iter()), 7);
+        // The same id twice, as a run that is in history and saved, is one id.
+        assert_eq!(id_width(["k3m9abxx", "k3m9abxx"].into_iter()), 6);
+    }
 
     pub fn reply(ttl: u8, round: u8, from: &str, ms: f64, kind: ReplyKind) -> Event {
         Event::Reply {

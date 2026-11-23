@@ -15,7 +15,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs bgp check <prefix> <ASN>` | Says whether that route would pass RPKI origin validation |
 | `rvrs bgp glass` | Lists your looking glasses. `glass add`, `glass remove` and `glass test` manage them |
 | `rvrs last` | Shows the newest run |
-| `rvrs show <id>` | Shows a run from history. The first characters of the id are enough |
+| `rvrs show <id>` | Shows a run from history. The first characters of the id are enough, and `rvrs history` lists six of its 26 |
 | `rvrs history [tool] [target]` | Lists the runs on this device, all of them or those of a tool, a target or both: `rvrs history mtr example.com`. A target matches on any part of it. `rvrs history clear` deletes them |
 | `rvrs save [id] [--case <name>]` | Saves the newest run, or the one named, into the case used last or the one named |
 | `rvrs saved` | Lists saved runs. `rvrs saved remove <id>` takes one out |

@@ -7,7 +7,7 @@
 - `schema` is the version, `1` today. Within a version fields are only added. A change that would break a reader raises the number.
 - A reader ignores fields it doesn't know and keeps values it doesn't know as they are: a new `tool`, a new `origin.kind`, a new `outcome`.
 - Every figure is optional. `measured`, `hops`, `records`, `sources`, `probe` and `mtu` say what a run found, and a run from a small device finds less than one from a laptop.
-- `id` is unique on the install that made the run. An account tells runs apart by the install and this id.
+- `id` is unique on the install that made the run. An account tells runs apart by the install and this id, for good, so an install never uses one twice. rvrs makes 26 characters from 128 random bits. A reader takes any string of up to 64 characters.
 - `measured` and `hops` are what was measured. `interpretation` holds inferences only, each a sentence that says it is one.
 
 ## Reading a report

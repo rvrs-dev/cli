@@ -6,7 +6,7 @@
 
 | Field | Holds |
 | --- | --- |
-| `id` | The run's id in history. `rvrs show <id>` and `rvrs save <id>` take it, and its first characters are enough. |
+| `id` | The run's id in history, 26 characters. `rvrs show <id>` and `rvrs save <id>` take it, and its first characters are enough. `rvrs history` lists the first six. |
 | `tool` | `Traceroute`, `MTR`, `Ping`, `DNS` or `BGP`. |
 | `target` | What was typed. |
 | `address` | What the target resolved to. `null` for DNS and for a run that failed to resolve. |

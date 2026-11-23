@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use rvrs_core::cases::{self, CaseError, Cases, Kept};
 use rvrs_core::favorites::Favorites;
 use rvrs_core::history::History;
-use rvrs_core::model::{Outcome, Run};
+use rvrs_core::model::{id_width, short_id, Outcome, Run, SHORT_ID};
 use rvrs_core::report::Report;
 use rvrs_core::socket::IcmpSocket;
 use rvrs_core::{format, paths, resolve, Family};
@@ -154,11 +154,7 @@ pub fn history(arguments: &[String]) -> ExitCode {
                 println!("No runs match \u{201C}{}\u{201D}.", words.join(" "));
                 return ExitCode::SUCCESS;
             }
-            let style = Style::detect(ColorChoice::Auto);
-            let columns = list_columns();
-            for line in history_lines(&runs, style, columns, format::now()) {
-                println!("{line}");
-            }
+            print_runs(&runs);
             ExitCode::SUCCESS
         }
     }
@@ -175,9 +171,29 @@ pub fn matches_filter(run: &Run, words: &[&str]) -> bool {
     })
 }
 
+/// How many characters of an id a list shows: six, or as many as tell every run on this device
+/// apart, in history and saved. `rvrs show` looks in both, so what a list shows names one run.
+fn known_id_width() -> usize {
+    let (history, saved) = (History::open(), History::saved());
+    id_width(
+        history
+            .runs
+            .iter()
+            .chain(&saved.runs)
+            .map(|run| run.id.as_str()),
+    )
+}
+
 /// One line per run under a header: id, tool, target, summary, where it was made from, age.
-/// SOURCE is the address probes left from; PUBLIC is the address the internet saw.
-pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Vec<String> {
+/// SOURCE is the address probes left from; PUBLIC is the address the internet saw. An id is cut
+/// to `id_width` characters.
+pub fn history_lines(
+    runs: &[Run],
+    style: Style,
+    columns: usize,
+    now: u64,
+    id_width: usize,
+) -> Vec<String> {
     let widest =
         |texts: &mut dyn Iterator<Item = usize>, floor: usize| texts.max().unwrap_or(0).max(floor);
     let address = |address: Option<std::net::IpAddr>| {
@@ -191,8 +207,8 @@ pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Ve
     let summary_width = widest(&mut runs.iter().map(|run| width(&run.summary())), 7);
     // The addresses go first when the terminal is too narrow for everything.
     let show_addresses =
-        columns >= 6 + 12 + 16 + summary_width + source_width + public_width + 9 + 12;
-    let fixed = 6
+        columns >= id_width + 12 + 16 + summary_width + source_width + public_width + 9 + 12;
+    let fixed = id_width
         + 12
         + summary_width
         + 9
@@ -209,7 +225,7 @@ pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Ve
         |text: &str, wide: usize| format!("{text}{}", " ".repeat(wide.saturating_sub(width(text))));
     let mut header = format!(
         "{}  {}  {}  {}",
-        pad("ID", 6),
+        pad("ID", id_width),
         pad("TOOL", 10),
         pad("TARGET", target_width),
         pad("SUMMARY", summary_width)
@@ -240,7 +256,7 @@ pub fn history_lines(runs: &[Run], style: Style, columns: usize, now: u64) -> Ve
         };
         let mut line = format!(
             "{}  {}  {}{}  {summary}{gap}",
-            style.dim(&run.id),
+            style.dim(&pad(short_id(&run.id, id_width), id_width)),
             style.dim(&pad(run.tool.command(), 10)),
             style.bold(&target),
             " ".repeat(target_width - width(&target)),
@@ -379,13 +395,13 @@ fn count_of(count: usize, one: &str, many: &str) -> String {
     }
 }
 
-/// How messages name a run: "1.1.1.1 · traceroute (abc234)".
+/// How messages name a run: "1.1.1.1 · traceroute (abc234)", with the start of its id.
 fn run_name(run: &Run) -> String {
     format!(
         "{} \u{00B7} {} ({})",
         run.target,
         run.tool.command(),
-        run.id
+        short_id(&run.id, SHORT_ID)
     )
 }
 
@@ -511,7 +527,8 @@ fn print_reports(runs: &[&Run]) {
 
 fn print_runs(runs: &[Run]) {
     let style = Style::detect(ColorChoice::Auto);
-    for line in history_lines(runs, style, list_columns(), format::now()) {
+    let id_width = known_id_width();
+    for line in history_lines(runs, style, list_columns(), format::now(), id_width) {
         println!("{line}");
     }
 }
@@ -975,13 +992,20 @@ pub fn case_names() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// For shell completion: "id:target · summary" per run.
+/// For shell completion: "id:target · summary" per run, with the start of the id that a list
+/// shows.
 pub fn runs() -> ExitCode {
     let history = History::open();
     let saved = History::saved();
+    let width = known_id_width();
     let kept = saved.runs.iter().filter(|run| !history.contains(&run.id));
     for run in history.runs.iter().take(50).chain(kept) {
-        println!("{}:{} \u{00B7} {}", run.id, run.target, run.summary());
+        println!(
+            "{}:{} \u{00B7} {}",
+            short_id(&run.id, width),
+            run.target,
+            run.summary()
+        );
     }
     ExitCode::SUCCESS
 }
@@ -998,16 +1022,33 @@ mod tests {
         run.started_at = 1000;
         run.source = Some("192.168.1.20".parse().unwrap());
         run.public_source = Some("203.0.113.9".parse().unwrap());
-        let lines = history_lines(&[run.clone()], Style::PLAIN, 120, 1000 + 5 * 3600);
+        let lines = history_lines(&[run.clone()], Style::PLAIN, 120, 1000 + 5 * 3600, 6);
         assert_eq!(
             lines[0],
             "ID      TOOL        TARGET           SUMMARY           SOURCE        PUBLIC       AGE"
         );
         assert_eq!(lines[1], "abc234  traceroute  one.one.one.one  4 hops \u{00B7} 12.4 ms  192.168.1.20  203.0.113.9  5h ago");
         // A narrow terminal keeps the run and drops where it came from.
-        let narrow = history_lines(&[run], Style::PLAIN, 70, 1000 + 5 * 3600);
+        let narrow = history_lines(&[run.clone()], Style::PLAIN, 70, 1000 + 5 * 3600, 6);
         assert!(!narrow[0].contains("SOURCE"));
         assert!(narrow[1].ends_with("4 hops \u{00B7} 12.4 ms  5h ago"));
+
+        // A new id has 26 characters. A list shows its first six, and a message names it so.
+        run.id = "k3m9abq7w2e4r6t8y2u3p5s7d9".into();
+        let lines = history_lines(&[run.clone()], Style::PLAIN, 120, 1000 + 5 * 3600, 6);
+        assert!(lines[1].starts_with("k3m9ab  traceroute  one.one.one.one  "));
+        assert_eq!(
+            run_name(&run),
+            "one.one.one.one \u{00B7} traceroute (k3m9ab)"
+        );
+        // Where two ids start alike the column is as wide as tells them apart, and an id from
+        // before 0.15 keeps its six characters under it.
+        let mut older = run.clone();
+        older.id = "abc234".into();
+        let lines = history_lines(&[run, older], Style::PLAIN, 120, 1000 + 5 * 3600, 8);
+        assert!(lines[0].starts_with("ID        TOOL  "));
+        assert!(lines[1].starts_with("k3m9abq7  traceroute  "));
+        assert!(lines[2].starts_with("abc234    traceroute  "));
     }
 
     #[test]
