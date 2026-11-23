@@ -178,9 +178,10 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
 
     let mut history = History::open();
     let keep = std::env::var("RVRS_HISTORY").map_or(true, |value| value != "0");
+    let mut held = false;
     if keep && !matches!(run.outcome, Some(Outcome::Failed(_))) {
         crate::pulse::count_run(run.tool);
-        crate::sync::queue(run);
+        held = crate::sync::queue_for(run, look == Look::Pretty);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }
@@ -226,6 +227,9 @@ pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
     let _ = std::io::stdout().flush();
     if let Some(case) = &args.common.case {
         crate::commands::save_after_run(run, case);
+    }
+    if held {
+        crate::sync::print_run_page(run);
     }
     ExitCode::SUCCESS
 }

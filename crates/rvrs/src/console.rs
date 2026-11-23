@@ -32,8 +32,11 @@ mod account_view;
 mod bgp_view;
 #[path = "console_run.rs"]
 mod run_picker;
+#[path = "console_share.rs"]
+mod share_sheet;
 use bgp_view::{BgpTab, PrefixFilter};
 use run_picker::Launcher;
+use share_sheet::Sheet;
 
 use crate::account;
 use crate::args::normalize_target;
@@ -300,6 +303,8 @@ pub struct App {
     picker: Option<Picker>,
     /// Open while a tool is being picked for a host.
     launcher: Option<Launcher>,
+    /// Open while a run is being shared.
+    share: Option<Sheet>,
     /// Who this install is signed in as, and a login in progress.
     account: account_view::Account,
     /// Hosts kept on purpose. The app's Favorites.
@@ -448,6 +453,7 @@ impl App {
             case: None,
             picker: None,
             launcher: None,
+            share: None,
             account: account_view::Account::load(),
             favorites,
             synced: sync_mark(),
@@ -621,6 +627,11 @@ impl App {
 
     fn run(&self) -> Option<&Run> {
         self.shown.as_ref().map(Shown::run)
+    }
+
+    /// Whether this install can share a run: a person signed in with a login.
+    fn can_share(&self) -> bool {
+        matches!(self.account.state, account_view::State::SignedIn { .. })
     }
 
     fn is_saved(&self) -> bool {
@@ -944,6 +955,7 @@ impl App {
         if let Some(sentence) = self.account.tick() {
             self.toast(sentence);
         }
+        self.share_tick();
         if self
             .toast
             .as_ref()
@@ -1012,6 +1024,10 @@ impl App {
         }
         if self.launcher.is_some() {
             self.launcher_key(key);
+            return;
+        }
+        if self.share.is_some() {
+            self.share_key(key);
             return;
         }
         if let Some(section) = Section::of(&key) {
@@ -1120,6 +1136,12 @@ impl App {
                     self.open_picker(run);
                 }
             }
+            // S shares it.
+            KeyCode::Char('S') if self.row.is_some() => {
+                if let Some(run) = self.selected_run() {
+                    self.open_share(run);
+                }
+            }
             // Inside a case, x takes the run out of that case only. It stays saved.
             KeyCode::Char('x') if self.row.is_some() => {
                 let case = self
@@ -1225,6 +1247,12 @@ impl App {
             self.pane = Pane::Start;
             return;
         };
+        // S shares the open run, whatever its tool, once it has ended.
+        if key.code == KeyCode::Char('S') && !run.is_running() {
+            let run = run.clone();
+            self.open_share(run);
+            return;
+        }
         if run.is_report_only() {
             self.report_key(key);
             return;
@@ -1625,6 +1653,9 @@ impl App {
         if self.launcher.is_some() {
             self.draw_launcher(frame, area);
         }
+        if self.share.is_some() {
+            self.draw_share(frame, area);
+        }
         if self.help {
             self.draw_help(frame, area);
         }
@@ -1699,6 +1730,9 @@ impl App {
 
     /// The keys that do something right now, most useful first.
     fn keys(&self) -> Vec<(&'static str, &'static str)> {
+        if let Some(sheet) = &self.share {
+            return sheet.keys();
+        }
         if self.launcher.is_some() {
             return vec![
                 ("\u{2191}\u{2193}", "Tool"),
@@ -1722,6 +1756,9 @@ impl App {
         if self.pane == Pane::Result {
             if let Some(run) = self.run().filter(|run| run.is_report_only()) {
                 let mut keys = vec![("s", "Save"), ("a", "Add to Case"), ("f", "Favorite")];
+                if self.can_share() {
+                    keys.push(("S", "Share"));
+                }
                 if crate::features::runs(run.tool) {
                     keys.push(("R", "Run Again"));
                 }
@@ -1806,6 +1843,9 @@ impl App {
                     .is_some_and(|run| self.saved.contains(&run.id));
                 keys.push(("s", if kept { "Unsave" } else { "Save" }));
                 keys.push(("a", "Add to Case"));
+                if self.can_share() {
+                    keys.push(("S", "Share"));
+                }
                 if self.open_case().is_some() {
                     keys.push(("x", "Remove from Case"));
                 }
@@ -1910,6 +1950,9 @@ impl App {
             ));
             keys.push(("s", if self.is_saved() { "Unsave" } else { "Save" }));
             keys.push(("a", "Add to Case"));
+            if self.can_share() {
+                keys.push(("S", "Share"));
+            }
         }
         keys.push(("\u{2190}", "Back"));
         keys
@@ -4044,6 +4087,10 @@ impl App {
                 "On a selected run: save it, or remove it from saved runs",
             ),
             row("a", "On a selected run: put it in cases, or make a new one"),
+            row(
+                "S",
+                "On a run: choose what its public page shows, then generate the link",
+            ),
             row("x", "Inside a case: take the run out of it. It stays saved"),
             row(
                 "\u{21E7}1 to \u{21E7}4",

@@ -73,6 +73,7 @@ _rvrs() {
     'login:Sign this install in to your workspace'
     'logout:Sign out and revoke this install'\''s credential'
     'sync:Send runs to the account and read what is new'
+    'share:Print the share link of a run, a public page'
     'status:Check that this device can run the tools'
     'update:Bring rvrs up to date'
     'completions:Set up tab completion'
@@ -210,6 +211,15 @@ _rvrs() {
     save)
       _arguments '--case=[save into this case]:case:_rvrs_cases' '1:run:_rvrs_runs'
       ;;
+    share)
+      _arguments \
+        '--no-private-networks[leave the private network out of the page]' \
+        '--public-address[show the public address on the page]' \
+        '--install-name[show the name of the install that made the run]' \
+        '--stop[end the link]' \
+        '--json[print the link with what it shows]' \
+        '1:run:_rvrs_runs'
+      ;;
     favorite)
       _arguments '1:host:_rvrs_targets'
       ;;
@@ -241,7 +251,7 @@ pub const BASH: &str = r#"_rvrs() {
   previous="${COMP_WORDS[COMP_CWORD-1]}"
   command="${COMP_WORDS[1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout sync status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
+    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout sync share status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
     return
   fi
   case "$command" in
@@ -317,6 +327,9 @@ pub const BASH: &str = r#"_rvrs() {
       ;;
     saved)
       COMPREPLY=($(compgen -W "remove --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
+      ;;
+    share)
+      COMPREPLY=($(compgen -W "--no-private-networks --public-address --install-name --stop --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
       ;;
     case|cases)
       if [ "$COMP_CWORD" -eq 2 ]; then
@@ -402,6 +415,13 @@ complete -c rvrs -n __fish_use_subcommand -a favorite -d 'Keep a host in Favorit
 complete -c rvrs -n __fish_use_subcommand -a favorites -d 'List the favorite hosts'
 complete -c rvrs -n '__fish_seen_subcommand_from favorite favorites' -a '(rvrs __targets 2>/dev/null)'
 complete -c rvrs -n '__fish_seen_subcommand_from save' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
+complete -c rvrs -n __fish_use_subcommand -a share -d 'Print the share link of a run, a public page'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l no-private-networks -d 'Leave the private network out of the page'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l public-address -d 'Show the public address on the page'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l install-name -d 'Show the name of the install that made the run'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l stop -d 'End the link'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l json -d 'Print the link with what it shows'
 complete -c rvrs -n '__fish_seen_subcommand_from saved' -a remove -d 'Remove a saved run and its place in every case'
 complete -c rvrs -n '__fish_seen_subcommand_from saved' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
 complete -c rvrs -n '__fish_seen_subcommand_from case cases; and not __fish_seen_subcommand_from new rename delete add remove' -a 'new' -d 'Start a case'

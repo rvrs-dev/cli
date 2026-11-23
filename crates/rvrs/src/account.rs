@@ -21,6 +21,8 @@ use crate::style::{ColorChoice, Style};
 use crate::term;
 
 const DEFAULT_API: &str = "https://api.rvrs.dev";
+/// The web app beside the default API, where run pages and share links open.
+const DEFAULT_APP: &str = "https://app.rvrs.dev";
 
 /// Where the API is. `RVRS_API` points at another one: a self-hosted rvrs, or a local one.
 pub fn api_base() -> String {
@@ -42,6 +44,10 @@ pub struct Credential {
     pub workspace: String,
     /// What this install is called in the account.
     pub install: String,
+    /// The web app of this API, from the link the login was confirmed at. A credential from
+    /// before 0.16 has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
 }
 
 fn credential_path() -> std::path::PathBuf {
@@ -82,6 +88,22 @@ impl Credential {
     fn forget() {
         let _ = std::fs::remove_file(credential_path());
     }
+}
+
+/// The web app that belongs to the API in use: the one the login was confirmed at, or
+/// app.rvrs.dev beside api.rvrs.dev. None for another API whose login was kept by an older rvrs.
+pub fn app_origin() -> Option<String> {
+    Credential::stored()
+        .and_then(|credential| credential.app)
+        .or_else(|| (api_base() == DEFAULT_API).then(|| DEFAULT_APP.to_string()))
+}
+
+/// The scheme, host and port of a link: `https://app.rvrs.dev` of
+/// `https://app.rvrs.dev/activate?code=X`.
+fn origin_of(link: &str) -> Option<String> {
+    let (scheme, rest) = link.split_once("://")?;
+    let host = rest.split(['/', '?', '#']).next()?;
+    (!host.is_empty() && matches!(scheme, "http" | "https")).then(|| format!("{scheme}://{host}"))
 }
 
 /// The token requests are made with: `RVRS_TOKEN` first, then what `rvrs login` stored.
@@ -317,6 +339,7 @@ pub fn poll_login(started: &Started) -> Poll {
                 email: account.email,
                 workspace: account.workspace,
                 install: account.install,
+                app: origin_of(&started.link),
             };
             match credential.save() {
                 Ok(()) => Poll::SignedIn(credential),
@@ -554,11 +577,32 @@ mod tests {
             email: "ada@example.com".into(),
             workspace: "Ada\u{2019}s workspace".into(),
             install: "laptop.local".into(),
+            app: Some("https://app.rvrs.dev".into()),
         };
         let text = serde_json::to_string(&credential).unwrap();
         assert_eq!(
             serde_json::from_str::<Credential>(&text).unwrap(),
             credential
         );
+    }
+
+    #[test]
+    fn a_credential_from_before_the_app_origin_still_reads() {
+        let text = r#"{"api":"https://api.rvrs.dev","token":"rvrs_test","email":"ada@example.com","workspace":"W","install":"laptop.local"}"#;
+        assert_eq!(serde_json::from_str::<Credential>(text).unwrap().app, None);
+    }
+
+    #[test]
+    fn the_web_app_is_where_the_login_was_confirmed() {
+        assert_eq!(
+            origin_of("https://app.rvrs.dev/activate?code=ABCD-EFGH").as_deref(),
+            Some("https://app.rvrs.dev")
+        );
+        assert_eq!(
+            origin_of("http://localhost:3100/activate?code=X").as_deref(),
+            Some("http://localhost:3100")
+        );
+        assert_eq!(origin_of("app.rvrs.dev/activate"), None);
+        assert_eq!(origin_of("ftp://example.com/x"), None);
     }
 }

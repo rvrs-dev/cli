@@ -83,7 +83,7 @@ The Console, during an MTR to he.net:
 
 ## Privacy
 
-rvrs needs no account. With one, `rvrs login` keeps your runs, saved runs, cases and favorites the same on every device you sign in on. [Privacy](docs/privacy.md) lists every request it makes.
+rvrs needs no account. With one, `rvrs login` keeps your runs, saved runs, cases and favorites the same on every device you sign in on, and `rvrs share` makes a run a page anyone with the link can open. [Privacy](docs/privacy.md) lists every request it makes.
 
 ## Docs
 

@@ -800,9 +800,10 @@ fn lookup(args: &DigArgs, look: Look) -> ExitCode {
     let keep = std::env::var("RVRS_HISTORY").map_or(true, |value| value != "0");
     let mut history = History::open();
     let previous = history.previous_dns(run).cloned();
+    let mut held = false;
     if keep && found {
         crate::pulse::count_run(run.tool);
-        crate::sync::queue(run);
+        held = crate::sync::queue_for(run, look == Look::Pretty);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }
@@ -827,6 +828,9 @@ fn lookup(args: &DigArgs, look: Look) -> ExitCode {
     let _ = std::io::stdout().flush();
     if let Some(case) = args.common.case.as_deref().filter(|_| found) {
         crate::commands::save_after_run(run, case);
+    }
+    if held {
+        crate::sync::print_run_page(run);
     }
     if run.outcome == Some(Outcome::Reached) {
         ExitCode::SUCCESS

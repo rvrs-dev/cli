@@ -43,12 +43,15 @@ Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the n
 | R | Runs the open run again |
 | s | Stops the run while it runs. Once it has ended, saves it or removes it from saved runs |
 | a | Adds the run to cases |
+| S | Shares the run, signed in: the share sheet says what the link does and has Private Networks, Public Address and Device Name to switch, and Return makes the link. Then `o` opens it, `c` copies it and `x` stops sharing |
 | f | Adds the host to Favorites or removes it |
 | x | Takes a run out of the open case |
 | ⇧1 ⇧2 ⇧3 ⇧4 | Console, Favorites, Cases, Account |
 | ? | Shows every key and the latency colors |
 
 ⇧4 Account shows who this install is signed in as, also in the header. `s` signs in: the Console shows a code and a link, opens the link, and waits while you confirm the code in the browser, as `rvrs login` does. `o` opens the link again, `c` copies it, esc cancels. Signed in, `q` signs out and revokes this install's credential. With `RVRS_TOKEN` set, the token is the sign-in and the section only says so.
+
+`S` on a run, in a list or open, opens the share sheet. Nothing is made until Return: the sheet first says that the link makes a public page of the run that anyone with the link can open without signing in, and lists what the run has for each switch, such as the router's address beside Private Networks. Private Networks is on, Public Address and Device Name are off. Return generates the link and copies it. Sharing a run again keeps its link and changes what it shows. `x` asks once, then stops sharing, and the link stops working for everyone.
 
 A ping in the Console sends 20 packets a second apart, as the app does. An MTR runs until `s` stops it. Each hop shows its figures and a strip of its newest rounds, and the charts above the table show the destination's latency, jitter and loss round by round. Jitter is how far each reply moved from the one before, and loss is counted over the last 10 rounds. A hop's details chart the same for that hop. Starting another run, or quitting, stops a live run and keeps it in history. On a terminal under 22 rows the header hides and the keys move to the bottom line. The Console starts with the tool chosen last.
 
