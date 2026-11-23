@@ -50,7 +50,10 @@ pub struct Limits {
     pub runs_at_once: u32,
     /// Runs the node starts in any 60 seconds.
     pub runs_per_minute: u32,
-    /// Packets one run sends toward its target and the routers on the way.
+    /// Probes one run sends: the packets of a traceroute, a ping or an MTR toward the target and
+    /// the routers on the way. The questions of a DNS lookup and the requests of a BGP lookup are
+    /// no probes. Their number is the tool's own, a request can't raise it, and `seconds_per_run`
+    /// ends those runs as it ends any.
     pub packets_per_run: u32,
     /// How long one run may take before the node ends it.
     pub seconds_per_run: u32,
@@ -82,27 +85,51 @@ impl Limits {
         report_bytes: 1_900_000,
     };
 
-    /// These limits, each no higher than its ceiling.
-    pub fn within_ceiling(self) -> Limits {
+    /// The smallest `reportBytes` a node can be set to. A node has to be able to say how a run
+    /// ended, a refusal included, and [`fit`] cuts any report down to less than this. So a
+    /// limit at or above the floor is one the node always keeps. Every other limit can be 0,
+    /// which allows nothing.
+    pub const REPORT_BYTES_FLOOR: u32 = 4096;
+
+    /// These limits, each no higher than its ceiling, and the report's no lower than its floor.
+    pub fn within_bounds(self) -> Limits {
         Limits {
             runs_at_once: self.runs_at_once.min(Self::CEILING.runs_at_once),
             runs_per_minute: self.runs_per_minute.min(Self::CEILING.runs_per_minute),
             packets_per_run: self.packets_per_run.min(Self::CEILING.packets_per_run),
             seconds_per_run: self.seconds_per_run.min(Self::CEILING.seconds_per_run),
-            report_bytes: self.report_bytes.min(Self::CEILING.report_bytes),
+            report_bytes: self
+                .report_bytes
+                .clamp(Self::REPORT_BYTES_FLOOR, Self::CEILING.report_bytes),
         }
     }
 
     /// Sets one limit by the name the heartbeat says it with, as an owner writes it:
-    /// `runsPerMinute=6`. A value over the ceiling is refused, so nobody believes a node allows
-    /// more than it does.
+    /// `runsPerMinute=6`. A value over the ceiling or under the floor is refused, so nobody
+    /// believes a node keeps a limit it doesn't.
     pub fn set(&mut self, name: &str, value: &str) -> Result<(), String> {
-        let (limit, ceiling) = match name {
-            "runsAtOnce" => (&mut self.runs_at_once, Self::CEILING.runs_at_once),
-            "runsPerMinute" => (&mut self.runs_per_minute, Self::CEILING.runs_per_minute),
-            "packetsPerRun" => (&mut self.packets_per_run, Self::CEILING.packets_per_run),
-            "secondsPerRun" => (&mut self.seconds_per_run, Self::CEILING.seconds_per_run),
-            "reportBytes" => (&mut self.report_bytes, Self::CEILING.report_bytes),
+        let (limit, floor, ceiling) = match name {
+            "runsAtOnce" => (&mut self.runs_at_once, 0, Self::CEILING.runs_at_once),
+            "runsPerMinute" => (
+                &mut self.runs_per_minute,
+                0,
+                Self::CEILING.runs_per_minute,
+            ),
+            "packetsPerRun" => (
+                &mut self.packets_per_run,
+                0,
+                Self::CEILING.packets_per_run,
+            ),
+            "secondsPerRun" => (
+                &mut self.seconds_per_run,
+                0,
+                Self::CEILING.seconds_per_run,
+            ),
+            "reportBytes" => (
+                &mut self.report_bytes,
+                Self::REPORT_BYTES_FLOOR,
+                Self::CEILING.report_bytes,
+            ),
             _ => {
                 return Err(format!(
                     "{name} is not a limit. The limits are runsAtOnce, runsPerMinute, packetsPerRun, secondsPerRun and reportBytes."
@@ -110,12 +137,12 @@ impl Limits {
             }
         };
         match value.trim().parse::<u32>() {
-            Ok(number) if number <= ceiling => {
+            Ok(number) if (floor..=ceiling).contains(&number) => {
                 *limit = number;
                 Ok(())
             }
             _ => Err(format!(
-                "{name} must be a whole number from 0 to {ceiling}."
+                "{name} must be a whole number from {floor} to {ceiling}."
             )),
         }
     }
@@ -176,9 +203,9 @@ pub struct Guard {
 
 impl Guard {
     /// `features` are the build features this build has. Limits over the ceiling are lowered to
-    /// it.
+    /// it, and a report limit under the floor is raised to it.
     pub fn new(limits: Limits, features: &[&str], allowed: Allowed) -> Guard {
-        let limits = limits.within_ceiling();
+        let limits = limits.within_bounds();
         Guard {
             limits,
             features: features.iter().map(|feature| feature.to_string()).collect(),
@@ -238,19 +265,74 @@ impl Guard {
         self.gate.end();
     }
 
-    /// Makes a report fit the node's limit. True when something was left out.
-    pub fn fit(&self, report: &mut Report) -> bool {
+    /// Makes a report fit the node's limit. `Ok(true)` when something was left out. The guard's
+    /// limit is never under the floor, so the error is one no report of this build reaches. A
+    /// caller that gets it sends nothing and counts the run as dropped.
+    pub fn fit(&self, report: &mut Report) -> Result<bool, Unfit> {
         fit(report, self.limits.report_bytes as usize)
     }
 }
 
-/// Cuts a report down to `limit` bytes of JSON: first each hop's samples, then the run's, and
-/// last the path and the records, with a sentence that says so. The figures stay, since a
-/// report states them apart from its samples.
-pub fn fit(report: &mut Report, limit: usize) -> bool {
+/// A report that is over the limit with everything left out that can be. It is never sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unfit {
+    /// The report's size once cut down as far as it goes.
+    pub bytes: usize,
+    pub limit: usize,
+}
+
+impl std::fmt::Display for Unfit {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "The report is {} bytes with everything left out that can be, and this node sends {} at most.",
+            self.bytes, self.limit
+        )
+    }
+}
+
+/// The longest a text of a cut-down report may be: a tool's word, a node's name, an address.
+const WORD: usize = 100;
+/// The longest target a report names, which is the longest a request may carry.
+const TARGET: usize = 255;
+/// The longest summary of a cut-down report.
+const SUMMARY: usize = 200;
+
+/// Shortens a text to `most` bytes, at a character's edge.
+fn clip(text: &mut String, most: usize) {
+    if text.len() > most {
+        let mut end = most;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+    }
+}
+
+fn clip_some(text: &mut Option<String>, most: usize) {
+    if let Some(text) = text {
+        clip(text, most);
+    }
+}
+
+/// Cuts a report down to `limit` bytes of JSON, as [`Report::json`] writes it. What goes, in
+/// this order, until it fits:
+///
+/// 1. each hop's samples,
+/// 2. the run's samples,
+/// 3. the path, the records, the sources and the interpretation, with a sentence in `error`
+///    that says so. The figures stay, since a report states them apart from its samples,
+/// 4. everything but how the run ended: the figures go, and every text is cut to a fixed
+///    length. What is left is smaller than [`Limits::REPORT_BYTES_FLOOR`] whatever the report
+///    held, which is why a limit can't be set under it.
+///
+/// `Ok(false)` is a report that fit as it was and `Ok(true)` one that fits now. `Err` is a
+/// report that is over the limit even so, which only a limit under the floor can cause. It
+/// must not be sent: the size is checked after the last cut, never assumed.
+pub fn fit(report: &mut Report, limit: usize) -> Result<bool, Unfit> {
     let size = |report: &Report| report.json().len();
     if size(report) <= limit {
-        return false;
+        return Ok(false);
     }
     if let Some(hops) = report.hops.as_mut() {
         for hop in hops {
@@ -258,11 +340,11 @@ pub fn fit(report: &mut Report, limit: usize) -> bool {
         }
     }
     if size(report) <= limit {
-        return true;
+        return Ok(true);
     }
     report.samples = None;
     if size(report) <= limit {
-        return true;
+        return Ok(true);
     }
     report.hops = None;
     report.records = None;
@@ -273,7 +355,34 @@ pub fn fit(report: &mut Report, limit: usize) -> bool {
             "The report was over this node's limit of {limit} bytes, so its path and records were left out."
         ));
     }
-    true
+    if size(report) <= limit {
+        return Ok(true);
+    }
+    report.measured.clear();
+    report.probe = None;
+    report.mtu = None;
+    report.sentence.clear();
+    report.error = Some(format!(
+        "The report was over this node's limit of {limit} bytes, so only how the run ended is left."
+    ));
+    clip(&mut report.id, WORD);
+    clip(&mut report.tool, WORD);
+    clip(&mut report.target, TARGET);
+    clip(&mut report.started_at, WORD);
+    clip(&mut report.outcome, WORD);
+    clip(&mut report.summary, SUMMARY);
+    clip_some(&mut report.address, WORD);
+    clip_some(&mut report.family, WORD);
+    clip(&mut report.origin.kind, WORD);
+    clip_some(&mut report.origin.node, WORD);
+    clip_some(&mut report.origin.node_id, WORD);
+    clip_some(&mut report.origin.install, WORD);
+    clip_some(&mut report.origin.source_address, WORD);
+    clip_some(&mut report.origin.public_address, WORD);
+    match size(report) {
+        bytes if bytes <= limit => Ok(true),
+        bytes => Err(Unfit { bytes, limit }),
+    }
 }
 
 #[cfg(test)]
@@ -343,6 +452,16 @@ mod tests {
             limits.set("secondsPerRun", "-1"),
             Err("secondsPerRun must be a whole number from 0 to 3600.".to_string())
         );
+        // A node always has to be able to say how a run ended, so its report has a floor.
+        for under in ["0", "1", "4095"] {
+            assert_eq!(
+                limits.set("reportBytes", under),
+                Err("reportBytes must be a whole number from 4096 to 1900000.".to_string()),
+                "{under}"
+            );
+        }
+        assert_eq!(limits.report_bytes, Limits::default().report_bytes);
+        assert_eq!(limits.set("reportBytes", "4096"), Ok(()));
         assert!(limits.set("packetsPerSecond", "5").is_err());
         assert_eq!(limits.packets_per_run, 300);
     }
@@ -360,7 +479,22 @@ mod tests {
             Guard::new(asked, &FULL, Allowed::none()).limits(),
             Limits::CEILING
         );
-        assert_eq!(Limits::default().within_ceiling(), Limits::default());
+        assert_eq!(Limits::default().within_bounds(), Limits::default());
+        // A report limit under the floor is raised to it. Nothing else has a floor.
+        let nothing = Limits {
+            runs_at_once: 0,
+            runs_per_minute: 0,
+            packets_per_run: 0,
+            seconds_per_run: 0,
+            report_bytes: 0,
+        };
+        assert_eq!(
+            Guard::new(nothing, &FULL, Allowed::none()).limits(),
+            Limits {
+                report_bytes: Limits::REPORT_BYTES_FLOOR,
+                ..nothing
+            }
+        );
     }
 
     #[test]
@@ -577,12 +711,12 @@ mod tests {
         let size = whole.json().len();
 
         let mut fits = whole.clone();
-        assert!(!fit(&mut fits, size));
+        assert_eq!(fit(&mut fits, size), Ok(false));
         assert_eq!(fits, whole);
 
         // One byte too many: the hops' samples go, and nothing else.
         let mut report = whole.clone();
-        assert!(fit(&mut report, size - 1));
+        assert_eq!(fit(&mut report, size - 1), Ok(true));
         assert!(report
             .hops
             .as_ref()
@@ -594,7 +728,7 @@ mod tests {
         let without_hop_samples = report.json().len();
 
         let mut report = whole.clone();
-        assert!(fit(&mut report, without_hop_samples - 1));
+        assert_eq!(fit(&mut report, without_hop_samples - 1), Ok(true));
         assert_eq!(report.samples, None);
         assert_eq!(
             report.hops.as_ref().map(Vec::len),
@@ -604,7 +738,7 @@ mod tests {
 
         // Smaller still: the path goes and the report says so. The figures stay.
         let mut report = whole.clone();
-        assert!(fit(&mut report, without_samples - 1));
+        assert_eq!(fit(&mut report, without_samples - 1), Ok(true));
         assert_eq!(report.hops, None);
         assert_eq!(report.measured, whole.measured);
         assert_eq!(report.outcome, whole.outcome);
@@ -626,7 +760,121 @@ mod tests {
         };
         let guard = Guard::new(limits, &FULL, Allowed::none());
         let mut report = long_report();
-        assert!(guard.fit(&mut report));
+        assert_eq!(guard.fit(&mut report), Ok(true));
         assert!(report.json().len() <= 4096);
+    }
+
+    /// A report with every text and every list far larger than any limit.
+    fn enormous_report() -> Report {
+        let long = |letter: &str| letter.repeat(20_000);
+        let mut report = long_report();
+        report.id = long("i");
+        report.tool = long("t");
+        report.target = long("\u{00FC}");
+        report.started_at = long("2");
+        report.outcome = long("o");
+        report.summary = long("s");
+        report.sentence = long("n");
+        report.error = Some(long("e"));
+        report.address = Some(long("a"));
+        report.family = Some(long("f"));
+        report.origin.kind = long("k");
+        report.origin.node = Some(long("d"));
+        report.origin.node_id = Some(long("u"));
+        report.origin.install = Some(long("l"));
+        report.origin.source_address = Some(long("1"));
+        report.origin.public_address = Some(long("2"));
+        report.interpretation = vec![long("p"); 20];
+        report.measured = (0..500)
+            .map(|index| crate::report::Measurement {
+                name: format!("figure {index} {}", "m".repeat(1000)),
+                value: f64::from(index),
+                unit: Some("u".repeat(1000)),
+            })
+            .collect();
+        report
+    }
+
+    #[test]
+    fn a_report_over_the_limit_with_its_path_gone_keeps_only_how_the_run_ended() {
+        // Enormous figures and interpretation: the third cut is not enough.
+        let mut report = long_report();
+        let outcome = report.outcome.clone();
+        report.interpretation = vec!["p".repeat(5000); 4];
+        report.measured = (0..2000)
+            .map(|index| crate::report::Measurement {
+                name: format!("figure {index}"),
+                value: f64::from(index),
+                unit: Some("ms".into()),
+            })
+            .collect();
+        assert_eq!(fit(&mut report, 8192), Ok(true));
+        assert!(report.json().len() <= 8192);
+        assert!(report.measured.is_empty());
+        assert_eq!(report.outcome, outcome);
+        assert_eq!(
+            report.error.as_deref(),
+            Some("The report was over this node's limit of 8192 bytes, so only how the run ended is left.")
+        );
+    }
+
+    #[test]
+    fn whatever_a_report_holds_it_is_cut_to_less_than_the_floor() {
+        let floor = Limits::REPORT_BYTES_FLOOR as usize;
+        let mut report = enormous_report();
+        assert!(report.json().len() > 1_000_000);
+        assert_eq!(fit(&mut report, floor), Ok(true));
+        let size = report.json().len();
+        assert!(size <= floor, "{size}");
+        // A text is cut at a character's edge, so what is left is still a report to read.
+        assert!(report.target.chars().all(|letter| letter == '\u{00FC}'));
+        assert!(report.target.len() <= 255);
+        let read: Report = serde_json::from_str(&report.json()).unwrap();
+        assert_eq!(read, report);
+        // The guard's limit is never under the floor, so the guard always has a report to send.
+        let nothing = Limits {
+            report_bytes: 0,
+            ..Limits::default()
+        };
+        let guard = Guard::new(nothing, &FULL, Allowed::none());
+        let mut report = enormous_report();
+        assert_eq!(guard.fit(&mut report), Ok(true));
+        assert!(report.json().len() <= floor);
+    }
+
+    #[test]
+    fn a_report_that_can_not_fit_is_an_error_and_never_a_report_to_send() {
+        // No report is 0 bytes, so a limit of 0 can't be kept. The answer says so.
+        let mut report = long_report();
+        let unfit = fit(&mut report, 0).unwrap_err();
+        assert_eq!(unfit.limit, 0);
+        assert_eq!(unfit.bytes, report.json().len());
+        assert!(unfit.bytes > 0);
+        assert_eq!(
+            unfit.to_string(),
+            format!(
+                "The report is {} bytes with everything left out that can be, and this node sends 0 at most.",
+                unfit.bytes
+            )
+        );
+        // The same for any limit under what is left of a report once everything is cut.
+        let mut small = enormous_report();
+        let unfit = fit(&mut small, 256).unwrap_err();
+        assert!(unfit.bytes > 256 && unfit.bytes < Limits::REPORT_BYTES_FLOOR as usize);
+        // A refusal is the smallest report a node sends, and it fits the floor as it is.
+        let refusal = Refusal::Tool {
+            tool: "iperf3".into(),
+        };
+        let node = Identity {
+            name: "fra-1",
+            id: Some("9c2f1a7e-5b3d-4e8f-8a6c-1d2e3f4a5b6c"),
+            version: "0.14.2",
+        };
+        let asked = request("iperf3", &"a".repeat(255), json!({}));
+        let mut report = refusal.report(&asked, &node, "r8w2kc", 0);
+        assert_eq!(
+            fit(&mut report, Limits::REPORT_BYTES_FLOOR as usize),
+            Ok(false)
+        );
     }
 }

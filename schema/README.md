@@ -28,9 +28,13 @@ Every surface shows a run it didn't make from the report alone. The CLI does it 
 A run from a node on someone's line says where that line is. A surface that shares a run leaves these out unless the person sharing keeps them in:
 
 - `origin.publicAddress` and `origin.sourceAddress`.
-- The address and hostname of a hop that is the origin itself: a hop at either of those addresses, or an IPv6 hop in the same /56 as one of them, which is the line's own prefix.
+- The address and hostname of each hop of the line's own network: every hop at a private or link-local address before the first hop that answered from anywhere else. That is the home's router, at `192.168.1.1` under a name someone gave it, and whatever sits between it and the provider. Shared address space (100.64.0.0/10) is the provider's, and a private address further along the path is inside a provider. Both stay.
+- The address and hostname of a hop that is the origin itself, wherever it is in the path: a hop at one of the origin's addresses, or an IPv6 hop in the same /48 as one of them. A line is given a /48, a /56, a /60 or a /64 and a report doesn't say which, so the widest decides.
+- The `server` of a DNS source of the kind `device` when it is a private or link-local address or one of the origin's: the resolver is the line's own router.
 
-The hop stays, with its figures. Everything else in a report is about the path and the target. A location, when a report carries one, belongs to the same list, and is never more precise than a person set it.
+The hop stays, with its figures, so the path keeps its length. Everything else in a report is about the path and the target. A location, when a report carries one, belongs to the same list, and is never more precise than a person set it.
+
+Two things the rule can't see, which whoever shares a run decides about: a node's name and its labels are the workspace's own words and can name a customer, and a sentence the maker wrote (`summary`, `error`, `interpretation`) may name an address.
 
 ## Where it is checked
 

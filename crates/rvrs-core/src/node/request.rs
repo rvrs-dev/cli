@@ -137,11 +137,14 @@ pub struct Admitted {
     /// What the person typed, as the report will name it.
     pub target: String,
     pub plan: Plan,
-    /// The most packets the run sends toward its target and the routers on the way.
+    /// The most probes the run sends toward its target and the routers on the way. 0 for a DNS
+    /// or a BGP lookup, which sends none: its questions go to resolvers and to RIPEstat, and
+    /// their number is the tool's own.
     pub packets: u64,
     /// The longest the run takes by its own options, in seconds. 0 where the options don't say.
     pub seconds: u64,
-    /// When the node ends the run, whatever it has measured by then.
+    /// When the node ends the run, whatever it has measured by then. Every tool has one, the
+    /// lookups included.
     pub deadline: Duration,
 }
 
@@ -993,6 +996,71 @@ mod tests {
                 limit: 10
             })
         );
+    }
+
+    #[test]
+    fn the_packet_limit_counts_probes_and_the_time_limit_ends_every_tool() {
+        // A node that sends no probes still looks things up, and each lookup has its deadline.
+        let no_probes = Limits {
+            packets_per_run: 0,
+            seconds_per_run: 20,
+            ..Limits::default()
+        };
+        let check = |tool: &str, target: &str| {
+            super::check(
+                &request(tool, target, json!({})),
+                &FULL,
+                &no_probes,
+                &Allowed::none(),
+            )
+        };
+        for tool in ["traceroute", "ping", "mtr"] {
+            assert_eq!(
+                check(tool, "example.com").unwrap_err().kind(),
+                Kind::Limit,
+                "{tool}"
+            );
+        }
+        for (tool, target) in [("dns", "example.com"), ("bgp", "AS13335")] {
+            let admitted = check(tool, target).unwrap();
+            assert_eq!(admitted.packets, 0, "{tool}");
+            assert!(!admitted.probes(), "{tool}");
+            assert_eq!(admitted.deadline, Duration::from_secs(20), "{tool}");
+        }
+        // A request can't make a lookup larger: one record type, one resolver more, nothing else.
+        for option in ["rounds", "packets", "intervalMilliseconds", "probe"] {
+            assert_eq!(
+                admit("dns", "example.com", json!({ option: 1000 }))
+                    .unwrap_err()
+                    .kind(),
+                Kind::Option,
+                "{option}"
+            );
+        }
+        assert_eq!(
+            admit("dns", "example.com", json!({ "type": ["A", "AAAA", "MX"] }))
+                .unwrap_err()
+                .kind(),
+            Kind::Option
+        );
+        // The limits that count runs hold for every tool.
+        let now = std::time::Instant::now();
+        let none_at_once = Limits {
+            runs_at_once: 0,
+            ..Limits::default()
+        };
+        let mut guard = crate::node::Guard::new(none_at_once, &FULL, Allowed::none());
+        for (tool, target) in [
+            ("dns", "example.com"),
+            ("bgp", "AS13335"),
+            ("ping", "example.com"),
+        ] {
+            assert_eq!(
+                guard.admit(&request(tool, target, json!({})), now),
+                Err(Refusal::AtOnce { limit: 0 }),
+                "{tool}"
+            );
+        }
     }
 
     #[test]

@@ -19,14 +19,16 @@ A node keeps these whatever it is asked, and says them in its heartbeat.
 | --- | --- | ---: | ---: |
 | `runsAtOnce` | Runs at the same time | 2 | 8 |
 | `runsPerMinute` | Runs started in any 60 seconds | 12 | 60 |
-| `packetsPerRun` | Packets one run sends | 1,000 | 10,000 |
+| `packetsPerRun` | Probes one run sends | 1,000 | 10,000 |
 | `secondsPerRun` | How long one run may take | 300 | 3,600 |
 | `reportBytes` | The largest report it sends | 262,144 | 1,900,000 |
 
 - A request for more packets or more time than the limit is refused before a packet is sent. An MTR of 100 rounds to 30 hops is 3,000 packets.
 - The packets of a ping and the rounds of an MTR are 200 ms apart or slower.
 - A run still going at `secondsPerRun` is ended there, with what it measured.
-- A report over `reportBytes` loses its samples first, then its path, and says so.
+- A probe is a packet of a traceroute, a ping or an MTR, toward the target and the routers on the way. The questions of a DNS lookup and the requests of a BGP lookup are not probes and don't count toward `packetsPerRun`. Their number is the tool's own: a request names one record type and at most one resolver more, and nothing that multiplies them. A node set to 0 packets still makes lookups, and 0 runs at once turns every tool off.
+- `secondsPerRun` ends every run, a lookup as much as an MTR.
+- A report over `reportBytes` loses its samples first, then its path, then everything but how the run ended, and says so. What is left of any report is under 4,096 bytes, which is the least `reportBytes` can be set to. The node checks the size after the last cut, and a report still over the limit is never sent.
 - The owner can lower a limit, and raise it as far as the ceiling. The ceiling is in the build, so no setting and no API makes a node send more.
 - A node asks for no more runs than it has room for. A run handed to it beyond that is refused.
 
@@ -90,6 +92,6 @@ A node on your line was put there by whoever runs it: you, your team or your pro
 - It measures the path, latency and loss to targets its workspace asks for, what resolvers answer for a name, and what route collectors see for a prefix.
 - It sends only its own probes and reads only the replies to them. It never looks at traffic that isn't its own, and it never lists the devices on your network.
 - A report carries the target, the addresses on the path, the address the probes left from and your line's public address. The first hops of a path are your own router and your provider's.
-- The runs belong to the node's workspace. Your line's public address and its location are for the workspace's admins, and they are left out when a run is shared unless someone keeps them in.
+- The runs belong to the node's workspace. What points to your line is for the workspace's admins and is left out when a run is shared, unless someone keeps it in: the public address, the address the probes left from, your router and the devices of your network, and a location.
 - It sends nothing to devices on your network unless the node's owner allowed that range.
 - You can turn it off on the device. Turned off, it makes no call until it is turned on again.
