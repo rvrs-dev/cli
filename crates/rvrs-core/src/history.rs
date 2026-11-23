@@ -144,7 +144,8 @@ impl History {
         self.runs.first()
     }
 
-    /// A run by its id, or by the start of it when that names exactly one.
+    /// A run by its id, or by the start of it when that names exactly one. An id has 26
+    /// characters and a list shows six, so the start is what a person types.
     pub fn find(&self, id: &str) -> Option<&Run> {
         if let Some(exact) = self.runs.iter().find(|run| run.id == id) {
             return Some(exact);

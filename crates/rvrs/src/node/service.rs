@@ -187,8 +187,7 @@ pub fn word(length: usize) -> String {
 
 /// The id of the report for a run that was asked for: the run and the attempt. The API tells a
 /// node's runs apart by this id for as long as it keeps them, so it may never repeat on one
-/// node. The six characters a run gets on a person's device repeat within some ten thousand
-/// runs, and the API would refuse the second report.
+/// node. Made from the request, it is also the same every time the node sends the result.
 fn report_id(request: &Request) -> String {
     format!("{}-{}", request.run, request.attempt)
 }
