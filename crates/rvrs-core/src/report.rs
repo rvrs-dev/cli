@@ -122,6 +122,10 @@ pub struct ReportOrigin {
     pub kind: String,
     /// The node's name. `null` is this device, the only origin until nodes exist.
     pub node: Option<String>,
+    /// The node's id, which never changes. A report a device made has none, and the key is
+    /// left out of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
     /// The install that made the run, when the account handed it to this device. `null` is a
     /// run made here.
     pub install: Option<String>,
@@ -136,6 +140,7 @@ impl ReportOrigin {
         Self {
             kind: "device".into(),
             node: None,
+            node_id: None,
             install: run.from.clone(),
             source_address: run.source.map(|address| address.to_string()),
             public_address: run.public_source.map(|address| address.to_string()),

@@ -136,6 +136,8 @@ A lease is a hold for a limited time. A node that goes silent loses it after `le
 
 Before it starts a run, the node checks it against what it is and what it allows: the tool and every option are ones its build knows, the run fits its limits, and the target is one it may probe. A run that fails the check is not started. The node sends a report with the outcome `refused` and the reason in `error`, through the same route as any result.
 
+[What a node does and what it refuses](../../docs/node-safety.md) has the rules of that check: the limits and their ceilings, the address space a node sends nothing to, and the ranges its owner can allow. The node keeps them itself. No claim, event or answer of the API carries one, and `room` is how the node says how many runs it will take.
+
 ### What a run is
 
 | Field | Holds |
@@ -221,6 +223,15 @@ A finished run waits on the node until the API has answered for it.
 - The node sends the oldest first, one at a time, and waits when the API answers 429.
 - A run sent twice counts once.
 
+## Stopping a node, and a fleet
+
+A person can take a node's work away in two ways, and both reach the node as the answer to its next call.
+
+- Revoking a node is for good. Its stream ends, and every call with its token answers 401. The node enrolls again, with a new `key`, to come back.
+- Stopping the fleet is for every node of a workspace at once, and it can be undone. Their streams end, and every call with one of their tokens answers 403 `FLEET_STOPPED` until the fleet is resumed. No token is revoked, so a resumed node needs nothing new. It asks again after an hour.
+- A node that reads either answer ends the runs it is making at once and sends no further probe. A node that holds a run claims every third of `leaseSeconds`, so that is within 30 seconds.
+- After `FLEET_STOPPED` the results in the outbox wait for the fleet to resume, within the outbox's caps. After 401 they have nowhere to go.
+
 ## Asking for a run
 
 A person's install asks, gets the run's id at once and reads the run until it ends.
@@ -262,8 +273,8 @@ A run a device makes itself is stored `ended`. `expiresAt` only limits how long 
 | Answer | The node |
 | --- | --- |
 | 200, 201 | Goes on |
-| 401 | Its token is unknown or revoked. It closes the stream and makes no further call until it is given a token |
-| 403 | It may not do this now. It asks again after an hour, and never after `NODE_REVOKED` |
+| 401 | Its token is unknown or revoked. It ends the runs it is making, closes the stream and makes no further call until it is given a token |
+| 403 | It may not do this now. It asks again after an hour, and never after `NODE_REVOKED`. After `FLEET_STOPPED` it also ends the runs it is making and closes the stream |
 | 404, 410, 413, 422 | The call is wrong and stays wrong. It is not repeated. A result answered this way leaves the outbox and counts as dropped |
 | 409 | The claim is lost. The result leaves the outbox |
 | 429 | Waits as long as `Retry-After` says |
@@ -372,6 +383,7 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - A node's token is derived from its `key` with a secret only the API holds. So the API answers the same token again without having kept it, and stores its hash alone. A unique index on the enrollment token and the `key` makes two enrolls at once one node.
 - The API checks the workspace and the node on every enroll, claim and result. A node can't claim or answer another node's run.
 - Revoking a node ends its stream at once, and every later call of its token answers 401.
+- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the instances end the streams of that workspace's nodes.
 
 ## Left out on purpose
 
@@ -385,4 +397,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, and that the report inside each result is one the CLI reads. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.

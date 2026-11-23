@@ -23,6 +23,15 @@ Every surface shows a run it didn't make from the report alone. The CLI does it 
 - BGP, iperf3 and any tool a reader doesn't know show the status line, the figures and the interpretation.
 - Not in a report today: the DNS delegation path, a BGP lookup's paths, prefixes and history, and iperf3's intervals. Running the tool again on this device brings them.
 
+## What points to a home
+
+A run from a node on someone's line says where that line is. A surface that shares a run leaves these out unless the person sharing keeps them in:
+
+- `origin.publicAddress` and `origin.sourceAddress`.
+- The address and hostname of a hop that is the origin itself: a hop at either of those addresses, or an IPv6 hop in the same /56 as one of them, which is the line's own prefix.
+
+The hop stays, with its figures. Everything else in a report is about the path and the target. A location, when a report carries one, belongs to the same list, and is never more precise than a person set it.
+
 ## Where it is checked
 
 `cargo test` checks that every field of a report and of each fixture is one the schema names, that each fixture is read and written back unchanged, and that each becomes a run every look can draw. `traceroute.json`, `mtr.json` and `bgp.json` are the reports of runs the tests build, so they can't drift (`RVRS_WRITE_FIXTURES=1 cargo test` rewrites them). The iOS app's tests read copies of the same files. The rvrs API reads the same fixtures against its own copy of the shape.

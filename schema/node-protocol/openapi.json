@@ -203,7 +203,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -283,7 +283,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -366,11 +366,16 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "stopped": {
+                    "externalValue": "fixtures/claim.stopped.json"
+                  }
                 }
               }
             }
@@ -457,6 +462,16 @@
           },
           "401": {
             "description": "No credential, or one that is unknown or revoked (UNAUTHORIZED).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An admin stopped the workspace's fleet (FLEET_STOPPED). The result stays in the outbox.",
             "content": {
               "application/json": {
                 "schema": {
