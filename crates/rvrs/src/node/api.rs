@@ -4,8 +4,8 @@
 //! An answer is one of three things. The API said yes. The API said no, in its error shape, with
 //! a code a node branches on. Or there is no answer from the API: nothing came back, the API
 //! failed (5xx), or something on the way answered with a page of its own, as a load balancer does
-//! with a 404 when no server behind it has room. The last three are one case, and the call is
-//! tried again.
+//! with a 404 when no server behind it has room and a captive portal does with a 200. The last
+//! three are one case, and the call is tried again.
 
 use std::io::Read;
 use std::time::Duration;
@@ -18,7 +18,7 @@ use crate::help::VERSION;
 /// What came back for a call.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Answer {
-    /// 2xx, with the body.
+    /// 2xx, with the body, which is a JSON object.
     Taken(Value),
     /// The API refused, in its own words: the status, the error's code and, for a 429, how long
     /// to wait.
@@ -33,11 +33,17 @@ pub enum Answer {
 
 impl Answer {
     /// Reads a status and a body by the protocol's rule: an answer without the API's error shape
-    /// didn't come from the API, whatever its status.
+    /// didn't come from the API, whatever its status. The same holds for a good status: every
+    /// answer of the API a node reads is a JSON object, and anything else under a 2xx came from
+    /// something on the way.
     pub fn read(status: u16, body: &str, retry_after: Option<u64>) -> Answer {
         let json: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         if (200..300).contains(&status) {
-            return Answer::Taken(json);
+            return if json.is_object() {
+                Answer::Taken(json)
+            } else {
+                Answer::None
+            };
         }
         match json["error"]["code"].as_str() {
             Some(code) if status < 500 => Answer::Refused {
@@ -140,13 +146,21 @@ impl Api {
         self.post("/v1/runs", result, 30)
     }
 
-    /// Opens the event stream at `url` and hands back its body to read. The stream is cut after
-    /// `longest`, so a thread that reads a connection nothing arrives on any more ends by itself.
-    pub fn stream(&self, url: &str, longest: Duration) -> Result<Box<dyn Read + Send>, Answer> {
+    /// Opens the event stream at `url` and hands back its body to read. A read fails once
+    /// nothing arrived for `silent`, so the thread that reads a connection that died without a
+    /// word ends by itself and gives its socket back. The stream is cut after `longest` in any
+    /// case.
+    pub fn stream(
+        &self,
+        url: &str,
+        longest: Duration,
+        silent: Duration,
+    ) -> Result<Box<dyn Read + Send>, Answer> {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_recv_response(Some(Duration::from_secs(20)))
             .timeout_recv_body(Some(longest))
+            .timeout_per_read(Some(silent))
             .user_agent(format!("rvrs/{VERSION}"))
             .http_status_as_error(false)
             .build()
@@ -189,6 +203,13 @@ mod tests {
             Answer::None
         );
         assert_eq!(Answer::read(403, "", None), Answer::None);
+        // A captive portal's page comes with a good status, and so may a proxy's.
+        assert_eq!(
+            Answer::read(200, "<html>Sign in</html>", None),
+            Answer::None
+        );
+        assert_eq!(Answer::read(200, "", None), Answer::None);
+        assert_eq!(Answer::read(201, "\"ok\"", None), Answer::None);
         // The API's own failure is tried again as well.
         let failed = r#"{"error":{"code":"INTERNAL_ERROR","message":"x"}}"#;
         assert_eq!(Answer::read(500, failed, None), Answer::None);

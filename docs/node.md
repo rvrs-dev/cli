@@ -75,5 +75,7 @@ Whoever starts the node sets these, as flags of `rvrs node` or in the environmen
 | An admin stopped the fleet | Ends its runs, keeps its results and asks again in an hour |
 | It was asked for a run it won't make | Answers with the reason: a private address, an option it doesn't know, a run over its limits |
 | It restarted in the middle of a run | Gets the run again, as the next attempt |
+| It lost power while it wrote a result | Starts with the results that were written whole. A file that holds no result is removed and counted as dropped |
+| The outbox's folder can't be written | Keeps the result in memory and says so in its log. Its heartbeat says `memory` until that result is sent |
 
 The node's log names runs by their id. It never has a target, a token or anything from a report in it.

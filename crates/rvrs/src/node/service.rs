@@ -32,7 +32,7 @@ use rvrs_core::FamilyChoice;
 use serde_json::{json, Value};
 
 use super::api::{Answer, Api};
-use super::outbox::Outbox;
+use super::outbox::{Entry, Outbox};
 use super::runner;
 use crate::help::VERSION;
 
@@ -41,8 +41,11 @@ const WINDOW_AT_MOST: u64 = 300;
 /// How long the node waits after the API said it may not do this now.
 const ASK_AGAIN: Duration = Duration::from_secs(3600);
 /// A stream is cut after this long and opened again. A healthy one never notices more than a
-/// reconnect an hour. It is what ends a thread that reads a connection nothing arrives on.
+/// reconnect an hour.
 const LONGEST_STREAM: Duration = Duration::from_secs(3600);
+/// How much longer than the loop the thread that reads a stream waits before it gives a silent
+/// one up. The loop notices first and says so, and the thread ends a moment later.
+const READER_WAITS_LONGER: u64 = 5;
 /// A claim that got no answer is sent again with its key for this long. After that the node
 /// claims anew.
 const SAME_CLAIM: Duration = Duration::from_secs(120);
@@ -182,6 +185,24 @@ pub fn word(length: usize) -> String {
         .collect()
 }
 
+/// The id of the report for a run that was asked for: the run and the attempt. The API tells a
+/// node's runs apart by this id for as long as it keeps them, so it may never repeat on one
+/// node. The six characters a run gets on a person's device repeat within some ten thousand
+/// runs, and the API would refuse the second report.
+fn report_id(request: &Request) -> String {
+    format!("{}-{}", request.run, request.attempt)
+}
+
+/// True when a 2xx answer to a result is the API's receipt for it: it names a run, and for a run
+/// that was asked for it names that run.
+fn is_receipt(answer: &Value, entry: &Entry) -> bool {
+    match (answer["id"].as_str(), entry.claim()) {
+        (Some(id), Some((run, _))) => id == run,
+        (Some(id), None) => !id.is_empty(),
+        (None, _) => false,
+    }
+}
+
 fn unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -285,7 +306,8 @@ impl Node {
     }
 
     fn close_stream(&mut self) {
-        // The thread that reads it is left to end with its connection. Its events are ignored.
+        // The thread that reads it ends with its connection, or once nothing arrived on it for
+        // a little over twice the keep-alive. Its events are ignored.
         self.stream = None;
         self.next_stream = None;
     }
@@ -386,9 +408,10 @@ impl Node {
         let api = Arc::clone(&self.api);
         let url = api.events_at(self.events.as_deref());
         let sender = self.sender.clone();
+        let silent = Duration::from_secs(self.numbers.keep_alive * 2 + READER_WAITS_LONGER);
         std::thread::spawn(move || {
             let send = |event| sender.send(Event::Stream(generation, event)).is_ok();
-            match api.stream(&url, LONGEST_STREAM) {
+            match api.stream(&url, LONGEST_STREAM, silent) {
                 Ok(body) => {
                     read_events(body, send);
                     send(StreamEvent::Ended(None));
@@ -556,14 +579,15 @@ impl Node {
             "report": report,
             "claim": { "run": request.run, "attempt": request.attempt },
         });
-        self.outbox.put(body, Some(started));
+        if !self.outbox.put(body, Some(started)) {
+            self.say("The outbox's folder can't be written. This result waits in memory and is lost if the node stops before the API has it.");
+        }
         self.next_send = Instant::now();
     }
 
     fn refuse(&mut self, refusal: &Refusal, request: &Request, started: Instant) {
         self.say(&refusal.log_line(request));
-        // A report's id is one this node made for it. A refusal gets one as a run does.
-        let id = Run::new(Tool::Ping, "", FamilyChoice::Auto, 0, 0).id;
+        let id = report_id(request);
         let mut report = refusal.report(request, &self.identity(), id, unix_seconds());
         report.origin.metadata_revision = self.revision;
         self.keep(&report, request, started);
@@ -641,6 +665,7 @@ impl Node {
         };
         (self.count)(Counted::Run(run.tool));
         let mut report = Report::of(&run);
+        report.id = report_id(&made.request);
         // The report names the target as it was asked, whatever the tool made of it.
         report.target = made.request.target.clone();
         report.origin.kind = "node".into();
@@ -669,41 +694,58 @@ impl Node {
         self.keep(&report, &made.request, made.started);
     }
 
-    /// Sends what waits in the outbox, oldest first, one at a time.
+    /// Sends the oldest result that waits. One a turn of the loop: a node that comes back with
+    /// a full outbox still claims when a claim is due, which is what keeps the leases of the
+    /// runs it is making, and still reads its stream.
     fn send(&mut self, now: Instant) {
-        while let Some(entry) = self.outbox.oldest().cloned() {
-            match self.api.result(&entry.to_send(Instant::now())) {
-                Answer::Taken(_) => {
-                    self.outbox.answered(&entry.name);
-                    self.send_window = self.numbers.reconnect;
-                }
-                Answer::Refused {
-                    status,
-                    code,
-                    retry_after,
-                } => {
-                    if self.refused(status, &code, now) {
-                        return;
-                    }
-                    match status {
-                        // The claim is lost: a newer attempt has the run, or it has its result.
-                        409 => self.outbox.answered(&entry.name),
-                        429 => {
-                            let wait = retry_after.unwrap_or(self.numbers.reconnect);
-                            self.next_send = now + Duration::from_secs(wait);
-                            return;
-                        }
-                        // The call is wrong and stays wrong. It is not repeated.
-                        _ => self.outbox.give_up(&entry.name),
-                    }
-                }
-                Answer::None => {
-                    self.next_send = now + within(self.send_window);
-                    self.send_window = (self.send_window * 2).min(WINDOW_AT_MOST);
+        let Some(entry) = self.outbox.oldest().cloned() else {
+            return;
+        };
+        let answer = match self.api.result(&entry.to_send(Instant::now())) {
+            // A 2xx that doesn't name the run is no receipt. The result stays until one comes.
+            Answer::Taken(answer) if !is_receipt(&answer, &entry) => {
+                self.say("An answer to a result didn't name its run. The result waits and is sent again.");
+                Answer::None
+            }
+            answer => answer,
+        };
+        match answer {
+            Answer::Taken(_) => {
+                self.outbox.answered(&entry.name);
+                self.send_window = self.numbers.reconnect;
+            }
+            Answer::Refused {
+                status,
+                code,
+                retry_after,
+            } => {
+                if self.refused(status, &code, now) {
                     return;
                 }
+                match status {
+                    // The claim is lost: a newer attempt has the run, or it has its result.
+                    409 => self.outbox.answered(&entry.name),
+                    429 => {
+                        let wait = retry_after.unwrap_or(self.numbers.reconnect);
+                        self.next_send = now + Duration::from_secs(wait);
+                    }
+                    // The call is wrong and stays wrong. It is not repeated.
+                    _ => self.outbox.give_up(&entry.name),
+                }
+            }
+            Answer::None => {
+                self.next_send = now + within(self.send_window);
+                self.send_window = (self.send_window * 2).min(WINDOW_AT_MOST);
             }
         }
+    }
+
+    /// True when a result waits that may go now. The loop then turns again at once.
+    fn sends_next(&self, now: Instant) -> bool {
+        self.ended.is_none()
+            && self.paused_until.is_none()
+            && self.outbox.waiting() > 0
+            && now >= self.next_send
     }
 
     /// Everything that is due now.
@@ -751,6 +793,12 @@ impl Node {
             self.api.base(),
             self.api.token_prefix()
         ));
+        if self.outbox.unreadable() > 0 {
+            self.say(&format!(
+                "{} files in the outbox held no result that could be read. They were removed and count as dropped.",
+                self.outbox.unreadable()
+            ));
+        }
         loop {
             if self.stop.load(Ordering::Relaxed) {
                 self.stop_runs();
@@ -761,7 +809,13 @@ impl Node {
             }
             let now = Instant::now();
             self.tick(now);
-            match self.receiver.recv_timeout(Duration::from_millis(200)) {
+            // With more to send, the loop looks for an event and turns again without waiting.
+            let wait = if self.sends_next(Instant::now()) {
+                Duration::ZERO
+            } else {
+                Duration::from_millis(200)
+            };
+            match self.receiver.recv_timeout(wait) {
                 Ok(Event::Stream(generation, event)) => {
                     self.on_stream(generation, event, Instant::now())
                 }

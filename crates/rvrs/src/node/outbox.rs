@@ -5,10 +5,15 @@
 //! made while the uplink was gone goes out once it is back, oldest first. Where the folder can't
 //! be written the outbox is kept in memory, and the heartbeat says which.
 //!
+//! A file is whole or it isn't there: a result is written beside its name first and takes the
+//! name once every byte is on the disk. A file that can't be read as a result anyway is removed
+//! at the start and counted as dropped.
+//!
 //! It has a cap in runs, in bytes and in age. When it is over one, the oldest result goes and is
 //! counted as dropped, which the next heartbeat says.
 
 use std::collections::VecDeque;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -33,6 +38,8 @@ pub struct Entry {
     /// When the run started, by this process's own clock that only counts forward. None for a
     /// result from before this start, since that clock started over.
     started: Option<Instant>,
+    /// False for a result whose file couldn't be written. It waits for as long as this runs.
+    on_disk: bool,
 }
 
 impl Entry {
@@ -61,7 +68,38 @@ pub struct Outbox {
     folder: Option<PathBuf>,
     entries: VecDeque<Entry>,
     dropped: u32,
+    /// Files found at the start that were no result, and were removed.
+    unreadable: u32,
     made: u64,
+}
+
+/// Writes a result so that its file is whole or not there: beside its name first, and under the
+/// name once every byte is on the disk. A node that loses power in between leaves nothing that
+/// reads as half a result.
+fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
+    let beside = path.with_extension("json.tmp");
+    let written = (|| {
+        let mut file = std::fs::File::create(&beside)?;
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&beside, path)
+    })();
+    match &written {
+        Ok(()) => {
+            // The folder holds the new name. Where the folder can't be synced, the name is
+            // there all the same unless the power goes in the next moments.
+            let folder = path
+                .parent()
+                .and_then(|folder| std::fs::File::open(folder).ok());
+            if let Some(folder) = folder {
+                let _ = folder.sync_all();
+            }
+        }
+        Err(_) => {
+            let _ = std::fs::remove_file(&beside);
+        }
+    }
+    written
 }
 
 fn millis(at: SystemTime) -> u128 {
@@ -79,31 +117,53 @@ impl Outbox {
         let Ok(listing) = std::fs::read_dir(folder) else {
             return Outbox::in_memory();
         };
-        let mut entries: Vec<Entry> = listing
-            .flatten()
-            .filter_map(|file| {
-                let path = file.path();
-                let name = path.file_name()?.to_str()?.to_string();
-                if !name.ends_with(".json") {
-                    return None;
-                }
-                let data = std::fs::read(&path).ok()?;
-                let body: Value = serde_json::from_slice(&data).ok()?;
-                let made = file.metadata().and_then(|file| file.modified()).ok()?;
-                Some(Entry {
-                    name,
-                    body,
-                    bytes: data.len() as u64,
-                    made,
-                    started: None,
-                })
-            })
-            .collect();
+        let mut entries = Vec::new();
+        let mut unreadable = 0u32;
+        for file in listing.flatten() {
+            let path = file.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            // A write that never finished. Its result was never counted as waiting.
+            if name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
+            if !name.ends_with(".json") {
+                continue;
+            }
+            // A file that can't be opened now may be readable at the next start. It stays.
+            let Ok(data) = std::fs::read(&path) else {
+                continue;
+            };
+            let body = serde_json::from_slice::<Value>(&data)
+                .ok()
+                .filter(|body| body["report"].is_object());
+            let Some(body) = body else {
+                // No result can be read from it, now or later.
+                let _ = std::fs::remove_file(&path);
+                unreadable += 1;
+                continue;
+            };
+            let made = file
+                .metadata()
+                .and_then(|file| file.modified())
+                .unwrap_or_else(|_| SystemTime::now());
+            entries.push(Entry {
+                name: name.to_string(),
+                body,
+                bytes: data.len() as u64,
+                made,
+                started: None,
+                on_disk: true,
+            });
+        }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         let mut outbox = Outbox {
             folder: Some(folder.to_path_buf()),
             entries: entries.into(),
-            dropped: 0,
+            dropped: unreadable,
+            unreadable,
             made: 0,
         };
         outbox.trim(SystemTime::now());
@@ -115,17 +175,24 @@ impl Outbox {
             folder: None,
             entries: VecDeque::new(),
             dropped: 0,
+            unreadable: 0,
             made: 0,
         }
     }
 
-    /// `disk` or `memory`, as the heartbeat says it.
+    /// `disk` or `memory`, as the heartbeat says it. It is `memory` for as long as one result
+    /// waits that has no file, since a restart would lose that one.
     pub fn keeps(&self) -> &'static str {
-        if self.folder.is_some() {
+        if self.folder.is_some() && self.entries.iter().all(|entry| entry.on_disk) {
             "disk"
         } else {
             "memory"
         }
+    }
+
+    /// Files found at the start that were no result and were removed. They count as dropped.
+    pub fn unreadable(&self) -> u32 {
+        self.unreadable
     }
 
     pub fn waiting(&self) -> u32 {
@@ -153,26 +220,37 @@ impl Outbox {
     }
 
     /// Keeps a result until the API has answered for it. `started` is when its run started.
-    pub fn put(&mut self, body: Value, started: Option<Instant>) {
+    /// False when the outbox has a folder and the result's file couldn't be written, so the
+    /// result waits in memory.
+    pub fn put(&mut self, body: Value, started: Option<Instant>) -> bool {
         let now = SystemTime::now();
-        self.made += 1;
-        // Names sort by when they were made, and two made in one millisecond stay in order.
-        let name = format!("{:013}-{:06}.json", millis(now), self.made % 1_000_000);
-        let text = body.to_string();
-        if let Some(path) = self.path(&name) {
-            if std::fs::write(&path, &text).is_err() {
-                // The disk is full or gone. The result waits in memory for as long as this runs.
-                let _ = std::fs::remove_file(&path);
+        // Names sort by when they were made, and two made in one millisecond stay in order. A
+        // name is never taken twice, also where the clock started over with the machine.
+        let name = loop {
+            self.made += 1;
+            let name = format!("{:013}-{:06}.json", millis(now), self.made % 1_000_000);
+            let taken = self.entries.iter().any(|entry| entry.name == name)
+                || self.path(&name).is_some_and(|path| path.exists());
+            if !taken {
+                break name;
             }
-        }
+        };
+        let text = body.to_string();
+        let on_disk = match self.path(&name) {
+            Some(path) => write_whole(&path, &text).is_ok(),
+            None => false,
+        };
+        let kept = on_disk || self.folder.is_none();
         self.entries.push_back(Entry {
             name,
             bytes: text.len() as u64,
             body,
             made: now,
             started,
+            on_disk,
         });
         self.trim(now);
+        kept
     }
 
     fn take(&mut self, name: &str) -> bool {
@@ -279,6 +357,67 @@ mod tests {
         outbox.answered(&first.name);
         assert_eq!(outbox.oldest().unwrap().body["report"]["id"], "b");
         assert_eq!(outbox.dropped(), 0);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_file_is_a_whole_result_or_it_is_removed_and_counted() {
+        let folder = folder("whole");
+        let mut outbox = Outbox::open(&folder);
+        assert!(outbox.put(result("a", Some("run-a")), None));
+        // Nothing is left beside the result's file.
+        let names: Vec<String> = std::fs::read_dir(&folder)
+            .unwrap()
+            .flatten()
+            .map(|file| file.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names.len(), 1);
+        assert!(names[0].ends_with(".json"));
+
+        // The power went during a write, and two other files are no result.
+        std::fs::write(folder.join("0000000000001-000001.json.tmp"), "{\"report\":").unwrap();
+        std::fs::write(
+            folder.join("0000000000002-000001.json"),
+            "{\"report\":{\"id\"",
+        )
+        .unwrap();
+        std::fs::write(folder.join("0000000000003-000001.json"), "[]").unwrap();
+        let outbox = Outbox::open(&folder);
+        assert_eq!(outbox.waiting(), 1);
+        assert_eq!(outbox.oldest().unwrap().body["report"]["id"], "a");
+        assert_eq!(outbox.unreadable(), 2);
+        assert_eq!(outbox.dropped(), 2);
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_result_without_a_file_waits_in_memory_and_the_outbox_says_so() {
+        let folder = folder("nodisk");
+        let mut outbox = Outbox::open(&folder);
+        assert!(outbox.put(result("a", None), None));
+        assert_eq!(outbox.keeps(), "disk");
+        // The folder is gone, as when a volume is pulled.
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert!(!outbox.put(result("b", None), None));
+        assert_eq!(outbox.waiting(), 2);
+        assert_eq!(outbox.keeps(), "memory");
+        // Once the API has answered for the result without a file, what waits has one again.
+        outbox.answered(&outbox.entries[1].name.clone());
+        assert_eq!(outbox.keeps(), "disk");
+    }
+
+    #[test]
+    fn a_name_is_never_taken_twice() {
+        let folder = folder("names");
+        let mut first = Outbox::open(&folder);
+        first.put(result("a", None), None);
+        // A second start counts from one again, in what may be the same millisecond.
+        let mut second = Outbox::open(&folder);
+        for id in ["b", "c", "d"] {
+            second.put(result(id, None), None);
+        }
+        assert_eq!(Outbox::open(&folder).waiting(), 4);
         let _ = std::fs::remove_dir_all(&folder);
     }
 

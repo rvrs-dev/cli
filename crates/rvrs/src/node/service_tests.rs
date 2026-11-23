@@ -294,10 +294,17 @@ impl Started {
 }
 
 fn node(fake: &Fake, name: &str) -> Started {
+    node_with(fake, name, |_| {})
+}
+
+/// A node whose outbox folder `prepare` filled before it started.
+fn node_with(fake: &Fake, name: &str, prepare: impl FnOnce(&std::path::Path)) -> Started {
     let stop = Arc::new(AtomicBool::new(false));
     let log = Arc::new(Mutex::new(Vec::new()));
     let state = std::env::temp_dir().join(format!("rvrs-node-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(state.join("outbox")).unwrap();
+    prepare(&state.join("outbox"));
     let hands = Hands {
         make: Box::new(|admitted, _destination, stop| {
             let started = Instant::now();
@@ -515,7 +522,9 @@ fn a_result_waits_while_the_api_is_away_and_goes_out_once_it_is_back() {
     let started = node(&fake, "away");
     assert!(fake.until(|fake| fake.calls_to("/v1/runs").len() == 4));
     let sent = fake.calls_to("/v1/runs");
-    // The same result every time, and still listed as held while it waited.
+    // The same result every time, and still listed as held while it waited. Its report is named
+    // after the run and the attempt, so no two reports of one node share an id.
+    assert_eq!(sent[0].body["report"]["id"], format!("{RUN}-1"));
     assert_eq!(sent[0].body["report"]["id"], sent[3].body["report"]["id"]);
     assert!(fake
         .calls_to("/v1/nodes/me/claims")
@@ -525,6 +534,92 @@ fn a_result_waits_while_the_api_is_away_and_goes_out_once_it_is_back() {
     std::thread::sleep(Duration::from_millis(600));
     assert_eq!(fake.calls_to("/v1/runs").len(), 4);
     started.stop();
+}
+
+#[test]
+fn a_good_status_that_is_no_receipt_keeps_the_result() {
+    let fake = Fake::start();
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    fake.script()
+        .claims
+        .push_back(claim_with("ping", "192.168.1.1"));
+    // A captive portal's page with a 200, then a 201 that names another run, then the API.
+    fake.script().results.push_back(Reply::Page(200));
+    fake.script().results.push_back(Reply::Json(
+        201,
+        json!({ "id": "7c1f0a52-6f0e-4a57-b1a3-2f9f1d6f4e10" }),
+    ));
+    let started = node(&fake, "receipt");
+    assert!(fake.until(|fake| fake.calls_to("/v1/runs").len() == 3));
+    let sent = fake.calls_to("/v1/runs");
+    assert_eq!(sent[0].body["report"], sent[2].body["report"]);
+    assert!(started.said("An answer to a result didn't name its run."));
+    // The third answer named the run, so nothing is sent after it and nothing was dropped.
+    std::thread::sleep(Duration::from_millis(600));
+    assert_eq!(fake.calls_to("/v1/runs").len(), 3);
+    assert!(fake
+        .calls_to("/v1/nodes/me/heartbeats")
+        .iter()
+        .all(|beat| beat.body["outbox"]["dropped"] == 0));
+    started.stop();
+}
+
+#[test]
+fn a_full_outbox_goes_out_while_the_node_still_claims() {
+    let fake = Fake::start();
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    // What a node comes back with after a long time without its uplink.
+    let waiting = 300;
+    let started = node_with(&fake, "backlog", |outbox| {
+        for n in 0..waiting {
+            let result = json!({ "report": { "id": format!("r{n}") } });
+            std::fs::write(
+                outbox.join(format!("{:013}-{:06}.json", n + 1, 1)),
+                result.to_string(),
+            )
+            .unwrap();
+        }
+    });
+    assert!(fake.until(|fake| fake.calls_to("/v1/runs").len() == waiting));
+    // The claim that hello asks for went out between results, long before the last one.
+    let calls = fake.calls.lock().unwrap().clone();
+    let claimed = calls
+        .iter()
+        .position(|call| call.path == "/v1/nodes/me/claims")
+        .unwrap();
+    let last_result = calls
+        .iter()
+        .rposition(|call| call.path == "/v1/runs")
+        .unwrap();
+    assert!(claimed < last_result - waiting / 2);
+    // Oldest first.
+    let sent = fake.calls_to("/v1/runs");
+    assert_eq!(sent[0].body["report"]["id"], "r0");
+    assert_eq!(sent[waiting - 1].body["report"]["id"], "r299");
+    started.stop();
+}
+
+#[test]
+fn the_thread_that_reads_a_stream_ends_when_nothing_arrives_on_it() {
+    let fake = Fake::start();
+    // A stream that says hello and then holds the connection open in silence.
+    fake.script().streams.push_back(vec![HELLO.into()]);
+    let api = Api::new(&fake.address, Secret::new("rvrs_test-token"));
+    let Ok(body) = api.stream(
+        &api.events(),
+        Duration::from_secs(3600),
+        Duration::from_secs(1),
+    ) else {
+        panic!("the stream didn't open");
+    };
+    let opened = Instant::now();
+    let read = BufReader::new(body)
+        .lines()
+        .take_while(|line| line.is_ok())
+        .count();
+    // hello arrived, and the read gave up long before the stream's longest hour.
+    assert!(read >= 2);
+    assert!(opened.elapsed() < Duration::from_secs(6));
 }
 
 #[test]
