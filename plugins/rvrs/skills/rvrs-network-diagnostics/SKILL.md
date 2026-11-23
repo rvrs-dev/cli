@@ -2,10 +2,10 @@
 name: rvrs-network-diagnostics
 description: Network diagnostics and troubleshooting with the rvrs CLI. Runs ping, traceroute, MTR, dig (DNS lookups) and BGP lookups with ASN and RPKI, reads each run as a JSON report and compares it with the history of runs rvrs keeps. Use when a host, site, API or connection is slow, unreachable or losing packets, to measure latency, packet loss or jitter, to trace a network path, to find out why a name resolves differently, to see who announces a prefix or whether a route changed, to compare IPv4 with IPv6, to answer "was it like this yesterday?", to collect evidence for a ticket to a provider, or to take a baseline before and after a network change. Installs rvrs when it is missing.
 license: MIT OR Apache-2.0
-compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
+compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device, or with `--node` from a node of the person's workspace.
 metadata:
   author: rvrs-dev
-  version: "0.14.1"
+  version: "0.15.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -165,9 +165,9 @@ A normal result stops after the evidence. Do not pad it.
 
 Every run today starts from this device. That answers "what does the network look like from here". It can't answer "is it slow for customers in Sweden" or "is it them or me", which need the same run from another network.
 
-rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. They are not released. `rvrs status` says so on its Nodes line, and `--node`, `--fleet`, `rvrs nodes` and `rvrs schedule` refuse and send nothing.
+rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. The Nodes line of `rvrs status` says how many the person's workspace has and how many are online. `--fleet` and `rvrs schedule` are not released. They refuse and send nothing.
 
-When a question needs another origin, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that nodes are on the waitlist at https://rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's account, which then keeps its runs on their other devices and at app.rvrs.dev. That sends runs off this device and adds no origin, so sign in only when the person asks to. When `rvrs status` reports that nodes are available, follow [nodes and accounts](references/nodes.md).
+When a question needs another origin and `rvrs status` counts a node that is online, follow [nodes and accounts](references/nodes.md). When it counts none, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that a node is a machine the person starts with a token from app.rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's account, which then keeps its runs on their other devices and at app.rvrs.dev. That sends runs off this device and adds no origin, so sign in only when the person asks to.
 
 ## Only when asked
 
@@ -195,6 +195,6 @@ Reading history and making a run with a count need no permission. Each of these 
 - [The report](references/report.md): every field per tool, jq recipes.
 - [Playbooks](references/playbooks.md): slow, unreachable, intermittent, DNS, routing, IPv4 against IPv6, before and after a change, writing the ticket.
 - [History and cases](references/history.md): baselines, comparisons, evidence.
-- [Nodes and accounts](references/nodes.md): signing in, and what changes when nodes ship.
+- [Nodes and accounts](references/nodes.md): signing in, and a run from a node.
 - [From one device to a fleet](https://rvrs.dev/docs/get-started/from-one-device-to-a-fleet.md): what works today and what is planned. Read it when someone asks what rvrs is or what it will do.
 - [rvrs.dev](https://rvrs.dev) is the site, and [github.com/rvrs-dev/cli](https://github.com/rvrs-dev/cli) has the source, the releases and the docs for every command.

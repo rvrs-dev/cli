@@ -894,10 +894,10 @@ pub fn status() -> ExitCode {
         (true, line) => ok("Account", &line),
         (false, line) => off("Account", &line),
     }
-    off(
-        "Nodes",
-        "runs come from this device \u{00B7} nodes aren't available yet",
-    );
+    match crate::remote::status_line() {
+        (true, line) => ok("Nodes", &line),
+        (false, line) => off("Nodes", &line),
+    }
     if healthy {
         ExitCode::SUCCESS
     } else {

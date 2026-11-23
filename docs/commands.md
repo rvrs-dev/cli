@@ -28,11 +28,15 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
 | `rvrs logout` | Signs out and revokes this install's credential |
 | `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
+| `rvrs nodes` | Lists the nodes in your fleet: who is online, when each was last seen, its version and its tags |
+| `rvrs node` | Runs this machine as a node. It takes a token as `RVRS_TOKEN`, makes the runs asked of it and sends each result. [Nodes](node.md) has the flags |
 | `rvrs status` | Checks that this device can run the tools, lists the build features of this build and says who is signed in |
 | `rvrs completions install` | Sets up tab completion for zsh, bash or fish |
 | `rvrs update` | Brings rvrs up to date, however it was installed. `--with` and `--without` change its [build features](build-features.md) |
 
 Flags on every run: `--json` prints the report, `--classic` prints the original tool's output, `--color auto|always|never` sets color, and `--case <name>` saves the run into a case. `NO_COLOR` is honored.
+
+`--node <name>` makes the run on a node instead of this device and prints the result here. With it, `--no-wait` prints the run's id and leaves, and `--expires-in <seconds>` says how long the request waits for the node. [Nodes](node.md) lists the flags of each tool that travel.
 
 ### Soon
 
@@ -41,12 +45,10 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | Command | Will do |
 | --- | --- |
 | `rvrs iperf3` | Download and upload throughput against an iperf3 server, as the rvrs app measures it |
-| `rvrs node` | Runs this machine as a node in your fleet. It reads its tags and its location from `--tag key=value`, `--location <lat>,<lon>`, `--place` and `--location-precision`, from `RVRS_NODE_*` variables or from a file, and refuses a value it can't read. [The node's configuration](../schema/node-config.md) has the rules |
-| `rvrs nodes` | Lists the nodes in your fleet. `nodes show`, `nodes rename` and `nodes remove` manage one |
+| `rvrs nodes show\|rename\|remove <name>` | Shows a node, renames it or takes it out of the fleet |
 | `rvrs schedule <tool> <target> --node <name> --every <time>` | Has a node repeat a run |
 | `rvrs schedules`, `rvrs alerts` | List the fleet's schedules and the alerts they sent |
 | `rvrs share` | Print a run's share link |
-| `--node <name>` | Runs any tool from a node instead of this device |
 | `--fleet` | Runs it from every node in the fleet |
 
 ## The report

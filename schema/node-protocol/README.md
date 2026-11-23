@@ -2,7 +2,7 @@
 
 How a node talks to the rvrs API, and how a person's install asks a node for a run. `openapi.json` in this folder names every route and field, and `fixtures/` holds one example of each body. This page says what the routes are for, who moves a run from one state to the next, and what each side does when something gets lost.
 
-Status: version 1, written down and not built yet. The rvrs API and `rvrs node` are built to it next. Anyone may build a controller or a node that speaks it.
+Status: version 1. The rvrs API serves it, except enrolling, and `rvrs node` speaks it since rvrs 0.15. Anyone may build a controller or a node that speaks it.
 
 ## Who speaks
 
@@ -451,4 +451,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes. `rvrs node` is tested against an API inside the test that answers with these fixtures (`crates/rvrs/src/node/service_tests.rs`).

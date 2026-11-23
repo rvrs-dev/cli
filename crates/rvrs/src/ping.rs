@@ -222,14 +222,10 @@ pub fn run(args: PingArgs, multicall: bool) -> ExitCode {
         return ExitCode::from(EXIT_USAGE);
     }
     if let Some(node) = &args.common.node {
-        eprintln!(
-            "{}",
-            trace::style_error(
-                Style::detect_stderr(),
-                &format!("Nodes aren't available yet, so nothing was sent from \u{201C}{node}\u{201D}. Without --node the run comes from this device.")
-            )
-        );
-        return ExitCode::from(EXIT_USAGE);
+        return match crate::remote::ping(&args) {
+            Ok(options) => crate::remote::run(node, "ping", &args.target, options, &args.common),
+            Err(message) => crate::usage(&message),
+        };
     }
     let look = trace::look(args.common.json, args.common.classic, multicall);
     let lookups = Lookups {

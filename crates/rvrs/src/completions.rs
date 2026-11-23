@@ -104,6 +104,8 @@ _rvrs() {
         '--no-lookups[no reverse DNS and no network lookups]' \
         '--color=[when to use color]:when:(auto always never)' \
         '--node=[run from a node]:node:' \
+        '--no-wait[with --node, print the run id and leave]' \
+        '--expires-in=[with --node, seconds the request waits]:seconds:' \
         '--case=[save the run into a case]:case:_rvrs_cases' \
         '--help[show help]' \
         '1:target:_rvrs_targets'
@@ -190,6 +192,8 @@ _rvrs() {
         '--no-lookups[no reverse DNS and no network lookup]' \
         '--color=[when to use color]:when:(auto always never)' \
         '--node=[run from a node]:node:' \
+        '--no-wait[with --node, print the run id and leave]' \
+        '--expires-in=[with --node, seconds the request waits]:seconds:' \
         '--case=[save the run into a case]:case:_rvrs_cases' \
         '--help[show help]' \
         '1:target:_rvrs_targets'
@@ -243,7 +247,7 @@ pub const BASH: &str = r#"_rvrs() {
   case "$command" in
     traceroute)
       if [[ "$current" == -* ]]; then
-        COMPREPLY=($(compgen -W "-m -q -w -f -z -n -A -4 -6 -I -T -p --tcp --port --mtu --max-hops --queries --wait --first --json --classic --no-lookups --color --node --case --help" -- "$current"))
+        COMPREPLY=($(compgen -W "-m -q -w -f -z -n -A -4 -6 -I -T -p --tcp --port --mtu --max-hops --queries --wait --first --json --classic --no-lookups --color --node --no-wait --expires-in --case --help" -- "$current"))
       elif [ "$previous" = "--case" ]; then
         local IFS=$'\n'
         COMPREPLY=($(compgen -W "$(rvrs __cases 2>/dev/null)" -- "$current"))
@@ -286,7 +290,7 @@ pub const BASH: &str = r#"_rvrs() {
       ;;
     ping)
       if [[ "$current" == -* ]]; then
-        COMPREPLY=($(compgen -W "-c -i -W -w -s -t -n -q -4 -6 --json --classic --no-lookups --color --node --case --help" -- "$current"))
+        COMPREPLY=($(compgen -W "-c -i -W -w -s -t -n -q -4 -6 --json --classic --no-lookups --color --node --no-wait --expires-in --case --help" -- "$current"))
       elif [ "$previous" = "--case" ]; then
         local IFS=$'\n'
         COMPREPLY=($(compgen -W "$(rvrs __cases 2>/dev/null)" -- "$current"))
@@ -428,6 +432,8 @@ complete -c rvrs -n '__fish_seen_subcommand_from traceroute ping last show saved
 complete -c rvrs -n '__fish_seen_subcommand_from traceroute ping last show' -l classic -d 'Print what the original tool prints'
 complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l color -x -a 'auto always never' -d 'When to use color'
 complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l node -x -d 'Run from a node'
+complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l no-wait -d 'With --node, print the run id and leave'
+complete -c rvrs -n '__fish_seen_subcommand_from traceroute' -l expires-in -x -d 'With --node, seconds the request waits'
 complete -c rvrs -n '__fish_seen_subcommand_from show' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
 complete -c rvrs -n '__fish_seen_subcommand_from history' -a clear -d 'Delete every run in history'
 complete -c rvrs -n '__fish_seen_subcommand_from history' -a 'traceroute ping mtr dig bgp' -d 'Only this tool'
