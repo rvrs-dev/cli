@@ -48,6 +48,7 @@ Two things the rule can't see, which whoever shares a run decides about: a node'
 
 `origin.tags` and `origin.location` are the origin's tags and location as they were when the run was stored. A tag is a key and a value, as in `isp=telia`, at most 20 per origin. A location is `lat`, `lon`, an optional `place` and a `precision` (`exact`, `area` or `city`) that says how many digits of the coordinates were kept.
 
+- `origin.metadataRevision` is the revision of the origin's tags and location the run was made under, which a node takes from its API's last answer and keeps with the run until the API has it. The API checks it against that node's own history and writes `tags` and `location` from it, so a run that waited in an outbox keeps the tags of the day it ran. A reader never needs it.
 - The API writes both and replaces whatever the sender put there. A node need not write them. Changing an install's tags or location afterwards leaves every earlier run as it was. A run stored before this, and a run made on this device, has neither.
 - The API rounds the coordinates to the precision before it keeps them, so a report never shows more than the person chose. A report the API wrote always carries `precision`. A reader that doesn't know the word treats it as `city`.
 - A node declares its own tags and location in its configuration and in the enroll and the heartbeat. [`node-config.md`](node-config.md) is that configuration and [the node protocol](node-protocol/README.md) has the rules for the bodies.

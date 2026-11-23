@@ -153,6 +153,16 @@ pub struct ReportOrigin {
         deserialize_with = "or_none"
     )]
     pub location: Option<DeclaredLocation>,
+    /// The revision of the origin's tags and location the run was made under. A node writes the
+    /// one its API last told it and keeps it with the run in its outbox, so the API tags the run
+    /// as it was made and not as it is when the result arrives. The API checks it and writes the
+    /// tags and location itself. A run made on this device has none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "or_none"
+    )]
+    pub metadata_revision: Option<u32>,
 }
 
 /// A value that is there and isn't the shape this version reads is the same as one that is
@@ -177,6 +187,7 @@ impl ReportOrigin {
             public_address: run.public_source.map(|address| address.to_string()),
             tags: None,
             location: None,
+            metadata_revision: None,
         }
     }
 }
@@ -1150,6 +1161,7 @@ mod tests {
         assert_eq!((location.lat, location.lon), (55.5, 8.5));
         assert_eq!(location.place.as_deref(), Some("Esbjerg, DK"));
         assert_eq!(location.precision, "city");
+        assert_eq!(report.origin.metadata_revision, Some(3));
         assert_eq!(
             report.origin.node_id.as_deref(),
             Some("7b0c5a2e-8d41-4f6a-9c3e-2a5d1e9f0b64")
@@ -1168,15 +1180,18 @@ mod tests {
         let mut odd = fixture;
         odd["origin"]["tags"] = serde_json::json!({ "isp": 1 });
         odd["origin"]["location"] = serde_json::json!("Esbjerg");
+        odd["origin"]["metadataRevision"] = serde_json::json!("three");
         let report: Report = serde_json::from_value(odd).unwrap();
         assert_eq!(report.origin.tags, None);
         assert_eq!(report.origin.location, None);
+        assert_eq!(report.origin.metadata_revision, None);
         assert_eq!(report.origin.node.as_deref(), Some("esb-1"));
 
         // A run made here writes neither.
         let written = serde_json::to_value(Report::of(&reached_run())).unwrap();
         assert!(written["origin"].get("tags").is_none());
         assert!(written["origin"].get("location").is_none());
+        assert!(written["origin"].get("metadataRevision").is_none());
     }
 
     #[test]

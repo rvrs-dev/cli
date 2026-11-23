@@ -861,6 +861,11 @@
                 "minLength": 1,
                 "maxLength": 63,
                 "description": "Unique in the workspace, and what --node takes: 1 to 63 lowercase letters, digits, \".\", \"-\" and \"_\"."
+              },
+              "metadataRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The revision of the node's tags and location now, as the API has them. It goes up by one whenever either changes, from a declaration or from an edit on the web. A node writes the one it last read into `origin.metadataRevision` of every report it makes, and keeps it with the run in its outbox. Left out by an API from before revisions."
               }
             }
           },
@@ -908,6 +913,11 @@
                 "minLength": 1,
                 "maxLength": 63,
                 "description": "Unique in the workspace, and what --node takes: 1 to 63 lowercase letters, digits, \".\", \"-\" and \"_\"."
+              },
+              "metadataRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The revision of the node's tags and location now, as the API has them. It goes up by one whenever either changes, from a declaration or from an edit on the web. A node writes the one it last read into `origin.metadataRevision` of every report it makes, and keeps it with the run in its outbox. Left out by an API from before revisions."
               }
             }
           },

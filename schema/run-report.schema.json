@@ -142,6 +142,11 @@
               "description": "How many digits of the coordinates are kept: exact (4 decimals, about 10 m), area (2 decimals, about 1 km) or city (1 decimal, about 10 km), city when left out. A reader that doesn't know the word treats it as city, the coarsest."
             }
           }
+        },
+        "metadataRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The revision of the origin's tags and location the run was made under. A node writes the one its API last told it (`node.metadataRevision` in the enroll and the heartbeat answers) and keeps it with the run in its outbox until the API has the run. The API checks that it is a revision of that node, writes `tags` and `location` itself from it, and replaces whatever tags and location the sender put in the report. A revision that isn't the node's own, or that nobody made, is ignored and the run takes the revision that was current when it started. A run from a device, from a node that sent none and from before this has none, and a reader never needs it."
         }
       }
     },

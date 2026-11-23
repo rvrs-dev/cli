@@ -262,6 +262,7 @@ impl Refusal {
                 public_address: None,
                 tags: None,
                 location: None,
+                metadata_revision: None,
             },
             outcome: "refused".into(),
             summary: format!("Refused \u{00B7} {}", self.brief(node.name)),

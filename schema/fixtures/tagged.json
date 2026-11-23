@@ -23,7 +23,8 @@
       "lon": 8.5,
       "place": "Esbjerg, DK",
       "precision": "city"
-    }
+    },
+    "metadataRevision": 3
   },
   "outcome": "reached",
   "summary": "12 pkt · 0.0% loss · 12.5 ms avg",
