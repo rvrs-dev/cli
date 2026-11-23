@@ -69,6 +69,10 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | **build feature** | A part of rvrs a build can leave out: a tool, the TCP probe, the path MTU check, the Console. A node says which ones it has. Every build has all of them unless it was made without some, and an update keeps what was left out. | capability, module, plugin, feature (for a tool) |
 | **origin** | Where a run was made from: this device or a node, with its interface, source address, public address and network. | source (sources are DNS resolvers), vantage point |
 | **fleet** | Every node of one workspace. | cluster, pool |
+| **limit** | What a node allows itself, whatever it is asked: runs at once, runs a minute, and packets, seconds and report size per run. Its owner sets them, up to a ceiling the build carries. | quota (a plan's), rate limit (the API's) |
+| **allowed range** | A range of private or shared address space a node's owner lets it send packets to, for diagnostics on their own network. It is written where the node is set up, and the API never sets one. | allowlist, whitelist, exception, exemption |
+| **node's owner** | Whoever set a node up on its device and writes its settings there: its limits and its allowed ranges. An owner of a workspace is a role in the web app and may be someone else. | operator, host, admin |
+| **stop a fleet** | An admin holding every node of a workspace at once: their tokens are refused until the fleet is resumed, and none is revoked. A run is stopped by whoever asked for it. | pause, suspend, disable, kill switch |
 | **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
 | **alert** | The message sent when a scheduled run's result changes. | notification (those are the system's), alarm |
 
@@ -103,6 +107,8 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | **sign in** | Prose and buttons say "sign in" and "sign out". The command is `rvrs login`, as `gh` and `docker` spell theirs. | log in, authenticate (in copy) |
 | **run page** | A run on rvrs.dev, rendered the way the app's result screen shows it. Only a run saved to an account has one. | permalink, report page |
 | **share link** | The link to a run page. | URL, permalink |
+| **home details** | What in a report points to the line a run was made from: its private network, its public address and what gives that away, a location. A share shows the private network unless Private Networks is turned off, and leaves the public address out unless the person sharing keeps it in. | personal data (the law's word, and wider), PII, sensitive fields |
+| **private network** | The network a run starts in, behind the line's router: a private source address, the hops at private addresses before the first hop that is anyone else's, and a resolver there. Private Networks is the option on a share that shows it, and it is on unless someone turns it off. | LAN (in copy), internal network, home network |
 
 ## Surfaces
 

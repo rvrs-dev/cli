@@ -75,7 +75,7 @@ A heartbeat says what the node is. The API learns from it what to show a person 
 | `system` | `os` and `arch`, as in `linux` and `aarch64` |
 | `boot` | A random word the node makes each time it starts, so the API sees a restart |
 | `features` | The build features the node has: `traceroute`, `ping`, `mtr`, `dns`, `bgp`, `iperf3`, `tcp` (the TCP probe), `mtu` (the path MTU check), `console` |
-| `limits` | What the node allows itself, whatever it is asked: `runsAtOnce`, `runsPerMinute`, `packetsPerRun`, `secondsPerRun`, `reportBytes` |
+| `limits` | What the node allows itself, whatever it is asked: `runsAtOnce`, `runsPerMinute`, `packetsPerRun` (probes, which a DNS or a BGP lookup sends none of), `secondsPerRun` (every tool), `reportBytes` |
 | `outbox` | `waiting` (runs not sent yet), `dropped` (runs given up since this start) and `keeps` (`disk` or `memory`) |
 
 The answer names the node and its workspace as the API knows them, so a node that was renamed on the web learns its name, and every node learns its `id`.
@@ -136,6 +136,8 @@ A lease is a hold for a limited time. A node that goes silent loses it after `le
 
 Before it starts a run, the node checks it against what it is and what it allows: the tool and every option are ones its build knows, the run fits its limits, and the target is one it may probe. A run that fails the check is not started. The node sends a report with the outcome `refused` and the reason in `error`, through the same route as any result.
 
+[What a node does and what it refuses](../../docs/node-safety.md) has the rules of that check: the limits and their ceilings, the address space a node sends nothing to, and the ranges its owner can allow. The node keeps them itself. No claim, event or answer of the API carries one, and `room` is how the node says how many runs it will take.
+
 ### What a run is
 
 | Field | Holds |
@@ -184,7 +186,7 @@ POST /v1/runs
 { "report": { ... }, "claim": { "run": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11", "attempt": 1 }, "startedAgoMilliseconds": 14412 }
 ```
 
-- The report's `origin.kind` is `node`. `origin.nodeId` is the node's id, which never changes. `origin.node` is the name the node had when it made the run. The report's `id` is the node's own, unique on that node.
+- The report's `origin.kind` is `node`. `origin.nodeId` is the node's id, which never changes. `origin.node` is the node's name. The API writes all three from the token ([Who made a run](#who-made-a-run)). The report's `id` is the node's own, unique on that node.
 - A node sends the report alone, without the `detail` a CLI adds for its other installs.
 - The API takes a result when its attempt is the run's newest and the run has no result yet. Whether the lease ran out in between doesn't matter: a node that lost its uplink during an MTR still delivers that MTR, which is the run someone wanted.
 - 409 `CLAIM_LOST` says a newer attempt has the run, or the run already has its result. The node drops the result. So a node that hung can't overwrite a newer result, and a run made twice is stored and counted once.
@@ -195,7 +197,9 @@ POST /v1/runs
 
 The API knows a node by its token and by nothing in a body. It stores a run under the node it authenticated, answers 422 when `origin.nodeId` names another node, and never looks a node up by a name it read in a report.
 
-A node's name can change and its id can't. A run keeps both: the id, so runs of one node compare across a rename, and the name as it was that day. Renaming a node changes no report.
+Who made a run is the API's to say, so it writes that part of the report it stores: `origin.kind` is `node`, `origin.nodeId` is the authenticated node's id and `origin.node` is that node's name as the API has it when the result arrives. Whatever the report said in those three is replaced. A node that left them out, named another node or called itself a device is stored, listed and compared as the node it is. The rest of the origin is the node's own word and is kept.
+
+A node's name can change and its id can't. A run keeps both: the id, so runs of one node compare across a rename, and the name the node had when the API took the run. A run that waited in an outbox across a rename carries the new name. Renaming a node changes no stored report.
 
 ### Whose clock
 
@@ -207,7 +211,7 @@ A node's name can change and its id can't. A run keeps both: the id, so runs of 
 
 `startedAgoMilliseconds` is how long before this request the run started, by a clock on the node that only counts forward. It needs no synchronized clock, and it stays right when a run waited in the outbox for hours. A node that restarted since the run leaves it out, since that clock started over.
 
-The report is never rewritten. `startedAt` stays the node's word. A reader that orders runs or compares them across origins goes by `observedStartedAt` where there is one, and by `startedAt` where there is none. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
+Beyond who made it, the report is never rewritten. `startedAt` stays the node's word. A reader that orders runs or compares them across origins goes by `observedStartedAt` where there is one, and by `startedAt` where there is none. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
 
 A router that booted without a synchronized clock may report `startedAt` as `1970-01-01T00:04:10Z`. With `startedAgoMilliseconds` of 14,412 and a result received at `2026-11-22T20:15:16.412Z`, the run's `observedStartedAt` is `2026-11-22T20:15:02.000Z`.
 
@@ -220,6 +224,15 @@ A finished run waits on the node until the API has answered for it.
 - When it is full, the oldest unsent run goes first, and the next heartbeat's `dropped` counts it.
 - The node sends the oldest first, one at a time, and waits when the API answers 429.
 - A run sent twice counts once.
+
+## Stopping a node, and a fleet
+
+A person can take a node's work away in two ways, and both reach the node as the answer to its next call.
+
+- Revoking a node is for good. Its stream ends, and every call with its token answers 401. The node enrolls again, with a new `key`, to come back.
+- Stopping the fleet is for every node of a workspace at once, and it can be undone. Their streams end, and every call with one of their tokens answers 403 `FLEET_STOPPED` until the fleet is resumed. No token is revoked, so a resumed node needs nothing new. It asks again after an hour.
+- A node that reads either answer ends the runs it is making at once and sends no further probe. A node that holds a run claims every third of `leaseSeconds`, so that is within 30 seconds.
+- After `FLEET_STOPPED` the results in the outbox wait for the fleet to resume, within the outbox's caps. After 401 they have nowhere to go.
 
 ## Asking for a run
 
@@ -262,8 +275,8 @@ A run a device makes itself is stored `ended`. `expiresAt` only limits how long 
 | Answer | The node |
 | --- | --- |
 | 200, 201 | Goes on |
-| 401 | Its token is unknown or revoked. It closes the stream and makes no further call until it is given a token |
-| 403 | It may not do this now. It asks again after an hour, and never after `NODE_REVOKED` |
+| 401 | Its token is unknown or revoked. It ends the runs it is making, closes the stream and makes no further call until it is given a token |
+| 403 | It may not do this now. It asks again after an hour, and never after `NODE_REVOKED`. After `FLEET_STOPPED` it also ends the runs it is making and closes the stream |
 | 404, 410, 413, 422 | The call is wrong and stays wrong. It is not repeated. A result answered this way leaves the outbox and counts as dropped |
 | 409 | The claim is lost. The result leaves the outbox |
 | 429 | Waits as long as `Retry-After` says |
@@ -372,6 +385,7 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - A node's token is derived from its `key` with a secret only the API holds. So the API answers the same token again without having kept it, and stores its hash alone. A unique index on the enrollment token and the `key` makes two enrolls at once one node.
 - The API checks the workspace and the node on every enroll, claim and result. A node can't claim or answer another node's run.
 - Revoking a node ends its stream at once, and every later call of its token answers 401.
+- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the instances end the streams of that workspace's nodes.
 
 ## Left out on purpose
 
@@ -385,4 +399,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, and that the report inside each result is one the CLI reads. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.

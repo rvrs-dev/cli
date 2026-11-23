@@ -16,4 +16,6 @@ These are the requests rvrs makes.
 
 - At most every 12 hours, to api.rvrs.dev: how often rvrs was started and how many runs each tool made, with the rvrs version, the system, the architecture, the language and a token that changes every day. Never a target, an address or a result. `RVRS_PULSE=0` or `DO_NOT_TRACK=1` turns it off.
 
+- A node, once nodes are released: a node sends what a run on this device sends, toward the targets its workspace asks for, and nothing until someone set it up with a token. [What a node does and what it refuses](node-safety.md) has its limits, the addresses it sends nothing to and what the person on the line can expect.
+
 `--no-lookups` turns off everything but the probes, the DNS questions and the requests a BGP lookup is made of. An account is optional. Without one, no run leaves this device.
