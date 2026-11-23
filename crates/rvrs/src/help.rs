@@ -246,12 +246,22 @@ pub fn main(style: Style) -> String {
         "Fleet",
         &[
             (
-                "schedule <tool> <target>",
-                "Have a node repeat a run: --node <name> --every <time>",
-                true,
+                "schedule add <tool> <target>",
+                "Have nodes repeat a run: --every <interval> and --node, --fleet or --all-nodes",
+                false,
             ),
-            ("schedules", "List the schedules across the fleet", true),
-            ("schedules remove <id>", "Stop a schedule", true),
+            ("schedules", "List the schedules you made", false),
+            ("schedule show <id>", "Show one schedule", false),
+            (
+                "schedule pause|resume <id>",
+                "Have no node run a schedule, or have its nodes run it again",
+                false,
+            ),
+            (
+                "schedule rm <id>",
+                "Delete a schedule and keep the runs it made",
+                false,
+            ),
             (
                 "alerts",
                 "List the alerts sent when a scheduled run's result changed",
@@ -354,7 +364,7 @@ pub fn main(style: Style) -> String {
 
 pub fn node(style: Style) -> String {
     let mut out = format!(
-        "{} rvrs node\nThis machine as a node. It makes the runs people in your workspace ask of it, within\nits own limits, and sends each result to the account of whoever asked. It opens every\nconnection itself, so it needs no open port.\n\n",
+        "{} rvrs node\nThis machine as a node. It makes the runs people in your workspace ask of it and repeats\nthe ones they schedule, within its own limits, and sends each result to the account of\nwhoever asked. It opens every connection itself, so it needs no open port.\n\n",
         style.bold("//")
     );
     out.push_str(&section(
@@ -372,7 +382,7 @@ pub fn node(style: Style) -> String {
         &[
             (
                 "--state <folder>",
-                "Where the node keeps its outbox and its token",
+                "Where the node keeps its outbox, its schedules and its token",
             ),
             (
                 "--tag <key>=<value>",
@@ -419,6 +429,82 @@ pub fn node(style: Style) -> String {
                 "docker run -d --network host -e RVRS_TOKEN=rvrs_... -v rvrs-node:/var/lib/rvrs ghcr.io/rvrs-dev/rvrs",
                 "",
             ),
+        ],
+    ));
+    out
+}
+
+pub fn schedule(style: Style) -> String {
+    let mut out = format!(
+        "{} rvrs schedule\nA run your nodes repeat at an interval. Each node keeps the schedule and repeats the run by\nitself, also while the API is out of reach, and the runs are kept in your account.\n\n",
+        style.bold("//")
+    );
+    out.push_str(&section(
+        style,
+        "Usage",
+        &[
+            ("rvrs schedules", "List the schedules you made"),
+            (
+                "rvrs schedule add <tool> <target> [flags]",
+                "Make a schedule",
+            ),
+            ("rvrs schedule show <id>", "Show one schedule"),
+            ("rvrs schedule pause <id>", "Have no node run it"),
+            ("rvrs schedule resume <id>", "Have its nodes run it again"),
+            (
+                "rvrs schedule rm <id>",
+                "Delete it and keep the runs it made",
+            ),
+        ],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "Flags of add",
+        &[
+            (
+                "--every <interval>",
+                "The time between two runs on one node: 300, 90s, 5m or 2h, from 60 seconds to 24 hours",
+            ),
+            ("--node <name>", "A node to run it on. Repeat it for more"),
+            (
+                "--fleet <selector>",
+                "Every node whose tags match, as in isp=telia",
+            ),
+            ("--all-nodes", "Every node of the workspace"),
+            ("--name <name>", "What people call the schedule"),
+            ("--json", "Print the schedule as the API answers it"),
+        ],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "The tool's flags",
+        &[
+            (
+                "traceroute",
+                "-4, -6, -q, -w, -m, -f, -T, -p, --mtu, -n, --no-lookups",
+            ),
+            ("ping", "-4, -6, -c, -i, -W, -n, --no-lookups"),
+            ("mtr", "-4, -6, -c, -i, -Z, -m, -f, -n, --no-lookups"),
+            ("dig", "The record type and --resolver"),
+            ("bgp", "None"),
+        ],
+    ));
+    out.push('\n');
+    out.push_str(&section(
+        style,
+        "Examples",
+        &[
+            (
+                "rvrs schedule add ping -c 10 example.com --every 1m --node fra-1 --node cpe-4471",
+                "",
+            ),
+            (
+                "rvrs schedule add mtr example.com --every 5m --fleet \"isp=telia,line in (ftth,cable)\"",
+                "",
+            ),
+            ("rvrs schedule pause 7a1c9e52", ""),
         ],
     ));
     out

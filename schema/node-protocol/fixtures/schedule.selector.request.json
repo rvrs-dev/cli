@@ -1,0 +1,9 @@
+{
+  "tool": "mtr",
+  "target": "192.0.2.53",
+  "options": {
+    "rounds": 10
+  },
+  "intervalSeconds": 300,
+  "selector": "isp=telia,line in (ftth,cable)"
+}

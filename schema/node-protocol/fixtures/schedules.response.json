@@ -1,0 +1,51 @@
+{
+  "schedules": [
+    {
+      "id": "c4d8e1f2-6a7b-4c9d-8e0f-1a2b3c4d5e6f",
+      "name": null,
+      "tool": "mtr",
+      "target": "192.0.2.53",
+      "options": {
+        "rounds": 10
+      },
+      "intervalSeconds": 300,
+      "everySeconds": 1200,
+      "nodes": [],
+      "selector": "isp=telia,line in (ftth,cable)",
+      "fleet": false,
+      "nodeCount": 12000,
+      "paused": false,
+      "createdAt": "2026-11-23T18:05:00.000Z",
+      "updatedAt": "2026-11-23T18:05:00.000Z",
+      "lastRunAt": "2026-11-23T20:15:16.412Z"
+    },
+    {
+      "id": "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e",
+      "name": "Evening jitter",
+      "tool": "ping",
+      "target": "example.com",
+      "options": {
+        "packets": 10
+      },
+      "intervalSeconds": 60,
+      "everySeconds": 60,
+      "nodes": [
+        {
+          "id": "d1e2f3a4-b5c6-4d7e-8f90-a1b2c3d4e5f6",
+          "name": "cpe-4471"
+        },
+        {
+          "id": "9c2f1a7e-5b3d-4e8f-8a6c-1d2e3f4a5b6c",
+          "name": "fra-1"
+        }
+      ],
+      "selector": null,
+      "fleet": false,
+      "nodeCount": 2,
+      "paused": false,
+      "createdAt": "2026-11-23T18:00:00.000Z",
+      "updatedAt": "2026-11-23T18:00:00.000Z",
+      "lastRunAt": "2026-11-23T20:15:41.250Z"
+    }
+  ]
+}

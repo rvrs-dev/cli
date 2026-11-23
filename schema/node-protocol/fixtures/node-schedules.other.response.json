@@ -1,0 +1,26 @@
+{
+  "version": "b81e07c93a2f4d16",
+  "keepSeconds": 604800,
+  "schedules": [
+    {
+      "schedule": "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e",
+      "tool": "ping",
+      "target": "example.com",
+      "options": {
+        "packets": 10
+      },
+      "everySeconds": 60,
+      "startsInMilliseconds": 9800
+    },
+    {
+      "schedule": "c4d8e1f2-6a7b-4c9d-8e0f-1a2b3c4d5e6f",
+      "tool": "mtr",
+      "target": "192.0.2.53",
+      "options": {
+        "rounds": 10
+      },
+      "everySeconds": 1200,
+      "startsInMilliseconds": 733412
+    }
+  ]
+}

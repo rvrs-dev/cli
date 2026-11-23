@@ -1,7 +1,8 @@
 //! Where a node's finished runs wait until the API has answered for them.
 //!
 //! Each result is a file in the node's state folder, the body of `POST /v1/runs` as it will be
-//! sent: the report, and the claim it was made under. So a restart loses nothing, and what was
+//! sent: the report, and the claim it was made under or the schedule it belongs to. So a restart
+//! loses nothing, and what was
 //! made while the uplink was gone goes out once it is back, oldest first. Where the folder can't
 //! be written the outbox is kept in memory, and the heartbeat says which.
 //!
@@ -31,7 +32,8 @@ pub const WAITS: Duration = Duration::from_secs(7 * 24 * 3600);
 pub struct Entry {
     /// The file's name, and what the entry is called while it waits.
     pub name: String,
-    /// The report, and the claim when the run was asked for.
+    /// The report, the claim when the run was asked for, and the schedule when the node made the
+    /// run by one.
     pub body: Value,
     bytes: u64,
     made: SystemTime,
@@ -76,7 +78,7 @@ pub struct Outbox {
 /// Writes a result so that its file is whole or not there: beside its name first, and under the
 /// name once every byte is on the disk. A node that loses power in between leaves nothing that
 /// reads as half a result.
-fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
+pub(super) fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
     let beside = path.with_extension("json.tmp");
     let written = (|| {
         let mut file = std::fs::File::create(&beside)?;
@@ -357,6 +359,39 @@ mod tests {
         outbox.answered(&first.name);
         assert_eq!(outbox.oldest().unwrap().body["report"]["id"], "b");
         assert_eq!(outbox.dropped(), 0);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_scheduled_result_keeps_its_schedule_across_a_restart() {
+        let folder = folder("scheduled");
+        let schedule = "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e";
+        let mut outbox = Outbox::open(&folder);
+        let started = Instant::now();
+        outbox.put(
+            json!({ "report": { "id": "a" }, "schedule": schedule }),
+            Some(started),
+        );
+        let waiting = outbox.oldest().unwrap();
+        assert_eq!(waiting.body["schedule"], schedule);
+        // A scheduled run was claimed by nobody, so no claim lists it as held.
+        assert_eq!(waiting.claim(), None);
+        assert!(outbox.claims().is_empty());
+        let sent = waiting.to_send(started + Duration::from_millis(3412));
+        assert_eq!(
+            sent,
+            json!({ "report": { "id": "a" }, "schedule": schedule, "startedAgoMilliseconds": 3412 })
+        );
+
+        // The node restarts. The result still names its schedule, and no longer says how long
+        // ago its run started.
+        let outbox = Outbox::open(&folder);
+        let waiting = outbox.oldest().unwrap();
+        assert_eq!(waiting.body["schedule"], schedule);
+        assert_eq!(
+            waiting.to_send(Instant::now()),
+            json!({ "report": { "id": "a" }, "schedule": schedule })
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 

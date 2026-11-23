@@ -10,6 +10,7 @@ A node is a machine that makes runs on request: a server, a virtual machine, a r
 - A request names a tool and options from a fixed list ([What a run is](../schema/node-protocol/README.md#what-a-run-is)). The node turns them into the options of its own engine. It never runs a command, a shell line or a flag it was sent.
 - A tool or an option the node doesn't know is refused. Running without the option would measure something else than what was asked.
 - Ping and MTR go on until stopped on a laptop. On a node they send 10 packets or rounds unless the request names a number.
+- A run a node repeats by a [schedule](node.md#schedules) is checked as a run that was asked for is: the tool, every option, the limits and the target, each time it is due. A schedule that fails the check is refused once, with one report that says why.
 
 ## Limits
 

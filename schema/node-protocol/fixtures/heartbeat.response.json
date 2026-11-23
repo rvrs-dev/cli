@@ -8,5 +8,6 @@
     "id": "4b0d5c1e-2f6a-4d0b-9a3e-7c1f2e8d9a10",
     "name": "Example Fiber"
   },
-  "events": "https://events.example.com/v1/nodes/me/events"
+  "events": "https://events.example.com/v1/nodes/me/events",
+  "schedules": "5d0c2a9e41b7f630"
 }

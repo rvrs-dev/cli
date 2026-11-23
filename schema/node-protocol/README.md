@@ -2,15 +2,15 @@
 
 How a node talks to the rvrs API, and how a person's install asks a node for a run. `openapi.json` in this folder names every route and field, and `fixtures/` holds one example of each body. This page says what the routes are for, who moves a run from one state to the next, and what each side does when something gets lost.
 
-Status: version 1. The rvrs API serves it, except enrolling, and `rvrs node` speaks it since rvrs 0.15. Anyone may build a controller or a node that speaks it.
+Status: version 1, at revision 2. The rvrs API serves it, except enrolling, and `rvrs node` speaks it since rvrs 0.15. Revision 2 added schedules, which `rvrs node` keeps since rvrs 0.17. Anyone may build a controller or a node that speaks it.
 
 ## Who speaks
 
 | Who | Signs in with | May |
 | --- | --- | --- |
-| A node (`rvrs node`) | Its own token | Send its runs, claim the runs asked of it and say what it is. It reads no history, no library and no other node |
+| A node (`rvrs node`) | Its own token | Send its runs, claim the runs asked of it, read its own schedules and say what it is. It reads no history, no library and no other node |
 | Whatever sets a node up | An enrollment token | Enroll nodes, and nothing else |
-| A person's install (the CLI, the app) | A login | Ask a node of its workspace for a run and read where that run stands. It never holds the event stream and never claims |
+| A person's install (the CLI, the app) | A login | Ask a node of its workspace for a run, read where that run stands, and make and change schedules. It never holds the event stream and never claims |
 
 A credential goes in `Authorization: Bearer <token>`. The node opens every connection, over HTTPS, so a node behind NAT needs no open port and no address of its own.
 
@@ -26,6 +26,12 @@ A credential goes in `Authorization: Bearer <token>`. The node opens every conne
 | `GET /v1/nodes` | A person's install | Lists the nodes of its workspace, with whether each is online | Safe |
 | `POST /v1/run-requests` | A person's install | Asks a node for a run and answers with the run's id | Safe with a `key`. Without one a retry asks twice |
 | `GET /v1/run-requests/{id}` | A person's install | Where the run stands, and its report once it ended | Safe |
+| `GET /v1/nodes/me/schedules` | A node | The node's copy of its schedules, with when each one starts | Safe |
+| `GET /v1/schedules` | A person's install | Lists the schedules the person made | Safe |
+| `POST /v1/schedules` | A person's install | Makes a schedule | Safe. A schedule that says the same as one the person has is that one |
+| `GET /v1/schedules/{id}` | A person's install | One schedule | Safe |
+| `PATCH /v1/schedules/{id}` | A person's install | Changes a schedule, pauses it or resumes it | Safe. The same change twice leaves the schedule as the first did |
+| `DELETE /v1/schedules/{id}` | A person's install | Deletes a schedule and keeps its runs | Safe. The second answer is 404 |
 
 `POST /v1/runs` is the route every install already sends its runs through. A node uses the same one.
 
@@ -74,7 +80,7 @@ A heartbeat says what the node is. The API learns from it what to show a person 
 | Field | Holds |
 | --- | --- |
 | `version` | The node's rvrs version |
-| `protocol` | The revision of this protocol the node knows, `1` today. A verdict or an event the node has to act on raises it, and the API sends a node none its revision lacks |
+| `protocol` | The revision of this protocol the node knows, `2` today. A verdict or an event the node has to act on raises it, and the API sends a node none its revision lacks. Revision 2 is a node that keeps schedules |
 | `system` | `os` and `arch`, as in `linux` and `aarch64` |
 | `boot` | A random word the node makes each time it starts, so the API sees a restart |
 | `features` | The build features the node has: `traceroute`, `ping`, `mtr`, `dns`, `bgp`, `iperf3`, `tcp` (the TCP probe), `mtu` (the path MTU check), `console` |
@@ -85,6 +91,8 @@ A heartbeat says what the node is. The API learns from it what to show a person 
 The answer names the node and its workspace as the API knows them, so a node that was renamed on the web learns its name, and every node learns its `id`.
 
 The answer may also name `events`, the address of the event stream. An API can serve its streams apart from its other routes, so that releasing the API doesn't end every stream, and moving them needs no update to any node. A node opens its stream at `events` when an answer names it, and at `/v1/nodes/me/events` on the API's address when none has. It keeps the address until a later answer names another, and sends its token there as it does to the API. An address whose scheme differs from the API's is ignored.
+
+The answer names `schedules` too, the version of the copy of its schedules the node should hold ([Schedules](#schedules)). An API without schedules leaves it out.
 
 A node sends one when it starts, when one of these facts changes, and every `heartbeatSeconds`. Whether a node is online is not the heartbeat's to say. A node is online while it holds its event stream.
 
@@ -102,7 +110,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 - An enroll sets the declaration only when it makes the node, which is the 201. The heartbeat speaks for the node from then on, so enrolls that arrive out of order can't undo each other.
 - A tag set on the web is never undone by a declaration. The API keeps what the node declared apart from what a person edited and works out the tags that count: the declaration with the edits applied. A location works the same way. A node that restarts, reconnects or declares again leaves a person's edits where they are.
 - A run's report carries a snapshot of its origin as it was when the run was made: `origin.tags` and `origin.location`, the second already rounded. Every change to an install's tags or location, from a declaration or from an edit on the web, makes a revision, a number that goes up by one, and the API keeps what each revision said. The enroll and heartbeat answers carry the current one as `node.metadataRevision`.
-- A node writes the revision it last read into `origin.metadataRevision` of every report it makes, and keeps it with the report in its outbox. A run that waits a day for the uplink is therefore made under the revision of the day it ran. A run the API handed out takes its revision when the API gives it out, which the node doesn't have to do.
+- A node writes the revision it held when the run started into `origin.metadataRevision` of every report it makes, and keeps it with the report in its outbox. A tag edited while a long MTR runs is no part of that MTR. A run that waits a day for the uplink is therefore made under the revision of the day it ran. A run the API handed out takes its revision when the API gives it out, which the node doesn't have to do.
 - The API checks the revision and writes `tags` and `location` itself. The node never says what its tags are, only which revision it worked under: a revision that isn't the node's own, including another node's, or that nobody made, is ignored, and the run takes the revision that was current when it started (by `startedAgoMilliseconds`, which the API can trust, and for a node that sent neither, when the result arrived). Whatever tags and location the report carries are replaced.
 - Who made the run is the token's alone. The API never takes the node's name or id from the report, whatever it says in `origin`.
 - Changing a node's tags or location afterwards leaves every earlier run as it was. A report from before this has neither.
@@ -115,6 +123,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 | --- | --- | --- |
 | `hello` | `keepAliveSeconds`, `claimSeconds`, `heartbeatSeconds`, `reconnectSeconds` | Takes the numbers, then claims and sends what waits in its outbox |
 | `work` | `{}` | Claims now |
+| `schedules` | `{}` | Reads its copy of its schedules now |
 | `: keep-alive` (a comment line) | | Knows the stream is alive |
 
 - An event says there is work and nothing about it. It carries no run's parameters and nothing secret. What the work is comes from the claim.
@@ -123,7 +132,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 - A stream that stays silent for twice `keepAliveSeconds` is dead. The node closes it and opens a new one. Closing means giving up the connection, so a stream that died without a word holds no socket on the node.
 - When a stream ends or can't be opened, the node waits a random time up to `reconnectSeconds` and tries again. Every failure in a row doubles that window, up to 300 seconds, and a `hello` sets it back. So an API release doesn't bring every node back in the same second.
 - A node holds one stream. A second one with the same token replaces the first.
-- `schedules` is a reserved event name. It is filled in when nodes repeat runs on a schedule.
+- `schedules` says the node's schedules changed and nothing about them. The API writes it to nodes at revision 2 and up, and writes it again every 15 seconds until the node has read its copy.
 
 ## Claiming
 
@@ -221,7 +230,7 @@ POST /v1/runs
 - 200 says the API had this report already, for this run and this attempt. Nothing changed.
 - 422 says the report is not the run that was asked for: its `tool` is another tool than the request named, without regard to case, or its `target` is another target. A node writes both as it was given them, also in a report with the outcome `refused`.
 - 422 also says the report's `id` is one the node used for another run. An id names one run on its node, so the API never answers for a run with another run's report.
-- A report without `claim` is a run the node made by itself, such as a scheduled run.
+- A report without `claim` is a run the node made by itself. A scheduled run names its schedule beside the report, as `schedule` ([Schedules](#schedules)).
 - A node with many results waiting sends them between its claims, never in place of one. A node that comes back after a day without its uplink still claims every third of the lease, so the runs it is making keep theirs.
 
 ### Who made a run
@@ -242,9 +251,97 @@ A node's name can change and its id can't. A run keeps both: the id, so runs of 
 
 `startedAgoMilliseconds` is how long before this request the run started, by a clock on the node that only counts forward. It needs no synchronized clock, and it stays right when a run waited in the outbox for hours. A node that restarted since the run leaves it out, since that clock started over.
 
-Beyond who made it, the report is never rewritten. `startedAt` stays the node's word. A reader that orders runs or compares them across origins goes by `observedStartedAt` where there is one, and by `startedAt` where there is none. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
+Beyond who made it, the report is never rewritten. `startedAt` stays the node's word. A reader that orders runs, charts them or compares them across origins goes by the best of three, in this order:
+
+1. `observedStartedAt`, where there is one.
+2. `startedAt`, where it is believable: no more than 8 days before `receivedAt`, which is as long as an outbox keeps a run, and not after it. A node that restarted with runs in its outbox can say no more than this.
+3. `receivedAt`, where `startedAt` is not believable. The run started before it arrived, so this is its latest possible moment. A reader says so where it shows the time.
+
+So a run from a router whose clock says 1970 is placed in the hour it arrived in and is never lost to 1970. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
 
 A router that booted without a synchronized clock may report `startedAt` as `1970-01-01T00:04:10Z`. With `startedAgoMilliseconds` of 14,412 and a result received at `2026-11-22T20:15:16.412Z`, the run's `observedStartedAt` is `2026-11-22T20:15:02.000Z`.
+
+## Schedules
+
+A schedule is a run a node repeats at an interval: a tool, a target, options, an interval and the nodes it runs on. A person makes it, and each node keeps the schedules it runs and repeats them by itself. So a node goes on measuring while the API is out of reach, and the API starts no run of a schedule.
+
+### Making one
+
+```
+POST /v1/schedules
+
+{ "name": "Evening jitter", "tool": "ping", "target": "example.com", "options": { "packets": 10 }, "intervalSeconds": 60, "nodes": ["fra-1", "cpe-4471"] }
+```
+
+- `intervalSeconds` is 60 to 86,400.
+- A schedule says where it runs in one of three ways: `nodes` names up to 50 nodes by name or id, `selector` takes every node whose tags match, and `fleet: true` takes every node of the workspace. A body with none of them, or with two, is answered 422, and so is an empty `nodes`.
+- A selector is terms joined by commas, which mean and: `isp=telia`, `isp!=telia`, `isp` (has the tag), `!isp` (lacks it), `line in (ftth,cable)` and `line notin (dsl,lte)`. A node without the tag meets `!=` and `notin`. `GET /v1/nodes` and `GET /v1/runs` read `tag` the same way.
+- A selector and the fleet are read again whenever nodes or their tags change. A node that gains the tag starts the schedule, and one that loses it stops.
+- A schedule's tool and target never change. Another target is another schedule, so a schedule's runs are one series.
+- `PATCH /v1/schedules/{id}` changes `name`, `options`, `intervalSeconds`, where it runs and `paused`. A paused schedule runs on no node and keeps its runs. A run of it that is going on a node is stopped when the node reads its copy.
+- Making a schedule that says the same as one the person has, in tool, target, options, interval and where it runs, answers 200 with that one. Two of them would send every run twice.
+- A schedule belongs to the person who made it, and so do its runs. Anyone else gets 404 `SCHEDULE_NOT_FOUND`.
+- 404 `NODE_NOT_FOUND` says `nodes` names a node the workspace doesn't have, and `details.node` is the name it didn't find. 403 `SCHEDULE_LIMIT` says the workspace has as many schedules as it may.
+- Deleting a schedule ends it on every node and keeps the runs it made.
+
+The answer is the schedule as `GET /v1/schedules/{id}` gives it. `nodes` lists the nodes it names, with the name each has now. `nodeCount` is how many nodes it runs on at the moment. `everySeconds` is the interval the nodes keep, which is `intervalSeconds` unless the cap below made it longer. `lastRunAt` is when the API last stored one of its runs.
+
+### Spread in time
+
+A schedule on a thousand nodes must never send a thousand runs in the same second. The API gives every node a place of its own in the interval.
+
+- For each schedule and node the API works out an offset into the interval, from the two ids. It is the same every time, and the offsets of many nodes fill the interval evenly.
+- A node gets no moment, since its clock can be wrong. It gets `startsInMilliseconds`: how long after this answer its next run of the schedule starts. From there it repeats every `everySeconds`, by a clock that only counts forward.
+- One target gets about 10 scheduled run starts a second from one workspace, across every schedule that names it. When the schedules for a target would start more, the API makes each of them longer by the same factor and hands out the longer interval as `everySeconds`. 3,000 nodes that ping one target every 60 seconds would start 50 runs a second, so each node runs every 300 seconds. `intervalSeconds` stays what the person asked for.
+- That number is a budget for the average and no ceiling for a single second. A hash places the nodes, so some seconds hold more than their share: of 6,000 nodes on 600 seconds, the busiest second holds about 20. A node that is cut off keeps its place by its own clock and drifts until it reads its copy again. A controller that has to promise a ceiling hands out the places itself.
+- The API works `everySeconds` out again when nodes join or leave a selector, and the nodes whose copy changed read it again.
+
+### The node's copy
+
+```
+GET /v1/nodes/me/schedules
+
+{ "version": "5d0c2a9e41b7f630", "keepSeconds": 604800, "schedules": [ { "schedule": "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e", "tool": "ping", "target": "example.com", "options": { "packets": 10 }, "everySeconds": 60, "startsInMilliseconds": 41250 } ] }
+```
+
+The answer is the node's whole copy: every schedule that runs on this node and isn't paused, 50 at most, each with what to run as a claim gives it. `version` changes when the tool, target, options or `everySeconds` of any entry does, and when an entry comes or goes. `startsInMilliseconds` is different in every answer and is no part of it.
+
+A node reads its copy:
+
+- after every `hello`, which is every time it connects,
+- after every `schedules` event,
+- when a heartbeat's answer names a `schedules` version other than the one it holds,
+- and once when its copy is older than it is good for, or the hour it waits after a 403 is over, so a node whose network lets no stream through still gets a copy.
+
+What it does with it:
+
+- The answer replaces the copy the node held, whole. A schedule that is no longer in it ends at once: no further run of it starts, and a run of it that is going is stopped. What that run measured is sent with the outcome `stopped`, as a run a person stopped is. So pausing or deleting a schedule ends its packets on every node that hears of it, and a schedule that only changed its interval or options keeps the run it is making.
+- The node keeps the copy where it keeps its outbox. A node with a disk starts from it after a restart.
+- Every answer sets each schedule's next start anew, to `startsInMilliseconds` from the answer. The API works out the same place in the interval each time, so a schedule that didn't change keeps its rhythm and a node's drifting clock is put right. A start that would come less than half of `everySeconds` after the schedule's last one is left out.
+- A node that starts from its kept copy without an answer starts each schedule at a random time within its `everySeconds`.
+- A run is due once. When the node is at one of its limits, or the schedule's last run is still going, the run is left out. A node never makes up the runs it missed, after a pause, a restart or a day without power.
+- A scheduled run counts against the node's limits like any other run, and is checked like one: the tool, every option, the limits and the target. A schedule that fails the check is refused once: the node sends one report with the outcome `refused` and starts no run of it until a copy says something else about that schedule or the node restarts.
+- A copy is good for `keepSeconds` after its answer. After that the node starts no scheduled run until it has read the copy again. The time is the outbox's 7 days: a run older than that would never be sent.
+- A restart never makes a copy fresh. The node keeps the copy's age with it: how long it has run with this copy, written down every few minutes, and when the answer came by its own clock. After a restart the age is the longer of the two: the time it ran, with a few minutes more for what a crash could have lost, and the time its clock says has passed, where the clock moved forward. A clock that reads earlier than the answer adds nothing. A kept copy without its age is no copy, and the node starts without schedules.
+- 401 ends the node's schedules and its copy. After 403 `FLEET_STOPPED` the node keeps the copy and starts no run of it until it has read the copy again.
+- An API from before schedules answers 404. The node holds no schedules then, and asks again after its next `hello`.
+
+### A scheduled run
+
+A scheduled run is sent like any run the node made by itself, with the schedule's id beside the report:
+
+```
+POST /v1/runs
+
+{ "report": { ... }, "schedule": "7a1c9e52-3b4d-4f6a-8c0e-2d5f7b9a1c3e", "startedAgoMilliseconds": 3412 }
+```
+
+- It waits in the outbox like any result, so a node cut off from the API for an hour sends that hour's runs when it is back, oldest first.
+- The API stores it as a run of that schedule, in the account of the person who made the schedule. It is taken while the schedule is paused and after it was deleted, since the node made it before it heard.
+- Only a node the API handed the schedule to sends its runs. The API keeps which node read a copy with which schedule, and takes a run that started while the node could hold it: before the node read a copy without the schedule, and within the time a copy is good for after the last one that held it. A run that arrives later than an outbox could have kept it is not taken. A node that only knows a schedule's id writes nothing into its series.
+- 422 says `schedule` is no schedule of the node's workspace, the node was not handed it or its hold on it is over for this run, or the report's `tool` or `target` is not the schedule's. The result leaves the outbox.
+- A run with `claim` carries no `schedule`.
+- `GET /v1/runs` leaves scheduled runs out, so a device's history holds what a person ran. `schedule=<id>` reads the runs of one schedule.
 
 ## The outbox
 
@@ -278,7 +375,7 @@ A person's install lists the nodes it may ask with `GET /v1/nodes`, ordered by n
 | `tags` | The tags that count: the node's declaration with a person's edits applied |
 
 - `limit` takes 1 to 200 nodes, 50 when left out. `next` in the answer is the cursor for the next page, and `null` on the last one.
-- `tag` narrows the list with a selector, as `GET /v1/runs` takes it: `tag=isp=telia,line!=dsl`.
+- `tag` narrows the list with a selector, as `GET /v1/runs` takes it: `tag=isp=telia,line!=dsl`. [Schedules](#schedules) has every term a selector takes.
 - A node's location is left out of the list. Who in a workspace may see where a home node is hasn't been decided.
 - A node's token gets 403 `FORBIDDEN`. A node reads no other node.
 
@@ -350,6 +447,10 @@ Every number the node acts on reaches it from the API, so each can change withou
 | The reconnect window | 10 s, doubling to 300 s | `reconnectSeconds` in `hello` |
 | A read that waits | 30 s at most | `wait` |
 | A result's body | 2 MiB | |
+| A schedule's interval | 60 to 86,400 s | `intervalSeconds`, the person's |
+| Scheduled run starts at one target | About 10 a second from one workspace, on average | The API, as `everySeconds` |
+| A node's copy of its schedules | 50 schedules, good for 604,800 s | `keepSeconds` in the copy |
+| `schedules`, while a node's copy is behind | Every 15 s | The API |
 
 ### What an idle node costs
 
@@ -361,9 +462,9 @@ A node that holds its stream and has nothing to do is woken by events and asks f
 | Idle claim | Every 1,350 s on average | 64 requests | 3.2 million a day, 37 a second |
 | Heartbeat | Every 3,600 s | 24 requests | 1.2 million a day, 14 a second |
 
-An idle claim is one lookup in an index that holds only the runs that wait or are held, and it finds nothing. An unchanged heartbeat reads one row. The API can raise both numbers in `hello` for a large fleet. Recovering a lost wake-up depends on neither.
+A node reads its schedules when it connects and when they change, and asks for nothing in between. An idle claim is one lookup in an index that holds only the runs that wait or are held, and it finds nothing. An unchanged heartbeat reads one row. The API can raise both numbers in `hello` for a large fleet. Recovering a lost wake-up depends on neither.
 
-## Seven cases
+## Eight cases
 
 ### A node behind NAT
 
@@ -423,6 +524,16 @@ An idle claim is one lookup in an index that holds only the runs that wait or ar
 4. B's answer reaches the node, then A's, or A's, then B's. Both carry the same token. Whichever the node stores, it holds a token that works.
 5. The enrollment token counted one node. Nothing was revoked, so there is nothing a late answer could undo.
 
+### A schedule on two nodes, one cut off for an hour
+
+1. A person makes a schedule: ping `example.com` every 60 seconds from `fra-1` and `cpe-4471`. The API stores it and writes `schedules` to both nodes' streams.
+2. Each node reads its copy. `fra-1` is told its next run starts in 41,250 ms and `cpe-4471` in 9,800 ms, so the two never ping in the same second. Each runs every 60 seconds from there and sends each report with the schedule's id.
+3. The uplink of `cpe-4471` drops. The node goes on pinging every 60 seconds by its own clock. Each report says the packets were lost and waits in the outbox.
+4. An hour later the uplink is back. A stream opens, `hello` arrives, the node reads its copy, which is the same version, and sends the 60 runs from its outbox, oldest first, between its claims. Each says how long ago it started, so the API places it in the hour it was made.
+5. The schedule's chart shows `fra-1` without a gap, and for `cpe-4471` an hour of lost packets where the uplink was gone.
+6. Had the node lost power for that hour, there would be a gap. It makes up no run it missed.
+7. Had it restarted during that hour with the runs in its outbox, they would arrive without how long ago they started. The API places each by the node's clock where that is believable, and by its arrival otherwise.
+
 ## How the rvrs API keeps its side
 
 Nothing here binds another controller. It is how the rvrs API meets the rules above.
@@ -439,6 +550,10 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - A node counts as online by what the stream service wrote last. A stream that opens or closes is written within a second. A stream service that dies without closing its streams takes its nodes offline 90 seconds later. A line that drops without closing the connection can show its node as online until that connection times out.
 - A node's newest stream is the one that counts. On the same instance of the stream service the older one ends at once, and on another instance within 15 seconds.
 - Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
+- A node's offset into a schedule's interval is a hash of the schedule's id and the node's id, in milliseconds. Nothing is stored per node and schedule.
+- A change to a schedule that goes by a selector or the fleet raises a number on its workspace, and a node's copy is behind while the number it last read is another. A schedule that names its nodes marks those nodes as behind and no other, and so does a change to a node's tags. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
+- How many nodes a schedule runs on, and the interval the budget leaves it, are counted when a schedule changes and, within 15 seconds, when nodes or their tags did. Every such change raises a number on the workspace, and a count writes the number it began at when it is done, so a change that lands while a count runs is counted by the next pass. A fleet that enrolls is counted once per pass and never once per node.
+- Which node was handed which schedule is a row per node and schedule, written when the node reads its copy and at most once an hour after that.
 
 ## Left out on purpose
 
@@ -447,10 +562,10 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - Taking a declared location back. A node that stops declaring a location leaves `location` out, which changes nothing, so a person clears it in the web app.
 - Rotating a node's token. When it comes, it is a route the node calls with the token it holds, and the old token works until the node has used the new one.
 - A key pair per node. A node's token is a random credential today. A public key can be added to the enroll body later without a change to the rest.
-- Schedules. The event name `schedules` is reserved.
+- Alerts on a schedule's runs.
 - Asking many nodes at once.
 - What a plan allows. An API that refuses a node or a request for its plan answers 403 with a code of its own.
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes. `rvrs node` is tested against an API inside the test that answers with these fixtures (`crates/rvrs/src/node/service_tests.rs`).
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. It checks that the two nodes of the schedule's example get different starts, and that the copy's entries say what the schedule says. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes. `rvrs node` is tested against an API inside the test that answers with these fixtures (`crates/rvrs/src/node/service_tests.rs`).

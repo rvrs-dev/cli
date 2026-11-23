@@ -1,0 +1,19 @@
+{
+  "id": "c4d8e1f2-6a7b-4c9d-8e0f-1a2b3c4d5e6f",
+  "name": null,
+  "tool": "mtr",
+  "target": "192.0.2.53",
+  "options": {
+    "rounds": 10
+  },
+  "intervalSeconds": 300,
+  "everySeconds": 1200,
+  "nodes": [],
+  "selector": "isp=telia,line in (ftth,cable)",
+  "fleet": false,
+  "nodeCount": 12000,
+  "paused": false,
+  "createdAt": "2026-11-23T18:05:00.000Z",
+  "updatedAt": "2026-11-23T18:05:00.000Z",
+  "lastRunAt": "2026-11-23T20:15:16.412Z"
+}

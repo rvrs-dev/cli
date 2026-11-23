@@ -18,6 +18,7 @@ mod ping;
 mod pretty;
 mod pulse;
 mod remote;
+mod schedule;
 mod share;
 mod style;
 mod sync;
@@ -183,7 +184,8 @@ fn main() -> ExitCode {
         "share" => share::command(rest),
         "node" => node::run(rest),
         "nodes" => remote::nodes(rest),
-        "schedule" | "schedules" | "alerts" => fail("Schedules and alerts aren't available yet. A node makes a run when you ask it to, with --node."),
+        "schedule" | "schedules" => schedule::command(rest),
+        "alerts" => fail("Alerts aren't available yet. Nothing was sent."),
         "help" | "--help" | "-h" => {
             let style = Style::detect(ColorChoice::Auto);
             match rest.first().map(String::as_str) {
@@ -193,6 +195,7 @@ fn main() -> ExitCode {
                 Some("dig" | "dns") => print!("{}", help::dig(style)),
                 Some("bgp") => print!("{}", help::bgp(style)),
                 Some("node") => print!("{}", help::node(style)),
+                Some("schedule" | "schedules") => print!("{}", help::schedule(style)),
                 _ => print!("{}", help::main(style)),
             }
             ExitCode::SUCCESS
@@ -212,10 +215,18 @@ fn main() -> ExitCode {
             traceroute(&arguments, false)
         }
         other => {
-            let closest = COMMANDS.iter().map(|known| (distance(other, known), *known)).min().filter(|(score, _)| *score <= 3);
+            let closest = COMMANDS
+                .iter()
+                .map(|known| (distance(other, known), *known))
+                .min()
+                .filter(|(score, _)| *score <= 3);
             match closest {
-                Some((_, known)) => usage(&format!("rvrs has no command \u{201C}{other}\u{201D}. The closest is {known}.")),
-                None => usage(&format!("rvrs has no command \u{201C}{other}\u{201D}. List them with rvrs help.")),
+                Some((_, known)) => usage(&format!(
+                    "rvrs has no command \u{201C}{other}\u{201D}. The closest is {known}."
+                )),
+                None => usage(&format!(
+                    "rvrs has no command \u{201C}{other}\u{201D}. List them with rvrs help."
+                )),
             }
         }
     }

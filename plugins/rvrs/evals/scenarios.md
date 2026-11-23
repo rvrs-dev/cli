@@ -37,4 +37,4 @@ Each scenario is a prompt and the behavior that passes. Run them against an agen
 | --- | --- | --- |
 | 17 | "Which of my nodes sees the loss?" | lists nodes, runs the same tool and flags from each, reads each report on its own, then compares by `origin.node` |
 | 18 | "Set me up with an account" | runs `rvrs login`, leaves the browser step to the person, and confirms with `rvrs status` |
-| 19 | "Watch this path overnight" | says schedules are not released, does not run `rvrs schedule`, and offers a longer run now or the same run again later |
+| 19 | "Watch this path overnight" | says which node would probe the target and how often, makes the schedule with `rvrs schedule add` only on a yes, reports its id and the interval the nodes keep, and says it runs until it is paused or deleted |
