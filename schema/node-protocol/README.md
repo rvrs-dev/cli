@@ -77,10 +77,30 @@ A heartbeat says what the node is. The API learns from it what to show a person 
 | `features` | The build features the node has: `traceroute`, `ping`, `mtr`, `dns`, `bgp`, `iperf3`, `tcp` (the TCP probe), `mtu` (the path MTU check), `console` |
 | `limits` | What the node allows itself, whatever it is asked: `runsAtOnce`, `runsPerMinute`, `packetsPerRun` (probes, which a DNS or a BGP lookup sends none of), `secondsPerRun` (every tool), `reportBytes` |
 | `outbox` | `waiting` (runs not sent yet), `dropped` (runs given up since this start) and `keeps` (`disk` or `memory`) |
+| `tags`, `location` | What the node declares about itself, both optional. See Tags and location |
 
 The answer names the node and its workspace as the API knows them, so a node that was renamed on the web learns its name, and every node learns its `id`.
 
 A node sends one when it starts, when one of these facts changes, and every `heartbeatSeconds`. Whether a node is online is not the heartbeat's to say. A node is online while it holds its event stream.
+
+## Tags and location
+
+Every install can carry tags, and a node can say where it is. A node declares both in its own configuration ([`../node-config.md`](../node-config.md) says how a person or a package writes them) and sends the declaration in the enroll and in every heartbeat. A node only declares. A person edits on top of it in the web app, and the API works out the tags and the location that count.
+
+A tag is a key and a value, as in `isp=telia`. On the wire the tags are one JSON object from key to value, 20 at most. A key is a lowercase letter followed by lowercase letters, digits, `.`, `-` and `_`, 63 characters at most (`^[a-z][a-z0-9._-]{0,62}$`). A value is the same and may start with a digit (`^[a-z0-9][a-z0-9._-]{0,62}$`).
+
+A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characters such as `Esbjerg, DK`, and a `precision`. `exact` keeps 4 decimals (about 10 m), `area` keeps 2 (about 1 km) and `city` keeps 1 (about 10 km). `city` is the default. The precision is a bounded string and never a closed list, since the list may grow. A reader that doesn't know a word treats it as `city`, the coarsest. The API rounds the coordinates to the precision before it stores them, so a node may send more digits than the precision keeps and never gets more back.
+
+- A heartbeat or an enroll that leaves out `tags` or `location` changes nothing. An older node says nothing, and the API keeps what it had.
+- `tags: {}` says the node declares no tags.
+- The node sends its whole declaration every time it sends one, never a difference.
+- An enroll sets the declaration only when it makes the node, which is the 201. The heartbeat speaks for the node from then on, so enrolls that arrive out of order can't undo each other.
+- A tag set on the web is never undone by a declaration. The API keeps what the node declared apart from what a person edited and works out the tags that count: the declaration with the edits applied. A location works the same way. A node that restarts, reconnects or declares again leaves a person's edits where they are.
+- A run's report carries a snapshot of its origin as it was when the run was made: `origin.tags` and `origin.location`, the second already rounded. Every change to an install's tags or location, from a declaration or from an edit on the web, makes a revision, a number that goes up by one, and the API keeps what each revision said. The enroll and heartbeat answers carry the current one as `node.metadataRevision`.
+- A node writes the revision it last read into `origin.metadataRevision` of every report it makes, and keeps it with the report in its outbox. A run that waits a day for the uplink is therefore made under the revision of the day it ran. A run the API handed out takes its revision when the API gives it out, which the node doesn't have to do.
+- The API checks the revision and writes `tags` and `location` itself. The node never says what its tags are, only which revision it worked under: a revision that isn't the node's own, including another node's, or that nobody made, is ignored, and the run takes the revision that was current when it started (by `startedAgoMilliseconds`, which the API can trust, and for a node that sent neither, when the result arrived). Whatever tags and location the report carries are replaced.
+- Who made the run is the token's alone. The API never takes the node's name or id from the report, whatever it says in `origin`.
+- Changing a node's tags or location afterwards leaves every earlier run as it was. A report from before this has neither.
 
 ## The event stream
 
@@ -391,6 +411,7 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 - Each hop as it arrives. In version 1 the asker sees the state change and then the whole result. A later version can let a node send a report while the run is still going, as an added field.
 - A route for a person to stop a run on a node. The `stop` verdict is the node's half of it.
+- Taking a declared location back. A node that stops declaring a location leaves `location` out, which changes nothing, so a person clears it in the web app.
 - Rotating a node's token. When it comes, it is a route the node calls with the token it holds, and the old token works until the node has used the new one.
 - A key pair per node. A node's token is a random credential today. A public key can be added to the enroll body later without a change to the rest.
 - Schedules. The event name `schedules` is reserved.
@@ -399,4 +420,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.

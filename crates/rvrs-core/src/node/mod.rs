@@ -150,7 +150,7 @@ impl Limits {
 
 /// What a node says about itself, and all it says: no credential, no target and nothing from a
 /// report has a field here to travel in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Heartbeat {
     /// The node's rvrs version.
@@ -164,6 +164,13 @@ pub struct Heartbeat {
     pub features: Vec<String>,
     pub limits: Limits,
     pub outbox: Outbox,
+    /// The tags the node's configuration declares, whole, or none when it declares none to the
+    /// API. Left out, they change nothing there ([`crate::node_config`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<std::collections::BTreeMap<String, String>>,
+    /// Where the node's configuration says it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<crate::node_config::DeclaredLocation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

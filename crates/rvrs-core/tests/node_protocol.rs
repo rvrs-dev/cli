@@ -108,7 +108,58 @@ impl Check {
                         }
                     }
                 }
-                "additionalProperties" => {}
+                "additionalProperties" => {
+                    // A map: every key the schema doesn't name as a property has this schema.
+                    let (true, Some(fields)) = (rule.is_object(), value.as_object()) else {
+                        continue;
+                    };
+                    let named = rules.get("properties").and_then(Value::as_object);
+                    for (key, field) in fields {
+                        if !named.is_some_and(|named| named.contains_key(key)) {
+                            self.value(rule, field, &format!("{at}.{key}"), file, root);
+                        }
+                    }
+                }
+                "propertyNames" => {
+                    for key in value
+                        .as_object()
+                        .into_iter()
+                        .flat_map(|fields| fields.keys())
+                    {
+                        self.value(
+                            rule,
+                            &Value::String(key.clone()),
+                            &format!("{at}.{key}"),
+                            file,
+                            root,
+                        );
+                    }
+                }
+                "maxProperties" => {
+                    let (Some(bound), Some(fields)) = (rule.as_u64(), value.as_object()) else {
+                        continue;
+                    };
+                    if fields.len() as u64 > bound {
+                        self.problem(
+                            at,
+                            format!("{} properties break maxProperties {bound}", fields.len()),
+                        );
+                    }
+                }
+                "pattern" => {
+                    let (Some(pattern), Some(text)) = (rule.as_str(), value.as_str()) else {
+                        continue;
+                    };
+                    match pattern_fits(pattern, text) {
+                        Some(true) => {}
+                        Some(false) => {
+                            self.problem(at, format!("\"{text}\" breaks the pattern {pattern}"))
+                        }
+                        None => {
+                            self.problem(at, format!("this check can't read the pattern {pattern}"))
+                        }
+                    }
+                }
                 "required" => {
                     for key in rule
                         .as_array()
@@ -190,6 +241,59 @@ impl Check {
             }
         }
     }
+}
+
+/// Whether `text` fits a pattern made of bracket classes with an optional `{min,max}` each, as in
+/// `^[a-z][a-z0-9._-]{0,62}$`. `None` is a pattern this check can't read.
+fn pattern_fits(pattern: &str, text: &str) -> Option<bool> {
+    type Atom = (Vec<(char, char)>, usize, usize);
+    let body: Vec<char> = pattern
+        .strip_prefix('^')?
+        .strip_suffix('$')?
+        .chars()
+        .collect();
+    let mut atoms: Vec<Atom> = Vec::new();
+    let mut at = 0;
+    while at < body.len() {
+        if body[at] != '[' {
+            return None;
+        }
+        at += 1;
+        let mut ranges = Vec::new();
+        while *body.get(at)? != ']' {
+            let first = body[at];
+            if body.get(at + 1) == Some(&'-') && body.get(at + 2).is_some_and(|last| *last != ']') {
+                ranges.push((first, body[at + 2]));
+                at += 3;
+            } else {
+                ranges.push((first, first));
+                at += 1;
+            }
+        }
+        at += 1;
+        let (least, most) = if body.get(at) == Some(&'{') {
+            let end = body[at..].iter().position(|c| *c == '}')? + at;
+            let inner: String = body[at + 1..end].iter().collect();
+            at = end + 1;
+            let (least, most) = inner.split_once(',')?;
+            (least.parse().ok()?, most.parse().ok()?)
+        } else {
+            (1, 1)
+        };
+        atoms.push((ranges, least, most));
+    }
+    fn go(atoms: &[Atom], text: &[char]) -> bool {
+        let Some(((ranges, least, most), rest)) = atoms.split_first() else {
+            return text.is_empty();
+        };
+        (*least..=(*most).min(text.len())).any(|count| {
+            text[..count]
+                .iter()
+                .all(|c| ranges.iter().any(|(from, to)| (*from..=*to).contains(c)))
+                && go(rest, &text[count..])
+        })
+    }
+    Some(go(&atoms, &text.chars().collect::<Vec<_>>()))
 }
 
 fn is(value: &Value, kind: &str) -> bool {
@@ -369,6 +473,94 @@ fn a_fixture_that_breaks_its_schema_is_caught() {
             "{broken} gave {:?}",
             check.problems
         );
+    }
+}
+
+#[test]
+fn a_declaration_that_breaks_a_rule_is_caught() {
+    let document = document();
+    let file = folder().join("openapi.json");
+    let schema = &document["components"]["schemas"]["HeartbeatInput"];
+    let base = |extra: &str| -> Value {
+        serde_json::from_str(&format!(
+            r#"{{"version":"0.14.2","boot":"k3v9q2ta","features":[],{extra}}}"#
+        ))
+        .unwrap()
+    };
+    let twenty_one = (0..21)
+        .map(|n| format!("\"k{n}\":\"v\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    for (extra, says) in [
+        (r#""tags":{"Isp":"telia"}"#, "breaks the pattern"),
+        (r#""tags":{"isp":"Telia"}"#, "breaks the pattern"),
+        (r#""tags":{"isp":"-telia"}"#, "breaks the pattern"),
+        (r#""tags":{"5g":"yes"}"#, "breaks the pattern"),
+        (r#""tags":{"isp":1}"#, "is not string"),
+        (r#""tags":["isp=telia"]"#, "is not object"),
+        (
+            &format!(r#""tags":{{{twenty_one}}}"#),
+            "break maxProperties 20",
+        ),
+        (r#""location":{"lat":91,"lon":8}"#, "breaks maximum 90"),
+        (r#""location":{"lat":55,"lon":-181}"#, "breaks minimum -180"),
+        (r#""location":{"lat":55}"#, "\"lon\" is missing"),
+        (
+            r#""location":{"lat":55,"lon":8,"precision":"an unreasonably long precision"}"#,
+            "break maxLength 20",
+        ),
+        (
+            r#""location":{"lat":55,"lon":8,"place":""}"#,
+            "break minLength 1",
+        ),
+        (
+            r#""location":{"lat":55,"lon":8,"zip":"6700"}"#,
+            "names no \"zip\"",
+        ),
+    ] {
+        let mut check = Check::new();
+        check.value(schema, &base(extra), "heartbeat", &file, &document);
+        assert!(
+            check.problems.iter().any(|problem| problem.contains(says)),
+            "{extra} gave {:?}",
+            check.problems
+        );
+    }
+    // A precision this version doesn't know is still a bounded string, never a closed list.
+    let mut check = Check::new();
+    let open = base(r#""location":{"lat":55,"lon":8,"precision":"block"}"#);
+    check.value(schema, &open, "heartbeat", &file, &document);
+    assert!(check.problems.is_empty(), "{:?}", check.problems);
+}
+
+#[test]
+fn the_declaration_in_the_fixtures_is_one_rvrs_core_reads() {
+    use rvrs_core::node_config::{is_key, is_value, round_location, DeclaredLocation};
+    let fixture = |name: &str| read(&folder().join("fixtures").join(name));
+    let (enroll, heartbeat) = (
+        fixture("enroll.request.json"),
+        fixture("heartbeat.request.json"),
+    );
+    // The node sends its whole declaration every time, so the two say the same.
+    assert_eq!(enroll["tags"], heartbeat["tags"]);
+    assert_eq!(enroll["location"], heartbeat["location"]);
+    for (key, value) in heartbeat["tags"].as_object().unwrap() {
+        assert!(is_key(key) && is_value(value.as_str().unwrap()), "{key}");
+    }
+    // What the API stores for a city is what the node declared, since the fixture is rounded.
+    let location: DeclaredLocation = serde_json::from_value(heartbeat["location"].clone()).unwrap();
+    assert_eq!(round_location(&location), location);
+}
+
+#[test]
+fn the_page_states_the_rules_of_a_declaration() {
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    for rule in [
+        "A heartbeat or an enroll that leaves out `tags` or `location` changes nothing.",
+        "`tags: {}` says the node declares no tags.",
+        "A tag set on the web is never undone by a declaration.",
+    ] {
+        assert!(page.contains(rule), "the page lacks: {rule}");
     }
 }
 

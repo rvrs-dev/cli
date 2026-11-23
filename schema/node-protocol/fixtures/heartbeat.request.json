@@ -26,5 +26,16 @@
     "waiting": 0,
     "dropped": 0,
     "keeps": "disk"
+  },
+  "tags": {
+    "isp": "telia",
+    "line": "ftth",
+    "region": "dk-south"
+  },
+  "location": {
+    "lat": 55.5,
+    "lon": 8.5,
+    "place": "Esbjerg, DK",
+    "precision": "city"
   }
 }

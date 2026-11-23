@@ -13,6 +13,7 @@ mod dig;
 mod features;
 mod help;
 mod mtr;
+mod node;
 mod ping;
 mod pretty;
 mod pulse;
@@ -172,7 +173,8 @@ fn main() -> ExitCode {
         "login" => account::login(rest),
         "logout" => account::logout(rest),
         "share" => fail("Share links aren't available yet. To send a run, print it as a report with rvrs last --json."),
-        "node" | "nodes" => fail("Nodes aren't available yet, so runs come from this device. The waitlist is at rvrs.dev."),
+        "node" => node::run(rest),
+        "nodes" => fail("Nodes aren't available yet, so runs come from this device. The waitlist is at rvrs.dev."),
         "schedule" | "schedules" | "alerts" => fail("Schedules and alerts come with nodes, which aren't available yet. The waitlist is at rvrs.dev."),
         "help" | "--help" | "-h" => {
             let style = Style::detect(ColorChoice::Auto);

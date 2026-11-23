@@ -1,5 +1,16 @@
 {
   "key": "5tq0yM3VfJm0b6mVq1mW4w",
   "name": "cpe-4471",
-  "version": "0.14.2"
+  "version": "0.14.2",
+  "tags": {
+    "isp": "telia",
+    "line": "ftth",
+    "region": "dk-south"
+  },
+  "location": {
+    "lat": 55.5,
+    "lon": 8.5,
+    "place": "Esbjerg, DK",
+    "precision": "city"
+  }
 }

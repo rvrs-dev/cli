@@ -3,12 +3,15 @@
 //! measured (`measured`, `hops`, `outcome`) stays apart from what it likely means
 //! (`interpretation`), so a person or an agent can tell a fact from a guess.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::dns::message::types;
 use crate::dns::result::Diff;
 use crate::format;
 use crate::model::{Grade, Outcome, Run, Tool, Verdict};
+use crate::node_config::DeclaredLocation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Measurement {
@@ -133,6 +136,44 @@ pub struct ReportOrigin {
     pub source_address: Option<String>,
     /// The address the internet saw this device as, when it was asked.
     pub public_address: Option<String>,
+    /// The origin's tags as they were when the run was stored. The API writes them, whatever the
+    /// sender put here, so a run made on this device has none. A reader that can't read them
+    /// (a value that isn't text) leaves them out and still reads the run.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "or_none"
+    )]
+    pub tags: Option<BTreeMap<String, String>>,
+    /// The origin's location, rounded to its precision, as it was when the run was stored. The
+    /// API writes it. A location a reader can't read is left out.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "or_none"
+    )]
+    pub location: Option<DeclaredLocation>,
+    /// The revision of the origin's tags and location the run was made under. A node writes the
+    /// one its API last told it and keeps it with the run in its outbox, so the API tags the run
+    /// as it was made and not as it is when the result arrives. The API checks it and writes the
+    /// tags and location itself. A run made on this device has none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "or_none"
+    )]
+    pub metadata_revision: Option<u32>,
+}
+
+/// A value that is there and isn't the shape this version reads is the same as one that is
+/// missing: a report from a newer maker must never be the reason a run can't be shown.
+fn or_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).ok())
 }
 
 impl ReportOrigin {
@@ -144,6 +185,9 @@ impl ReportOrigin {
             install: run.from.clone(),
             source_address: run.source.map(|address| address.to_string()),
             public_address: run.public_source.map(|address| address.to_string()),
+            tags: None,
+            location: None,
+            metadata_revision: None,
         }
     }
 }
@@ -880,7 +924,12 @@ mod tests {
         match value {
             serde_json::Value::Object(fields) => {
                 for (key, inner) in fields {
-                    let known = &schema["properties"][key];
+                    // A map, such as the tags, names its values and not its keys.
+                    let known = if schema["properties"][key].is_object() {
+                        &schema["properties"][key]
+                    } else {
+                        &schema["additionalProperties"]
+                    };
                     assert!(known.is_object(), "the schema doesn't name {path}{key}");
                     named_by_schema(inner, known, &format!("{path}{key}."));
                 }
@@ -1014,6 +1063,7 @@ mod tests {
                 "mtr.json",
                 "ping.json",
                 "sparse.json",
+                "tagged.json",
                 "traceroute.json"
             ]
         );
@@ -1099,6 +1149,49 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_origin_keeps_its_tags_and_location_and_a_reader_never_needs_them() {
+        let fixture = read(schema_folder().join("fixtures/tagged.json"));
+        let report: Report = serde_json::from_value(fixture.clone()).unwrap();
+        let tags = report.origin.tags.as_ref().unwrap();
+        assert_eq!(tags["isp"], "telia");
+        let location = report.origin.location.as_ref().unwrap();
+        assert_eq!((location.lat, location.lon), (55.5, 8.5));
+        assert_eq!(location.place.as_deref(), Some("Esbjerg, DK"));
+        assert_eq!(location.precision, "city");
+        assert_eq!(report.origin.metadata_revision, Some(3));
+        assert_eq!(
+            report.origin.node_id.as_deref(),
+            Some("7b0c5a2e-8d41-4f6a-9c3e-2a5d1e9f0b64")
+        );
+        // The run is shown whatever the origin says about itself.
+        let run = Run::from_report(&report, "abc234", Some("esb-1".into())).unwrap();
+        assert_eq!(run.summary(), report.summary);
+
+        // A precision left out is the coarsest.
+        let mut bare = fixture.clone();
+        bare["origin"]["location"] = serde_json::json!({ "lat": 55.5, "lon": 8.5 });
+        let report: Report = serde_json::from_value(bare).unwrap();
+        assert_eq!(report.origin.location.unwrap().precision, "city");
+
+        // Tags or a location of a shape this version doesn't read are left out, not an error.
+        let mut odd = fixture;
+        odd["origin"]["tags"] = serde_json::json!({ "isp": 1 });
+        odd["origin"]["location"] = serde_json::json!("Esbjerg");
+        odd["origin"]["metadataRevision"] = serde_json::json!("three");
+        let report: Report = serde_json::from_value(odd).unwrap();
+        assert_eq!(report.origin.tags, None);
+        assert_eq!(report.origin.location, None);
+        assert_eq!(report.origin.metadata_revision, None);
+        assert_eq!(report.origin.node.as_deref(), Some("esb-1"));
+
+        // A run made here writes neither.
+        let written = serde_json::to_value(Report::of(&reached_run())).unwrap();
+        assert!(written["origin"].get("tags").is_none());
+        assert!(written["origin"].get("location").is_none());
+        assert!(written["origin"].get("metadataRevision").is_none());
     }
 
     #[test]
