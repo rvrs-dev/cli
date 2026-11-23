@@ -203,7 +203,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -283,7 +283,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -366,11 +366,16 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "stopped": {
+                    "externalValue": "fixtures/claim.stopped.json"
+                  }
                 }
               }
             }
@@ -457,6 +462,16 @@
           },
           "401": {
             "description": "No credential, or one that is unknown or revoked (UNAUTHORIZED).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An admin stopped the workspace's fleet (FLEET_STOPPED). The result stays in the outbox.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1323,7 +1338,7 @@
       },
       "ResultInput": {
         "type": "object",
-        "description": "A finished run. The report's origin has the kind node, the node's id and the name it had when it made the run. The API stores the run under the node it authenticated and answers 422 when origin.nodeId names another node.",
+        "description": "A finished run. Who made it is the API's to say: it stores the run under the node it authenticated and writes that node into the stored report's origin, as the kind node, the node's id and the name the API has for it. A report that says otherwise is stored as this node's all the same, and one whose origin.nodeId names another node is answered 422.",
         "required": [
           "report"
         ],

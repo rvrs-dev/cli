@@ -1,5 +1,6 @@
 //! The rvrs engines, the run model and the report, with no terminal code. The CLI, the Console
-//! and later the node all drive a run through [`session::Session`].
+//! and later the node all drive a run through [`session::Session`]. [`node`] holds what a node
+//! checks before it makes a run it was asked for.
 
 pub mod asn;
 pub mod bgp;
@@ -11,6 +12,7 @@ pub mod format;
 pub mod history;
 pub mod model;
 pub mod mtu;
+pub mod node;
 pub mod node_config;
 pub mod packet;
 pub mod paths;

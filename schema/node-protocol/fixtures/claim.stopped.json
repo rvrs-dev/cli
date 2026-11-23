@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "FLEET_STOPPED",
+    "message": "An admin stopped this workspace's fleet. Its nodes get no runs until the fleet is resumed.",
+    "requestId": "req_p3t7w2"
+  }
+}

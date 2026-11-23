@@ -24,6 +24,26 @@ Every surface shows a run it didn't make from the report alone. The CLI does it 
 - Tags and location are the origin's. A reader shows them where that helps, such as a column for a tag or the place beside a node's name, and never requires them. A run without them is whole. A reader that can't read the shape it finds leaves them out and shows the run. A precision it doesn't know is read as `city`.
 - Not in a report today: the DNS delegation path, a BGP lookup's paths, prefixes and history, and iperf3's intervals. Running the tool again on this device brings them.
 
+## What points to a home
+
+A run from a node on someone's line says where that line is, in two parts. Every surface that shares a run treats them the same way.
+
+The private network the run started in. A share shows it unless the person sharing turns Private Networks off, since the first hops are where a line's trouble often is.
+
+- `origin.sourceAddress` when it is a private or link-local address.
+- The address and hostname of each hop of the line's own network: every hop at a private or link-local address before the first hop that answered from anywhere else. That is the home's router, at `192.168.1.1` under a name someone gave it, and whatever sits between it and the provider. Shared address space (100.64.0.0/10) is the provider's, and a private address further along the path is inside a provider. Both stay in every share.
+- The `server` of a DNS source of the kind `device` when it is a private or link-local address: the resolver is the line's own router.
+
+The line's public address, and what gives it away. A share leaves it out unless the person sharing keeps it in.
+
+- `origin.publicAddress`, and `origin.sourceAddress` when it is a public address.
+- The address and hostname of a hop that is the origin itself, wherever it is in the path: a hop at one of the origin's public addresses, or an IPv6 hop in the same /48 as one of them. A line is given a /48, a /56, a /60 or a /64 and a report doesn't say which, so the widest decides.
+- The `server` of a DNS source of the kind `device` at one of the origin's public addresses.
+
+A hop that is left out stays, with its figures, so the path keeps its length. Everything else in a report is about the path and the target. A location, when a report carries one, belongs to the same list, and is never more precise than a person set it.
+
+Two things the rule can't see, which whoever shares a run decides about: a node's name and its tags are the workspace's own words and can name a customer, and a sentence the maker wrote (`summary`, `error`, `interpretation`) may name an address.
+
 ## Tags and location
 
 `origin.tags` and `origin.location` are the origin's tags and location as they were when the run was stored. A tag is a key and a value, as in `isp=telia`, at most 20 per origin. A location is `lat`, `lon`, an optional `place` and a `precision` (`exact`, `area` or `city`) that says how many digits of the coordinates were kept.

@@ -91,6 +91,7 @@ rvrs needs no account. With one, `rvrs login` keeps your runs, saved runs, cases
 - [The Console](docs/console.md)
 - [Commands](docs/commands.md), including history, saved runs and `--json`
 - [Build features](docs/build-features.md): what a build has, and the small build
+- [What a node does and what it refuses](docs/node-safety.md): the limits a node keeps itself, before nodes are released
 - [rvrs for agents](docs/agents.md)
 - [Privacy](docs/privacy.md)
 
