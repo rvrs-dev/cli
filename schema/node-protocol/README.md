@@ -21,7 +21,7 @@ A credential goes in `Authorization: Bearer <token>`. The node opens every conne
 | `POST /v1/nodes` | An enrollment token | Enrolls a node and answers with its token | Safe. The same `key` gets the same node and the same token |
 | `POST /v1/nodes/me/heartbeats` | A node | Says what the node is: version, build features, limits, outbox | Safe. Each one replaces the last |
 | `GET /v1/nodes/me/events` | A node | The event stream, which wakes the node when there is work | Safe. A new stream replaces the old one |
-| `POST /v1/nodes/me/claims` | A node | Takes the runs that wait for the node and keeps the ones it holds | Safe. A claim says everything the node holds, every time |
+| `POST /v1/nodes/me/claims` | A node | Takes the runs that wait for the node and keeps the ones it holds | Safe with its `key`. The same claim sent again gets the same runs as the same attempts |
 | `POST /v1/runs` | A node | Sends a finished run, with `claim` when the run was asked for | Safe. A run is told apart by the node and the report's `id` |
 | `GET /v1/nodes` | A person's install | Lists the nodes of its workspace, with whether each is online | Safe |
 | `POST /v1/run-requests` | A person's install | Asks a node for a run and answers with the run's id | Safe with a `key`. Without one a retry asks twice |
@@ -61,7 +61,8 @@ The answer carries the node, its workspace and the node's token. The node stores
 - That holds for as long as the enrollment token is neither expired nor revoked. A token that has enrolled every node it may still answers the keys it knows.
 - A `key` belongs to the enrollment token it was first sent with. The same `key` under another enrollment token is another node.
 - A node with a new `key`, after a factory reset, is a new node.
-- A node's token changes in one way only: the node is revoked and enrolls again with a new `key`. Enrolling never rotates a token, and version 1 has no route that does.
+- No route of this protocol changes a node's token, and enrolling never rotates one. A person can replace a node's token where the node is managed, in the web app. The node stays the node it was, with its id, its name, its tags and its runs. The token it had answers 401 from that moment, and the node is given the new one the way it was given the first.
+- A node that was revoked is gone for good. Its name is free at once, so a new node can take it, with a new `key` when it enrolls and an id of its own.
 - A node's name is unique in its workspace: 1 to 63 lowercase letters, digits, `.`, `-` and `_`. It is what `--node` takes. The API makes it from what the node proposes, and a person can change it later. The node's `id` never changes.
 - 410 `ENROLLMENT_CLOSED` says the enrollment token expired, was revoked, or has enrolled every node it may and doesn't know this `key`. 403 `NODE_REVOKED` says this `key` belongs to a node that was revoked. The node stops enrolling after either.
 - A node without a token and without an enrollment token makes no call at all. The API's default address alone never enrolls a node and never receives a run.
@@ -139,10 +140,10 @@ A claim says everything the node holds and how much more it will take:
 ```
 POST /v1/nodes/me/claims
 
-{ "room": 1, "holding": [ { "run": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11", "attempt": 1 } ] }
+{ "key": "c7m2q9xk", "room": 1, "holding": [ { "run": "0e6d2f0a-8c0e-4f58-9a55-0b8f3f6f1c11", "attempt": 1 } ] }
 ```
 
-`holding` lists every run the node claimed and the API hasn't answered a result for: the ones still probing and the ones whose result waits in the outbox. `room` is how many more runs the node will start now, within its own limits.
+`holding` lists every run the node claimed and the API hasn't answered a result for: the ones still probing and the ones whose result waits in the outbox. `room` is how many more runs the node will start now, within its own limits. `key` is a random word the node makes for this claim, 1 to 64 characters, and sends again with every retry of it.
 
 The answer has three parts.
 
@@ -153,6 +154,8 @@ The answer has three parts.
 A verdict the node doesn't know is never read as `keep`. The node stops that run at once, counts its lease as over, and sends what it measured with the outcome `stopped` and an `error` that names the verdict. The API takes or refuses that result by the rule for any result. So a newer API that means to stop or restrict a run is obeyed by an older node in the part that matters: the probing ends.
 
 A run the API believes the node holds, and the node didn't list, is free again at once. That is how a restart is noticed: a node that starts up claims with an empty `holding`, and the runs it lost come back in the same answer as a new attempt.
+
+A lost answer looks the same from the API's side: the node claimed, the answer never reached it, and it asks again without listing the runs that answer held. The `key` tells the two apart. The API keeps the key of the claim that gave each run out. A claim that arrives with that key again is a retry, and its runs come back as the same attempts, with their leases started over. So a node on a line that drops answers spends no attempt on them. A node makes a new key for every new claim and after every start, which is why a restart still frees its runs. A claim without a key can't be told from a restart, and the runs it doesn't list come back as new attempts.
 
 A node sends one claim at a time and waits for its answer before the next. Two claims in flight could leave out a run the first one was about to hand over, and the node would get it twice. Should a node ever hold two attempts of one run, the higher one is the run and the lower one is dropped.
 
@@ -214,7 +217,9 @@ POST /v1/runs
 - A node sends the report alone, without the `detail` a CLI adds for its other installs.
 - The API takes a result when its attempt is the run's newest and the run has no result yet. Whether the lease ran out in between doesn't matter: a node that lost its uplink during an MTR still delivers that MTR, which is the run someone wanted.
 - 409 `CLAIM_LOST` says a newer attempt has the run, or the run already has its result. The node drops the result. So a node that hung can't overwrite a newer result, and a run made twice is stored and counted once.
-- 200 says the API had this report already. Nothing changed.
+- 200 says the API had this report already, for this run and this attempt. Nothing changed.
+- 422 says the report is not the run that was asked for: its `tool` is another tool than the request named, without regard to case, or its `target` is another target. A node writes both as it was given them, also in a report with the outcome `refused`.
+- 422 also says the report's `id` is one the node used for another run. An id names one run on its node, so the API never answers for a run with another run's report.
 - A report without `claim` is a run the node made by itself, such as a scheduled run.
 
 ### Who made a run
@@ -428,7 +433,9 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - A claim takes its runs in one short transaction (`FOR UPDATE SKIP LOCKED`), so two claims never get the same attempt. The index it reads holds only the runs that wait or are held.
 - A node's token is derived from its `key` with a secret only the API holds. So the API answers the same token again without having kept it, and stores its hash alone. A unique index on the enrollment token and the `key` makes two enrolls at once one node.
 - The API checks the workspace and the node on every enroll, claim and result. A node can't claim or answer another node's run.
-- Revoking a node ends its stream at once, and every later call of its token answers 401.
+- Revoking a node ends its stream at once, and every later call of its token answers 401. Replacing its token does the same for the token it had.
+- A node counts as online by what the stream service wrote last. A stream that opens or closes is written within a second. A stream service that dies without closing its streams takes its nodes offline 90 seconds later. A line that drops without closing the connection can show its node as online until that connection times out.
+- A node's newest stream is the one that counts. On the same instance of the stream service the older one ends at once, and on another instance within 15 seconds.
 - Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 
 ## Left out on purpose
