@@ -32,6 +32,99 @@
   ],
   "paths": {
     "/v1/nodes": {
+      "get": {
+        "operationId": "listNodes",
+        "tags": [
+          "nodes"
+        ],
+        "summary": "List the nodes of the workspace",
+        "description": "The nodes a person's install may ask for a run, ordered by name, with whether each is online, its version and its build features. A node's location is left out. Safe to repeat.",
+        "security": [
+          {
+            "login": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "How many nodes a page holds. 50 when left out."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "The next of the page before."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "description": "A selector, as GET /v1/runs takes it: terms joined by commas, each key=value, key!=value, key or !key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of nodes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeList"
+                },
+                "examples": {
+                  "nodes": {
+                    "externalValue": "fixtures/nodes.response.json"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one that is unknown or revoked (UNAUTHORIZED).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is a node's token. A node reads no other node (FORBIDDEN).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "limit, cursor or tag is not one this route takes (VALIDATION_ERROR).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "operationId": "enrollNode",
         "tags": [
@@ -884,6 +977,12 @@
                 "type": "string"
               }
             }
+          },
+          "events": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "The address of the node's event stream, when the API serves it apart from its other routes. The node opens its stream there, with its token, and keeps the address until a later answer names another. Left out, the stream is GET /v1/nodes/me/events on the API's own address. An address whose scheme differs from the API's is ignored."
           }
         }
       },
@@ -1577,6 +1676,88 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "NodeSummary": {
+        "type": "object",
+        "description": "A node as a person's install sees it in a list.",
+        "required": [
+          "id",
+          "name",
+          "online",
+          "lastSeenAt",
+          "version",
+          "features",
+          "tags"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63
+          },
+          "online": {
+            "type": "boolean",
+            "description": "true while the node holds its event stream."
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the API last heard from the node. null for a node that never called."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40,
+            "description": "The rvrs version of the node's last heartbeat. null before its first."
+          },
+          "features": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "description": "The build features of the node's last heartbeat, so an install offers only the tools the node has. Empty before its first. A word a reader doesn't know is kept as it is."
+          },
+          "tags": {
+            "$ref": "#/components/schemas/Tags"
+          }
+        }
+      },
+      "NodeList": {
+        "type": "object",
+        "description": "One page of a workspace's nodes, ordered by name.",
+        "required": [
+          "nodes",
+          "next"
+        ],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/NodeSummary"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "description": "The cursor for the next page. null on the last one."
           }
         }
       }

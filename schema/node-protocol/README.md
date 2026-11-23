@@ -23,6 +23,7 @@ A credential goes in `Authorization: Bearer <token>`. The node opens every conne
 | `GET /v1/nodes/me/events` | A node | The event stream, which wakes the node when there is work | Safe. A new stream replaces the old one |
 | `POST /v1/nodes/me/claims` | A node | Takes the runs that wait for the node and keeps the ones it holds | Safe. A claim says everything the node holds, every time |
 | `POST /v1/runs` | A node | Sends a finished run, with `claim` when the run was asked for | Safe. A run is told apart by the node and the report's `id` |
+| `GET /v1/nodes` | A person's install | Lists the nodes of its workspace, with whether each is online | Safe |
 | `POST /v1/run-requests` | A person's install | Asks a node for a run and answers with the run's id | Safe with a `key`. Without one a retry asks twice |
 | `GET /v1/run-requests/{id}` | A person's install | Where the run stands, and its report once it ended | Safe |
 
@@ -35,6 +36,7 @@ A credential goes in `Authorization: Bearer <token>`. The node opens every conne
 - Words that tell a node what to do are another matter. The API sends a node only the ones its `protocol` revision has, and a node never guesses at one. A verdict it doesn't know stops the run. A tool or an option it doesn't know makes it refuse the run, because running without it would measure something else than what was asked.
 - Times the node acts on are lengths in seconds, never moments. A router's clock can be wrong before it has synchronized, and the protocol doesn't depend on it.
 - Every answer that is not 2xx has the one error shape, `{ "error": { "code", "message" } }`. A reader branches on `code`.
+- An answer without that shape didn't come from the API. A load balancer or a proxy on the way answers with a page of its own, such as a 404 when no server behind it has room. A node treats an answer without the API's error, whatever its status, as it treats a 5xx.
 - No heartbeat, event or log line carries a credential, a target or anything from a report.
 
 ## Tokens and enrolling
@@ -81,6 +83,8 @@ A heartbeat says what the node is. The API learns from it what to show a person 
 
 The answer names the node and its workspace as the API knows them, so a node that was renamed on the web learns its name, and every node learns its `id`.
 
+The answer may also name `events`, the address of the event stream. An API can serve its streams apart from its other routes, so that releasing the API doesn't end every stream, and moving them needs no update to any node. A node opens its stream at `events` when an answer names it, and at `/v1/nodes/me/events` on the API's address when none has. It keeps the address until a later answer names another, and sends its token there as it does to the API. An address whose scheme differs from the API's is ignored.
+
 A node sends one when it starts, when one of these facts changes, and every `heartbeatSeconds`. Whether a node is online is not the heartbeat's to say. A node is online while it holds its event stream.
 
 ## Tags and location
@@ -104,7 +108,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 
 ## The event stream
 
-`GET /v1/nodes/me/events` answers with Server-Sent Events and stays open.
+`GET /v1/nodes/me/events`, or the address the heartbeat's answer names, answers with Server-Sent Events and stays open.
 
 | Event | Data | The node |
 | --- | --- | --- |
@@ -254,6 +258,23 @@ A person can take a node's work away in two ways, and both reach the node as the
 - A node that reads either answer ends the runs it is making at once and sends no further probe. A node that holds a run claims every third of `leaseSeconds`, so that is within 30 seconds.
 - After `FLEET_STOPPED` the results in the outbox wait for the fleet to resume, within the outbox's caps. After 401 they have nowhere to go.
 
+## Listing the nodes
+
+A person's install lists the nodes it may ask with `GET /v1/nodes`, ordered by name.
+
+| Field | Holds |
+| --- | --- |
+| `id`, `name` | As the heartbeat's answer has them |
+| `online` | `true` while the node holds its event stream |
+| `lastSeenAt` | When the API last heard from the node, `null` for a node that never called |
+| `version`, `features` | From the node's last heartbeat, so an install offers only the tools the node has. `null` and `[]` before its first |
+| `tags` | The tags that count: the node's declaration with a person's edits applied |
+
+- `limit` takes 1 to 200 nodes, 50 when left out. `next` in the answer is the cursor for the next page, and `null` on the last one.
+- `tag` narrows the list with a selector, as `GET /v1/runs` takes it: `tag=isp=telia,line!=dsl`.
+- A node's location is left out of the list. Who in a workspace may see where a home node is hasn't been decided.
+- A node's token gets 403 `FORBIDDEN`. A node reads no other node.
+
 ## Asking for a run
 
 A person's install asks, gets the run's id at once and reads the run until it ends.
@@ -292,6 +313,8 @@ A run a device makes itself is stored `ended`. `expiresAt` only limits how long 
 
 ## What a node does with each answer
 
+The table holds for answers with the API's error. Any other answer is read as a 5xx, whatever its status.
+
 | Answer | The node |
 | --- | --- |
 | 200, 201 | Goes on |
@@ -300,7 +323,7 @@ A run a device makes itself is stored `ended`. `expiresAt` only limits how long 
 | 404, 410, 413, 422 | The call is wrong and stays wrong. It is not repeated. A result answered this way leaves the outbox and counts as dropped |
 | 409 | The claim is lost. The result leaves the outbox |
 | 429 | Waits as long as `Retry-After` says |
-| 5xx, or no answer | Tries again, with the same doubling window as a reconnect |
+| 5xx, an answer without the API's error, or no answer | Tries again, with the same doubling window as a reconnect |
 
 ## The numbers
 
@@ -397,15 +420,16 @@ An idle claim is one lookup in an index that holds only the runs that wait or ar
 
 Nothing here binds another controller. It is how the rvrs API meets the rules above.
 
+- The event stream is a service of its own, named in the heartbeat's answer. Releasing the API leaves the streams open. An instance that holds streams and stops closes them over a minute, so its nodes come back spread out.
 - Postgres is the queue. A request for a run is stored and announced with `NOTIFY` in one transaction.
-- Each API instance holds one `LISTEN` connection and writes `work` to the nodes whose streams it holds.
-- Every 15 seconds each instance asks, in one query for all its streams, which of their nodes have a run waiting, and writes `work` to those. That is the repeat. Its cost grows with the runs that wait and not with the nodes that have nothing to do.
-- The API starts listening before it looks for waiting runs, so a request can't fall between the two.
+- Each instance of the stream service holds one `LISTEN` connection and writes `work` to the nodes whose streams it holds. The rest of the API only sends `NOTIFY`.
+- Every 15 seconds each instance of the stream service asks, in one query for all its streams, which of their nodes have a run waiting, and writes `work` to those. That is the repeat. Its cost grows with the runs that wait and not with the nodes that have nothing to do.
+- The stream service starts listening before it looks for waiting runs, so a request can't fall between the two.
 - A claim takes its runs in one short transaction (`FOR UPDATE SKIP LOCKED`), so two claims never get the same attempt. The index it reads holds only the runs that wait or are held.
 - A node's token is derived from its `key` with a secret only the API holds. So the API answers the same token again without having kept it, and stores its hash alone. A unique index on the enrollment token and the `key` makes two enrolls at once one node.
 - The API checks the workspace and the node on every enroll, claim and result. A node can't claim or answer another node's run.
 - Revoking a node ends its stream at once, and every later call of its token answers 401.
-- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the instances end the streams of that workspace's nodes.
+- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 
 ## Left out on purpose
 
@@ -420,4 +444,4 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 
 ## Where it is checked
 
-`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.
+`cargo test` reads `openapi.json` and checks every file in `fixtures/` against the schema of the body it is an example of, that every body has an example, that a second enroll shows the same answer as the first, that the page reads an answer without the API's error as a 5xx, that a declaration breaking a rule of tags or location is caught, and that the report inside each result is one the CLI reads. The node's own checks are `rvrs_core::node`, whose tests hold its options against the table on this page, its heartbeat against the heartbeat's example, and the refusal it writes against the refused result's example. The rvrs API keeps a copy of the fixtures and reads them against its own copy of the shapes.

@@ -758,3 +758,26 @@ fn an_unknown_verdict_is_never_read_as_keep() {
     assert!(stream.contains("\"claimSeconds\":1800"));
     assert!(page.contains("| A claim while idle | At random between 900 and 1,800 s |"));
 }
+
+#[test]
+fn an_answer_without_the_apis_error_is_read_as_a_5xx() {
+    // A load balancer answers 404 with a page of its own when no server behind it has room. Read
+    // as the API's 404, it would make a node drop a result it should send again.
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains(
+        "A node treats an answer without the API's error, whatever its status, as it treats a 5xx."
+    ));
+    assert!(page.contains("| 5xx, an answer without the API's error, or no answer |"));
+}
+
+#[test]
+fn the_stream_can_move_without_updating_a_node() {
+    let document = document();
+    let node = &document["components"]["schemas"]["Node"];
+    assert_eq!(node["properties"]["events"]["type"], "string");
+    // An API from before the field names no address, so a node can't count on one.
+    let required = node["required"].as_array().unwrap();
+    assert!(!required.iter().any(|field| field == "events"));
+    let answer = read(&folder().join("fixtures/heartbeat.response.json"));
+    assert!(answer["events"].as_str().unwrap().starts_with("https://"));
+}
