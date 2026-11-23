@@ -405,7 +405,7 @@
           "nodes"
         ],
         "summary": "Claim the runs that wait for the node",
-        "description": "The node says every run it holds and how many more it will start. The answer gives it the runs that waited, renews the leases it keeps and says which runs to stop or drop. A run the node holds by the API's count and didn't list is free again at once, so a retry after a lost answer gets that run back as a new attempt. A node claims after every hello and every work, every third of leaseSeconds while it holds a run, and at a random time within claimSeconds while idle. A node sends one claim at a time.",
+        "description": "The node says every run it holds and how many more it will start. The answer gives it the runs that waited, renews the leases it keeps and says which runs to stop or drop. A run the node holds by the API's count and didn't list is free again at once and comes back as a new attempt, which is how a restart is noticed. A claim sent again with the same key is no restart: the runs it gave out the first time come back as the same attempts, so a lost answer costs no attempt. A node claims after every hello and every work, every third of leaseSeconds while it holds a run, and at a random time within claimSeconds while idle. A node sends one claim at a time.",
         "security": [
           {
             "node": []
@@ -503,7 +503,7 @@
           "runs"
         ],
         "summary": "Send a finished run",
-        "description": "The route every install sends its runs through. A node adds claim for a run that was asked for. The API takes the result when its attempt is the run's newest and the run has no result yet, whether or not the lease ran out in between. A run is told apart by the install and the report's id, so sending it again changes nothing and answers 200. The body may be up to 2 MiB.",
+        "description": "The route every install sends its runs through. A node adds claim for a run that was asked for. The API takes the result when its attempt is the run's newest and the run has no result yet, whether or not the lease ran out in between. A run is told apart by the install and the report's id, so sending it again changes nothing and answers 200. A claimed result whose report names another tool or another target than the run was asked with, or whose id the node used for another run, is answered 422. The body may be up to 2 MiB.",
         "security": [
           {
             "node": []
@@ -1267,6 +1267,12 @@
               "$ref": "#/components/schemas/Held"
             },
             "description": "Every run the node claimed and the API hasn't answered a result for: the ones still probing and the ones whose result waits in the outbox. A run the node leaves out is free to be claimed again at once."
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "A random word the node makes for this claim and sends again with every retry of it. A run this claim gave out, which the node doesn't list because the answer never reached it, comes back under the same attempt. A new claim gets a new key."
           }
         }
       },

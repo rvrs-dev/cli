@@ -781,3 +781,37 @@ fn the_stream_can_move_without_updating_a_node() {
     let answer = read(&folder().join("fixtures/heartbeat.response.json"));
     assert!(answer["events"].as_str().unwrap().starts_with("https://"));
 }
+
+#[test]
+fn a_claim_sent_again_costs_no_attempt() {
+    // A lost answer and a restart look the same in `holding`. The key tells them apart, and a
+    // node from before it sends none, so it stays optional.
+    let document = document();
+    let claim = &document["components"]["schemas"]["ClaimInput"];
+    assert_eq!(claim["properties"]["key"]["type"], "string");
+    let required = claim["required"].as_array().unwrap();
+    assert!(!required.iter().any(|field| field == "key"));
+    for fixture in ["claim.request.json", "claim.holding.request.json"] {
+        let body = read(&folder().join("fixtures").join(fixture));
+        assert!(
+            body["key"].as_str().is_some_and(|key| !key.is_empty()),
+            "{fixture}"
+        );
+    }
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains("its runs come back as the same attempts"));
+    assert!(page.contains("A node makes a new key for every new claim and after every start"));
+}
+
+#[test]
+fn a_result_is_the_run_that_was_asked_for() {
+    let page = std::fs::read_to_string(folder().join("README.md")).unwrap();
+    assert!(page.contains("422 says the report is not the run that was asked for"));
+    assert!(page.contains("422 also says the report's `id` is one the node used for another run"));
+    // The examples keep the rule: the refused result names the tool it was asked with.
+    let refused = read(&folder().join("fixtures/result.refused.request.json"));
+    assert_eq!(
+        refused["report"]["tool"].as_str().unwrap().to_lowercase(),
+        "iperf3"
+    );
+}
