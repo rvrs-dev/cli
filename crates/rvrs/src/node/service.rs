@@ -827,6 +827,9 @@ impl Node {
     /// Starts the scheduled runs that are due. A run is due once: one the node can't start now
     /// is left out and never made up.
     fn start_due(&mut self) {
+        if self.ended.is_some() || self.paused_until.is_some() {
+            return;
+        }
         let now = Instant::now();
         if self.schedules.expired(now) && !self.said_expired {
             self.said_expired = true;
@@ -856,8 +859,6 @@ impl Node {
                     LeftOut::StillGoing => self.say(&format!(
                         "schedule {schedule}: left out, its last run is still going"
                     )),
-                    // The copy was read again a moment after the schedule's last run.
-                    LeftOut::TooSoon => {}
                 },
             }
         }
@@ -996,8 +997,12 @@ impl Node {
             self.claim_now = true;
             self.read_now = true;
         }
+        // A call that gets no answer takes its whole wait. The scheduled runs are looked at
+        // before the first call and between the calls, so none starts that much late.
+        self.start_due();
         if now >= self.next_heartbeat || self.outbox.dropped() != self.said_dropped {
             self.heartbeat(now);
+            self.start_due();
         }
         if self.ended.is_some() || self.paused_until.is_some() {
             return;
@@ -1016,6 +1021,7 @@ impl Node {
         }
         if self.claim_now || now >= self.next_claim {
             self.claim(now);
+            self.start_due();
         }
         if self.ended.is_some() || self.paused_until.is_some() {
             return;

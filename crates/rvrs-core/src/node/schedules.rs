@@ -11,7 +11,8 @@
 //! - An answer replaces the whole copy and sets every next start anew.
 //! - A run is due once. One the node can't start, at a limit or with the schedule's last run
 //!   still going, is left out and never made up.
-//! - A start less than half the interval after the schedule's last one is left out.
+//! - An answer that puts a start less than half the interval after the schedule's last one has
+//!   that start left out.
 //! - A schedule that fails the node's own check is refused once, until the copy says something
 //!   else about it.
 //! - A copy is good for `keepSeconds`. After that nothing starts until the copy was read again.
@@ -136,8 +137,6 @@ pub enum LeftOut {
     AtALimit,
     /// The schedule's last run is still going.
     StillGoing,
-    /// The schedule's last run started less than half an interval ago.
-    TooSoon,
 }
 
 /// What the node does about a run that is due.
@@ -227,8 +226,10 @@ impl Schedules {
 
     /// An answer arrived. It replaces the copy the node held, whole: a schedule that is no
     /// longer in it ends at once, and every other one's next start is `startsInMilliseconds`
-    /// from now. A schedule the node refused stays refused while the copy says the same about
-    /// it. True when the version is another than the one the node held.
+    /// from now. A start that would come less than half an interval after the schedule's last
+    /// one is left out, so an answer that moves a schedule's place in the interval never has
+    /// two of its runs close together. A schedule the node refused stays refused while the copy
+    /// says the same about it. True when the version is another than the one the node held.
     pub fn replace(&mut self, copy: &Copy, now: Instant) -> bool {
         let before = std::mem::take(&mut self.kept);
         self.kept = copy
@@ -241,9 +242,16 @@ impl Schedules {
                     .find(|kept| kept.entry.schedule == entry.schedule);
                 // A place in the interval is never further away than the interval is long.
                 let starts_in = entry.starts_in_milliseconds.min(entry.every_seconds * 1000);
+                let last_start = was.and_then(|kept| kept.last_start);
+                let mut next = now + Duration::from_millis(starts_in);
+                let too_soon = last_start
+                    .is_some_and(|last| next.saturating_duration_since(last) < entry.every() / 2);
+                if too_soon {
+                    next += entry.every();
+                }
                 Kept {
-                    next: now + Duration::from_millis(starts_in),
-                    last_start: was.and_then(|kept| kept.last_start),
+                    next,
+                    last_start,
                     refused: was
                         .is_some_and(|kept| kept.refused && kept.entry.says_the_same(entry)),
                     entry: entry.clone(),
@@ -318,14 +326,6 @@ impl Schedules {
                 continue;
             }
             let schedule = kept.entry.schedule.clone();
-            let too_soon = kept
-                .last_start
-                .is_some_and(|last| now.duration_since(last) < every / 2);
-            if too_soon {
-                let why = LeftOut::TooSoon;
-                due.push(Due::LeftOut { schedule, why });
-                continue;
-            }
             if self.going.contains(&schedule) {
                 let why = LeftOut::StillGoing;
                 due.push(Due::LeftOut { schedule, why });
@@ -584,13 +584,8 @@ mod tests {
         // half of 60 s, so it is left out, and the one after it runs.
         let answered = now + seconds(15);
         assert!(!schedules.replace(&one("example.com", 60, 15_000), answered));
-        assert_eq!(
-            schedules.due(&mut guard, answered + seconds(15)),
-            [Due::LeftOut {
-                schedule: PING.into(),
-                why: LeftOut::TooSoon
-            }]
-        );
+        assert!(schedules.due(&mut guard, answered + seconds(15)).is_empty());
+        assert!(started(&mut schedules, &mut guard, answered + seconds(74)).is_empty());
         assert_eq!(
             started(&mut schedules, &mut guard, answered + seconds(75)),
             [PING]
