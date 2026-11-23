@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use rvrs_core::{format, paths};
 
 use crate::features;
-use crate::help::{COMMIT, VERSION};
+use crate::help::VERSION;
 use crate::style::{ColorChoice, Style, SPINNER};
 use crate::{fail, usage};
 
@@ -507,8 +507,9 @@ pub fn run(arguments: &[String]) -> ExitCode {
     }
 }
 
+/// This build as `rvrs --version` names it, with what it leaves out.
 fn current() -> String {
-    format!("rvrs {VERSION} ({COMMIT})")
+    crate::help::version()
 }
 
 /// A build from a checkout: fetch, show what is new, fast-forward, build.
