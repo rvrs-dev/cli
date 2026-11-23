@@ -436,7 +436,7 @@ fn longer(schedule: &Value) -> Option<String> {
     let kept = schedule["everySeconds"].as_u64()?;
     (kept > asked).then(|| {
         format!(
-            "Each node runs it every {kept} s, where you asked for {asked} s, since one target gets 10 scheduled run starts a second from a workspace at most."
+            "Each node runs it every {kept} s, where you asked for {asked} s, since one target gets about 10 scheduled run starts a second from a workspace."
         )
     })
 }
@@ -1067,7 +1067,7 @@ mod tests {
         // The cap made its interval longer, and one sentence says so with both numbers.
         assert_eq!(
             longer(&by_selector).unwrap(),
-            "Each node runs it every 1200 s, where you asked for 300 s, since one target gets 10 scheduled run starts a second from a workspace at most."
+            "Each node runs it every 1200 s, where you asked for 300 s, since one target gets about 10 scheduled run starts a second from a workspace."
         );
         assert_eq!(longer(&fixture("schedule.response.json")), None);
     }

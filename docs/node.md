@@ -72,7 +72,7 @@ Making a schedule takes an account: `rvrs login`. The start of an id is enough, 
 - The tool's flags are the ones that travel with `--node`, in the table above. A schedule's tool and target never change. Another target is another schedule.
 - The runs of a schedule are kept in your account as that schedule's runs. They stay out of `rvrs history`, which lists the runs a person made.
 - The API gives every node its own place in the interval, so the nodes of one schedule never all start in the same second.
-- One target gets at most 10 scheduled run starts a second from a workspace. When a schedule would start more, each node runs it at a longer interval, and `rvrs schedules` shows that interval beside the one you asked for.
+- One target gets about 10 scheduled run starts a second from a workspace, on average. When a schedule would start more, each node runs it at a longer interval, and `rvrs schedules` shows that interval beside the one you asked for.
 
 What a node does with a schedule:
 
@@ -82,7 +82,8 @@ What a node does with a schedule:
 - A scheduled run counts against the node's limits and passes the checks a run asked with `--node` passes: the tool, every option, the limits and the target.
 - A run is due once. When the node is at a limit, or the schedule's last run is still going, the run is left out. A node never makes up a run it missed, also after a restart or a day without power.
 - A schedule the node won't run is refused once. The node sends one result with the outcome `refused` and the reason, and starts no run of that schedule until the schedule changes or the node restarts.
-- A copy is good for 7 days without the API. After that the node starts no scheduled run until it has read its schedules again.
+- A schedule you pause or delete ends on a node when the node next reads its schedules, and so does one whose selector the node no longer matches. No further run of it starts, and a run of it that is going is stopped and sent with what it measured, with the outcome `stopped`.
+- A copy is good for 7 days without the API. After that the node starts no scheduled run until it has read its schedules again. A restart doesn't start the 7 days over: the node writes the copy's age beside the copy and starts with what is left. A kept copy that doesn't say its age is not used.
 
 ## What the owner sets
 
@@ -106,7 +107,8 @@ Whoever starts the node sets these, as flags of `rvrs node` or in the environmen
 | --- | --- |
 | The uplink is gone | Keeps its results in the outbox, 500 runs, 64 MiB and 7 days at most, and sends them once it is back |
 | The uplink is gone and it has schedules | Goes on with each schedule by its own clock. The results wait in the outbox with the rest |
-| It couldn't read its schedules for 7 days | Starts no scheduled run until it has read them again |
+| It couldn't read its schedules for 7 days, restarts and the time it was switched off included | Starts no scheduled run until it has read them again |
+| A schedule was paused or deleted while a run of it was going | Stops that run when it reads its schedules and sends what it measured, with the outcome `stopped` |
 | Its token was revoked or replaced | Ends its runs, deletes its copy of its schedules and makes no further call. Give it the new token and start it again |
 | An admin stopped the fleet | Ends its runs, keeps its results and its schedules, and asks again in an hour. No scheduled run starts until the fleet is resumed |
 | It was asked for a run it won't make | Answers with the reason: a private address, an option it doesn't know, a run over its limits |
@@ -116,5 +118,6 @@ Whoever starts the node sets these, as flags of `rvrs node` or in the environmen
 | It restarted in the middle of a run | Gets the run again, as the next attempt |
 | It lost power while it wrote a result | Starts with the results that were written whole. A file that holds no result is removed and counted as dropped |
 | The outbox's folder can't be written | Keeps the result in memory and says so in its log. Its heartbeat says `memory` until that result is sent |
+| The state folder can't be written | Keeps its copy of its schedules in memory and says so in its log. After a restart it has no schedules until it has read them |
 
 The node's log names runs and schedules by their id. It never has a target, a token or anything from a report in it.
