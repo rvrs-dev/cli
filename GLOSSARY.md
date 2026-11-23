@@ -67,7 +67,7 @@ The BGP tool's words. They are the industry's own; the table fixes which one rvr
 | **enroll** | A node joining a workspace by itself: it trades an enrollment token for a token of its own. | register, onboard, adopt, provision, activate |
 | **enrollment token** | What a node enrolls with. It enrolls a set number of nodes before it expires and does nothing else. No image carries one. | join token, provisioning key, bootstrap token, claim code |
 | **build feature** | A part of rvrs a build can leave out: a tool, the TCP probe, the path MTU check, the Console. A node says which ones it has. Every build has all of them unless it was made without some, and an update keeps what was left out. | capability, module, plugin, feature (for a tool) |
-| **origin** | Where a run was made from: this device or a node, with its interface, source address, public address and network. | source (sources are DNS resolvers), vantage point |
+| **origin** | Where a run was made from: this device or a node, with its interface, source address, public address, network, tags and location. | source (sources are DNS resolvers), vantage point |
 | **fleet** | Every node of one workspace. | cluster, pool |
 | **schedule** | A run a node repeats at an interval. The runs it makes are scheduled runs. | check, monitor, job |
 | **alert** | The message sent when a scheduled run's result changes. | notification (those are the system's), alarm |
@@ -93,13 +93,16 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | **history** | Every run kept, newest first: on the device, and for a person who is signed in also in their account, where it holds the runs of all their installs. The Console's Recent section shows the newest of it. | log, recents (as the name of the store), archive |
 | **Recent** | The Console section that lists the newest runs in history. A section title, not a second store. | history (for the section) |
 | **saved run** | A run kept on purpose, in a case or on its own. Saved runs do not expire with history. To save. | bookmark, pin, favorite |
-| **case** | A named set of saved runs, from any tool and any origin, collected to look into one question: read together, stepped through, compared. A saved run can sit in several cases or in none, and a case holds any number of runs. | bookmark, group, folder, collection, investigation, incident, ticket, tag (a tag labels any run) |
+| **case** | A named set of saved runs, from any tool and any origin, collected to look into one question: read together, stepped through, compared. A saved run can sit in several cases or in none, and a case holds any number of runs. | bookmark, group, folder, collection, investigation, incident, ticket, tag (a tag sits on an install) |
 | **favorite** | A host kept on purpose. A favorite is a host and never a run. | saved target, saved run |
 | **library** | What a person keeps on purpose, as their account holds it: favorites, saved runs and cases. The same on every device they sign in on. A word of the API and the docs; a screen says Favorites, Saved or Cases. | collection, bookmarks, sync data |
-| **tag** | A short label a person puts on a run to find it again or group it ("before-migration"). | label, category, folder |
+| **tag** | A key and a value on an install, such as `isp=telia`, `line=ftth` or `region=dk-south`, to filter and pick origins by. A node declares its tags in its configuration and a person edits them on the web, and a run keeps its origin's tags as they were when it was made. | label, category, folder |
+| **selector** | A filter on tags: `isp=telia`, `isp!=telia`, `isp` or `!isp`, joined by commas to mean and. | query, label selector |
+| **comment** | Text with its author and time, written on an install, a run or a case, so the people who read it later know what happened. | note, annotation, message (messages go to the rvrs team) |
+| **location** | Where an install is: coordinates at a precision (exact, area or city) and a place such as "Esbjerg, DK". A person or a node's configuration sets it. A location suggested from an address is approximate and is never kept until a person saves it. | position, geolocation, GPS |
 | **comparison** | Two or more runs of the same tool side by side, often from one case: the same target from different origins, or the same origin at different times. | diff (a diff is what a comparison shows), benchmark |
 | **account** | A person's rvrs identity. Accounts are optional and never needed to run a tool on this device. | profile, user (in copy) |
-| **workspace** | What a team shares: its accounts, installs, nodes, runs, tags and schedules. A person alone has a workspace of one. | organization, org, team, tenant |
+| **workspace** | What a team shares: its accounts, installs, nodes, runs, tags, comments and schedules. A person alone has a workspace of one. | organization, org, team, tenant |
 | **sign in** | Prose and buttons say "sign in" and "sign out". The command is `rvrs login`, as `gh` and `docker` spell theirs. | log in, authenticate (in copy) |
 | **run page** | A run on rvrs.dev, rendered the way the app's result screen shows it. Only a run saved to an account has one. | permalink, report page |
 | **share link** | The link to a run page. | URL, permalink |

@@ -776,6 +776,51 @@
           }
         }
       },
+      "Tags": {
+        "type": "object",
+        "description": "A set of tags: a key and a value each, such as isp=telia, at most 20. A key is a lowercase letter followed by lowercase letters, digits, \".\", \"-\" and \"_\", 63 characters at most. A value is the same, and may start with a digit.",
+        "maxProperties": 20,
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9._-]{0,62}$"
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
+        }
+      },
+      "Location": {
+        "type": "object",
+        "description": "Where a node is. The coordinates are decimal degrees. The API rounds them to the precision before it stores them, so a node may send more digits than the precision keeps.",
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Degrees north. The API rounds it to the precision before it stores it."
+          },
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Degrees east. The API rounds it to the precision before it stores it."
+          },
+          "place": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "A place as a person would say it, such as Esbjerg, DK."
+          },
+          "precision": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "How many digits of the coordinates are kept: exact (4 decimals, about 10 m), area (2 decimals, about 1 km) or city (1 decimal, about 10 km), city when left out. A reader that doesn't know the word treats it as city, the coarsest."
+          }
+        }
+      },
       "Node": {
         "type": "object",
         "description": "A node and the workspace it belongs to, as the API knows them.",
@@ -899,6 +944,14 @@
             "minLength": 1,
             "maxLength": 40,
             "description": "The node's rvrs version."
+          },
+          "tags": {
+            "$ref": "#/components/schemas/Tags",
+            "description": "Every tag the node declares, sent whole each time. Left out, the API changes nothing. {} says the node declares none. A tag a person set on the web is never undone by a declaration: a tag is the declaration with the web's edits applied. It counts only when the enroll makes the node. The heartbeat speaks for the node from then on."
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Where the node says it is, sent whole each time. Left out, the API changes nothing. A location a person set on the web is never undone by a declaration. It counts only when the enroll makes the node. The heartbeat speaks for the node from then on."
           }
         }
       },
@@ -1001,6 +1054,14 @@
                 "description": "disk or memory. An outbox in memory is lost in a reboot."
               }
             }
+          },
+          "tags": {
+            "$ref": "#/components/schemas/Tags",
+            "description": "Every tag the node declares, sent whole each time. Left out, the API changes nothing. {} says the node declares none. A tag a person set on the web is never undone by a declaration: a tag is the declaration with the web's edits applied."
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location",
+            "description": "Where the node says it is, sent whole each time. Left out, the API changes nothing. A location a person set on the web is never undone by a declaration."
           }
         }
       },

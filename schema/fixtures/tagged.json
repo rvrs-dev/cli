@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "id": "tg7q2e",
+  "tool": "MTR",
+  "target": "example.com",
+  "address": "203.0.113.80",
+  "family": "IPv4",
+  "startedAt": "2026-11-23T08:15:00Z",
+  "origin": {
+    "kind": "node",
+    "node": "esb-1",
+    "nodeId": "7b0c5a2e-8d41-4f6a-9c3e-2a5d1e9f0b64",
+    "install": null,
+    "sourceAddress": "192.0.2.10",
+    "publicAddress": "203.0.113.17",
+    "tags": {
+      "isp": "telia",
+      "line": "ftth",
+      "region": "dk-south"
+    },
+    "location": {
+      "lat": 55.5,
+      "lon": 8.5,
+      "place": "Esbjerg, DK",
+      "precision": "city"
+    }
+  },
+  "outcome": "reached",
+  "summary": "12 pkt · 0.0% loss · 12.5 ms avg",
+  "error": null,
+  "measured": [
+    {
+      "name": "hops",
+      "value": 3.0,
+      "unit": null
+    },
+    {
+      "name": "sent",
+      "value": 12.0,
+      "unit": null
+    },
+    {
+      "name": "received",
+      "value": 12.0,
+      "unit": null
+    },
+    {
+      "name": "loss",
+      "value": 0.0,
+      "unit": "%"
+    },
+    {
+      "name": "min",
+      "value": 12.0,
+      "unit": "ms"
+    },
+    {
+      "name": "avg",
+      "value": 12.5,
+      "unit": "ms"
+    },
+    {
+      "name": "max",
+      "value": 13.0,
+      "unit": "ms"
+    },
+    {
+      "name": "jitter",
+      "value": 1.0,
+      "unit": "ms"
+    },
+    {
+      "name": "p50",
+      "value": 12.0,
+      "unit": "ms"
+    },
+    {
+      "name": "p95",
+      "value": 13.0,
+      "unit": "ms"
+    }
+  ],
+  "hops": [
+    {
+      "ttl": 1,
+      "address": "192.0.2.1",
+      "hostname": null,
+      "asn": null,
+      "network": null,
+      "lossPercent": 0.0,
+      "avgMilliseconds": 1.0,
+      "minMilliseconds": 1.0,
+      "maxMilliseconds": 1.0,
+      "jitterMilliseconds": 0.0,
+      "sent": 12,
+      "received": 12,
+      "samples": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "ttl": 2,
+      "address": "198.51.100.1",
+      "hostname": null,
+      "asn": null,
+      "network": null,
+      "lossPercent": 33.3,
+      "avgMilliseconds": 8.0,
+      "minMilliseconds": 8.0,
+      "maxMilliseconds": 8.0,
+      "jitterMilliseconds": 0.0,
+      "sent": 12,
+      "received": 8,
+      "samples": [
+        null,
+        8.0,
+        8.0,
+        null,
+        8.0,
+        8.0,
+        null,
+        8.0,
+        8.0,
+        null,
+        8.0,
+        8.0
+      ]
+    },
+    {
+      "ttl": 3,
+      "address": "203.0.113.80",
+      "hostname": null,
+      "asn": "AS64500",
+      "network": "Example Net",
+      "lossPercent": 0.0,
+      "avgMilliseconds": 12.5,
+      "minMilliseconds": 12.0,
+      "maxMilliseconds": 13.0,
+      "jitterMilliseconds": 1.0,
+      "sent": 12,
+      "received": 12,
+      "samples": [
+        12.0,
+        13.0,
+        12.0,
+        13.0,
+        12.0,
+        13.0,
+        12.0,
+        13.0,
+        12.0,
+        13.0,
+        12.0,
+        13.0
+      ]
+    }
+  ],
+  "records": null,
+  "sources": null,
+  "probe": null,
+  "mtu": null,
+  "samples": [
+    12.0,
+    13.0,
+    12.0,
+    13.0,
+    12.0,
+    13.0,
+    12.0,
+    13.0,
+    12.0,
+    13.0,
+    12.0,
+    13.0
+  ],
+  "interpretation": [
+    "Stable. No loss over 12 packets. p95 13.0 ms, jitter 1.0 ms.",
+    "Hop 2 answers fewer probes than the hops after it. Routers often rate-limit these replies, so the path itself is likely fine."
+  ],
+  "sentence": "12 packets to 203.0.113.80, 0.0% loss, 12.5 ms average. Stable."
+}

@@ -11,6 +11,7 @@ pub mod format;
 pub mod history;
 pub mod model;
 pub mod mtu;
+pub mod node_config;
 pub mod packet;
 pub mod paths;
 pub mod report;

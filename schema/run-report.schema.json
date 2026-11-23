@@ -97,6 +97,51 @@
             "string",
             "null"
           ]
+        },
+        "tags": {
+          "type": "object",
+          "description": "The origin's tags as they were when the run was stored: a key and a value each, such as isp=telia, at most 20. The API writes them from the install's tags and replaces whatever the sender put here, so a run keeps the tags of the day it was made. A run stored before tags existed, and a run made on this device, has none. A reader shows them where that helps and never requires them.",
+          "maxProperties": 20,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9._-]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
+          }
+        },
+        "location": {
+          "type": "object",
+          "description": "Where the origin was when the run was stored, already rounded to its precision. The API writes it from the install's location and replaces whatever the sender put here. An origin with no location, and a run made on this device, has none. A reader shows it where that helps and never requires it. A report the API wrote always carries the precision.",
+          "required": [
+            "lat",
+            "lon"
+          ],
+          "properties": {
+            "lat": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90,
+              "description": "Degrees north. The API rounds it to the precision before it stores it."
+            },
+            "lon": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "description": "Degrees east. The API rounds it to the precision before it stores it."
+            },
+            "place": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "description": "A place as a person would say it, such as Esbjerg, DK."
+            },
+            "precision": {
+              "type": "string",
+              "maxLength": 20,
+              "description": "How many digits of the coordinates are kept: exact (4 decimals, about 10 m), area (2 decimals, about 1 km) or city (1 decimal, about 10 km), city when left out. A reader that doesn't know the word treats it as city, the coarsest."
+            }
+          }
         }
       }
     },

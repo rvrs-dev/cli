@@ -41,7 +41,7 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | Command | Will do |
 | --- | --- |
 | `rvrs iperf3` | Download and upload throughput against an iperf3 server, as the rvrs app measures it |
-| `rvrs node` | Runs this machine as a node in your fleet |
+| `rvrs node` | Runs this machine as a node in your fleet. It reads its tags and its location from `--tag key=value`, `--location <lat>,<lon>`, `--place` and `--location-precision`, from `RVRS_NODE_*` variables or from a file, and refuses a value it can't read. [The node's configuration](../schema/node-config.md) has the rules |
 | `rvrs nodes` | Lists the nodes in your fleet. `nodes show`, `nodes rename` and `nodes remove` manage one |
 | `rvrs schedule <tool> <target> --node <name> --every <time>` | Has a node repeat a run |
 | `rvrs schedules`, `rvrs alerts` | List the fleet's schedules and the alerts they sent |
@@ -57,7 +57,7 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | --- | --- |
 | `id` | The run's id in history, which `rvrs show` and `rvrs save` take |
 | `tool`, `target`, `address`, `family`, `startedAt` | What ran, against what, and when (UTC) |
-| `origin` | Where the run was made from: `node` (`null` is this device), `sourceAddress` and `publicAddress` |
+| `origin` | Where the run was made from: `node` (`null` is this device), `sourceAddress` and `publicAddress`. A run from a node stored in an account also has the node's `tags` and `location` as they were that day |
 | `outcome` | `reached`, `exhausted`, `stopped` or `failed`, with the reason in `error` |
 | `measured` | What was measured, as `name`, `value` and `unit`. For a BGP lookup: the collector peers that see the prefix, the distinct paths and the origin AS number |
 | `hops` | Traceroute and MTR: each hop's address, name, network, loss and average |
