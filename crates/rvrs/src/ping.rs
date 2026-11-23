@@ -337,10 +337,11 @@ pub fn run(args: PingArgs, multicall: bool) -> ExitCode {
     }
 
     let keep = std::env::var("RVRS_HISTORY").map_or(true, |value| value != "0");
+    let mut held = false;
     if keep && !run.packets().is_empty() {
         let mut history = History::open();
         crate::pulse::count_run(run.tool);
-        crate::sync::queue(run);
+        held = crate::sync::queue_for(run, look == Look::Pretty);
         if let Err(error) = history.save(run) {
             eprintln!("rvrs: Couldn't save this run to history ({error}).");
         }
@@ -371,6 +372,9 @@ pub fn run(args: PingArgs, multicall: bool) -> ExitCode {
     let _ = std::io::stdout().flush();
     if let Some(case) = case {
         crate::commands::save_after_run(run, case);
+    }
+    if held {
+        crate::sync::print_run_page(run);
     }
 
     // ping's own codes: 0 when the target answered, 1 when it didn't. With a count and a

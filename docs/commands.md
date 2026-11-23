@@ -28,6 +28,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
 | `rvrs logout` | Signs out and revokes this install's credential |
 | `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
+| `rvrs share [id]` | Prints the share link of the newest run, or the one named: a public page anyone with the link opens. `--stop` ends the link. [Share links](#share-links) has the options |
 | `rvrs nodes` | Lists the nodes in your fleet: who is online, when each was last seen, its version and its tags |
 | `rvrs node` | Runs this machine as a node. It takes a token as `RVRS_TOKEN`, makes the runs asked of it and sends each result. [Nodes](node.md) has the flags |
 | `rvrs status` | Checks that this device can run the tools, lists the build features of this build and says who is signed in |
@@ -48,7 +49,6 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | `rvrs nodes show\|rename\|remove <name>` | Shows a node, renames it or takes it out of the fleet |
 | `rvrs schedule <tool> <target> --node <name> --every <time>` | Has a node repeat a run |
 | `rvrs schedules`, `rvrs alerts` | List the fleet's schedules and the alerts they sent |
-| `rvrs share` | Print a run's share link |
 | `--fleet` | Runs it from every node in the fleet |
 
 ## The report
@@ -108,11 +108,34 @@ An install that signs in with `RVRS_TOKEN` only sends its runs. It reads nothing
 
 `rvrs login` asks the rvrs API for a login, prints a code of eight characters and a link, and opens the link. Sign in at app.rvrs.dev, or make your account there, and confirm the code. The command has been asking every three seconds and now receives this install's credential, which it keeps in `~/.config/rvrs/credentials.json`, readable by you alone. The code lives ten minutes.
 
+Signed in, a tool command ends with the link to its run page, `Run page https://app.rvrs.dev/runs/<id>`, which only your account opens. The line comes once the API has the run, which takes a moment after the result, and only in the terminal look: `--json`, `--classic` and a pipe print the run alone. When the API doesn't answer within four seconds, the command ends without the line and the run goes with the next sync.
+
 On a device nobody sits at, make a token under Installs at app.rvrs.dev and set it as `RVRS_TOKEN`. It takes the place of the stored credential.
 
 `rvrs logout` revokes the credential at the API, removes the file and removes the runs your other installs made from this device. Runs made here, saved runs, cases and favorites stay. You can also revoke any install at app.rvrs.dev.
 
 `RVRS_API=<url>` points rvrs at another API, such as one you host. A stored credential is only ever sent to the API it came from.
+
+## Share links
+
+`rvrs share` makes a public page of a run on app.rvrs.dev. Anyone with the link can open it without signing in. It needs a login: a run is shared from your account, so a run that isn't there yet is sent first, also one made before you signed in.
+
+```bash
+rvrs mtr 1.1.1.1
+rvrs share                     # the newest run
+rvrs share 49fpsw --public-address
+rvrs share --stop 49fpsw       # the link stops working for everyone
+```
+
+The link prints alone on stdout, so `rvrs share | pbcopy` copies it, and a sentence on stderr says what the page shows. `--json` prints the link with its id, the run's id in the account and what it shows.
+
+| Option | The page |
+| --- | --- |
+| Private Networks, on | Shows the private network the run started in: the source address, the router and its name, the hops at private addresses before the first public one. `--no-private-networks` takes their addresses and names off and keeps their figures |
+| `--public-address` | Shows the line's public address and what gives it away, such as a hop at that address. Left out by default |
+| `--install-name` | Shows the name of the install that made the run. Left out by default. A node's name always shows |
+
+A run has one link. Sharing it again keeps the link and changes what it shows to the options of the newer share. `--stop` takes no option, and a run without a link says so. The Console shares with `S` on a run, after you choose what the page shows.
 
 ## Updates
 

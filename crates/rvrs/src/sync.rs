@@ -2,7 +2,8 @@
 //!
 //! Sending: a run made while signed in is written to the `outbox` folder as the body of
 //! `POST /v1/runs`, the report with the run as this CLI keeps it, and a process of its own
-//! (`rvrs __sync`) sends it, so the command that made the run never waits. A run that didn't go,
+//! (`rvrs __sync`) sends it. A tool command in a terminal sends its own run once the result is
+//! on screen, for a few seconds at most, to end with the link to its run page. A run that didn't go,
 //! offline for one, stays in the outbox for the next time, for a week and 500 runs at most.
 //!
 //! Receiving, for an install a person signed in on: the runs their other installs made are read
@@ -209,11 +210,133 @@ pub fn start() {
 
 /// Hands a run that just ended to the account, when this install is signed in.
 pub fn queue(run: &Run) {
-    if !enabled() || run.from.is_some() || account::token().is_none() {
-        return;
-    }
-    if put_in_outbox(run, &Cache::open()) {
+    if hold(run) {
         start();
+    }
+}
+
+/// Puts a run that just ended in the outbox and sends nothing yet: the command that made it
+/// sends it with [`run_page`] once the result is on screen. True when the run waits there.
+pub fn hold(run: &Run) -> bool {
+    if !enabled() || run.from.is_some() || account::token().is_none() {
+        return false;
+    }
+    put_in_outbox(run, &Cache::open())
+}
+
+/// A tool command's half of [`queue`]: with `link`, the run waits for [`print_run_page`] after
+/// the result is on screen. True when it does.
+pub fn queue_for(run: &Run, link: bool) -> bool {
+    if link {
+        return hold(run);
+    }
+    queue(run);
+    false
+}
+
+/// The last line of a tool command whose run reached the account: the link to its run page.
+pub fn print_run_page(run: &Run) {
+    if let Some(link) = run_page(run) {
+        let style = crate::style::Style::detect(crate::style::ColorChoice::Auto);
+        println!("{} {link}", style.dim("Run page"));
+    }
+}
+
+/// How long a tool command waits for the API to take its run before it ends without the link.
+const LINK_WAITS: u64 = 4;
+
+/// Sends a run [`hold`] put in the outbox and answers the link to its run page, which only the
+/// account opens. Only for a person's login: a token from the environment reads nothing, so it
+/// gets no link. None when the API didn't take the run in a few seconds, or another sync is
+/// at work. The run then goes with the next sync, which this starts either way.
+pub fn run_page(run: &Run) -> Option<String> {
+    let link = send_held(run);
+    start();
+    link
+}
+
+fn send_held(run: &Run) -> Option<String> {
+    let app = account::app_origin()?;
+    let token = account::token().filter(|_| !account::env_token())?;
+    let path = outbox().join(format!("{}.json", run.id));
+    if !path.exists() {
+        return None;
+    }
+    // The sync of the run before this one may be at work. The link isn't worth the wait.
+    let _lock = Lock::take()?;
+    let mut state = read_state(&who(&token));
+    let sent = send_file(&mut state, &run.id, &path, LINK_WAITS);
+    write_state(&state);
+    match sent {
+        Sent::Taken(account_id) => Some(run_page_url(&app, &account_id)),
+        _ => None,
+    }
+}
+
+/// The run page of a run in the account: the web app's view of it, for the account alone.
+pub fn run_page_url(app: &str, account_id: &str) -> String {
+    format!("{}/runs/{account_id}", app.trim_end_matches('/'))
+}
+
+/// Whether this install can share runs. The error is the sentence that says why not.
+pub fn can_share() -> Result<(), String> {
+    sharing_token().map(|_| ())
+}
+
+/// The token of a person's login, when this install can share runs. The error is a sentence.
+fn sharing_token() -> Result<String, String> {
+    if !enabled() {
+        return Err(
+            "RVRS_SYNC=0 is set, so runs stay on this device and can\u{2019}t be shared.".into(),
+        );
+    }
+    if account::env_token() {
+        return Err("RVRS_TOKEN is set, and a token only sends runs. Unset it and sign in with rvrs login to share one.".into());
+    }
+    account::token().ok_or_else(|| "Sharing a run needs an account. rvrs login signs in.".into())
+}
+
+/// The id a run has in the account, as far as this device knows. None for a run the account
+/// doesn't have yet. Asks the API nothing.
+pub fn known_account_id(run: &Run) -> Result<Option<String>, String> {
+    let token = sharing_token()?;
+    Ok(read_state(&who(&token)).ids.get(&run.id).cloned())
+}
+
+/// The id a run has in the account. A run made here that the account doesn't have yet is sent
+/// first, also one made before this install signed in. The error is a sentence to show.
+pub fn account_id(run: &Run) -> Result<String, String> {
+    let token = sharing_token()?;
+    if let Some(known) = read_state(&who(&token)).ids.get(&run.id) {
+        return Ok(known.clone());
+    }
+    if run.from.is_some() {
+        return Err("This run came from another install and isn\u{2019}t known here by its id in the account. rvrs sync reads it again.".into());
+    }
+    let path = outbox().join(format!("{}.json", run.id));
+    if !path.exists() && !put_in_outbox(run, &Cache::open()) {
+        return Err(format!(
+            "Couldn\u{2019}t write this run to {} to send it.",
+            paths::display(&outbox())
+        ));
+    }
+    let _lock = wait_for_lock()?;
+    let mut state = read_state(&who(&token));
+    // The sync that held the lock may have sent it.
+    if let Some(known) = state.ids.get(&run.id) {
+        return Ok(known.clone());
+    }
+    let sent = send_file(&mut state, &run.id, &path, 20);
+    write_state(&state);
+    match sent {
+        Sent::Taken(account_id) => Ok(account_id),
+        Sent::Refused(message) => Err(message),
+        Sent::Dropped(message) => Err(format!(
+            "The rvrs API didn\u{2019}t take this run. {message}"
+        )),
+        Sent::Waiting(message) => Err(format!(
+            "{message} The run waits on this device and goes with the next sync."
+        )),
     }
 }
 
@@ -284,6 +407,53 @@ fn refused(status: u16, body: &Value) -> String {
         .unwrap_or_else(|| format!("The rvrs API answered {status}."))
 }
 
+/// What sending one run from the outbox came to.
+#[derive(Debug, PartialEq)]
+enum Sent {
+    /// The account has it, under this id.
+    Taken(String),
+    /// The API will never take it, for this reason. The file is gone.
+    Dropped(String),
+    /// It didn't get through and waits in the outbox, for this reason.
+    Waiting(String),
+    /// The credential isn't one the API knows. Nothing more will go.
+    Refused(String),
+}
+
+/// Sends one run from the outbox and records its id in the account.
+fn send_file(state: &mut State, id: &str, path: &std::path::Path, seconds: u64) -> Sent {
+    let body: Option<Value> = std::fs::read(path)
+        .ok()
+        .and_then(|data| serde_json::from_slice(&data).ok());
+    let Some(body) = body else {
+        let _ = std::fs::remove_file(path);
+        return Sent::Dropped("The run waiting to be sent couldn't be read.".into());
+    };
+    let (status, answer) = match account::call("POST", "/v1/runs", Some(&body), seconds) {
+        Ok(answer) => answer,
+        Err(message) => return Sent::Waiting(message),
+    };
+    match status {
+        200 | 201 => {
+            let _ = std::fs::remove_file(path);
+            match answer["id"].as_str() {
+                Some(account_id) => {
+                    state.ids.insert(id.to_string(), account_id.to_string());
+                    Sent::Taken(account_id.to_string())
+                }
+                None => Sent::Dropped("The rvrs API took the run without naming its id.".into()),
+            }
+        }
+        401 => Sent::Refused(refused(status, &answer)),
+        // Too large or not a report the API reads: sending it again changes nothing.
+        413 | 422 => {
+            let _ = std::fs::remove_file(path);
+            Sent::Dropped(refused(status, &answer))
+        }
+        _ => Sent::Waiting(refused(status, &answer)),
+    }
+}
+
 /// Sends what is in the outbox. A run the API will never take is dropped, and one that
 /// didn't get through stays.
 fn send(state: &mut State, done: &mut Done) -> Result<(), String> {
@@ -316,34 +486,15 @@ fn send(state: &mut State, done: &mut Done) -> Result<(), String> {
     }
     let files: Vec<PathBuf> = files.into_iter().map(|(_, path)| path).collect();
     for (index, path) in files.iter().enumerate() {
-        let body: Option<Value> = std::fs::read(path)
-            .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok());
-        let (Some(body), Some(id)) = (body, path.file_stem().and_then(|stem| stem.to_str())) else {
+        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
             let _ = std::fs::remove_file(path);
             continue;
         };
-        let (status, answer) = match call("POST", "/v1/runs", Some(&body)) {
-            Ok(answer) => answer,
-            Err(_) => {
-                done.waiting = files.len() - index;
-                break;
-            }
-        };
-        match status {
-            200 | 201 => {
-                if let Some(account_id) = answer["id"].as_str() {
-                    state.ids.insert(id.to_string(), account_id.to_string());
-                }
-                let _ = std::fs::remove_file(path);
-                done.sent += 1;
-            }
-            401 => return Err(refused(status, &answer)),
-            // Too large or not a report the API reads: sending it again changes nothing.
-            413 | 422 => {
-                let _ = std::fs::remove_file(path);
-            }
-            _ => {
+        match send_file(state, id, path, 20) {
+            Sent::Taken(_) => done.sent += 1,
+            Sent::Dropped(_) => {}
+            Sent::Refused(message) => return Err(message),
+            Sent::Waiting(_) => {
                 done.waiting = files.len() - index;
                 break;
             }
@@ -705,33 +856,40 @@ fn queue_saved(state: &State) {
     }
 }
 
-fn sync() -> Result<Done, String> {
-    let Some(token) = account::token() else {
-        return Err("Not signed in. rvrs login signs in.".into());
-    };
-    // One started by the run before this may be at work. It takes a few seconds.
-    let mut lock = Lock::take();
-    for _ in 0..100 {
-        if lock.is_some() {
-            break;
+/// Whose state `sync.json` holds: the API and the person, or the token of a device nobody sits at.
+fn who(token: &str) -> String {
+    match account::Credential::stored() {
+        Some(credential) if !account::env_token() => {
+            format!("{}|{}", credential.api, credential.email)
         }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        lock = Lock::take();
-    }
-    let Some(_lock) = lock else {
-        return Err("Another sync is still running. Try again in a moment.".into());
-    };
-    // A token from the environment is a device nobody sits at: it sends and reads nothing.
-    let sends_only = account::env_token();
-    let who = match account::Credential::stored() {
-        Some(credential) if !sends_only => format!("{}|{}", credential.api, credential.email),
         _ => format!(
             "{}|token|{}",
             account::api_base(),
             &token[..token.len().min(12)]
         ),
+    }
+}
+
+/// Waits for the sync that may be at work, as the run before this one started it. It takes a
+/// few seconds.
+fn wait_for_lock() -> Result<Lock, String> {
+    for _ in 0..100 {
+        if let Some(lock) = Lock::take() {
+            return Ok(lock);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err("Another sync is still running. Try again in a moment.".into())
+}
+
+fn sync() -> Result<Done, String> {
+    let Some(token) = account::token() else {
+        return Err("Not signed in. rvrs login signs in.".into());
     };
-    let mut state = read_state(&who);
+    let _lock = wait_for_lock()?;
+    // A token from the environment is a device nobody sits at: it sends and reads nothing.
+    let sends_only = account::env_token();
+    let mut state = read_state(&who(&token));
     let mut done = Done::default();
     if !sends_only {
         queue_saved(&state);
@@ -827,6 +985,19 @@ mod tests {
             runs: list(runs),
             created_at: "2026-11-21T10:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn a_run_page_is_the_web_apps_view_of_the_run_in_the_account() {
+        let id = "4f6c8f0e-2b7d-4c55-9a8e-1d2f3a4b5c6d";
+        assert_eq!(
+            run_page_url("https://app.rvrs.dev", id),
+            "https://app.rvrs.dev/runs/4f6c8f0e-2b7d-4c55-9a8e-1d2f3a4b5c6d"
+        );
+        assert_eq!(
+            run_page_url("http://localhost:3100/", id),
+            "http://localhost:3100/runs/4f6c8f0e-2b7d-4c55-9a8e-1d2f3a4b5c6d"
+        );
     }
 
     #[test]

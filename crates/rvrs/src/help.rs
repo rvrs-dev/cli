@@ -279,7 +279,22 @@ pub fn main(style: Style) -> String {
                 "Send this device's runs to the account and read what is new, now",
                 false,
             ),
-            ("share [id]", "Print the share link to a run page", true),
+            (
+                "share [id]",
+                "Print the share link of the newest run, or the one named: a public page",
+                false,
+            ),
+            (
+                "share --public-address",
+                "Show the public address on the page, and --install-name the install's name",
+                false,
+            ),
+            (
+                "share --no-private-networks",
+                "Leave the private network out of the page",
+                false,
+            ),
+            ("share --stop [id]", "End a run's share link", false),
         ],
     ));
     out.push('\n');

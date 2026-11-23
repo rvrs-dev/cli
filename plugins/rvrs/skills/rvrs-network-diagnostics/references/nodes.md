@@ -52,4 +52,6 @@ Compare a run only with runs of the same origin. A run with `origin.install` set
 2. The command returns once they confirmed. `rvrs status` then names the account.
 3. On a device nobody sits at, the person makes a token under Installs on app.rvrs.dev and sets it as `RVRS_TOKEN`. Never ask them to paste a token into the conversation.
 
+Signed in, a tool command in a terminal ends with `Run page <link>`, a page of the run that only the person's account opens. `rvrs share [id]` makes a share link instead, a public page anyone with the link opens without signing in. It prints the link alone on stdout, and `--json` prints it with its id and what it shows. The page shows the private network (the source address, the router and the hops at private addresses) unless `--no-private-networks` is given, and the public address and the install's name only with `--public-address` and `--install-name`. Make one only when the person asks, and ask whether the private network should show. `rvrs share --stop [id]` ends the link.
+
 `rvrs logout` signs out and revokes this install's credential. An account is never needed to run a tool. Do not sign in or out unasked, and never print or copy the contents of `credentials.json`.

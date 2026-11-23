@@ -18,6 +18,7 @@ mod ping;
 mod pretty;
 mod pulse;
 mod remote;
+mod share;
 mod style;
 mod sync;
 mod term;
@@ -117,9 +118,9 @@ fn main() -> ExitCode {
     {
         pulse::count_open();
         // The account commands sync themselves, or end what a sync would need.
-        let own_sync = arguments
-            .first()
-            .is_some_and(|command| matches!(command.as_str(), "sync" | "login" | "logout"));
+        let own_sync = arguments.first().is_some_and(|command| {
+            matches!(command.as_str(), "sync" | "login" | "logout" | "share")
+        });
         if !own_sync {
             sync::when_due();
         }
@@ -179,7 +180,7 @@ fn main() -> ExitCode {
         "completions" => commands::completions(rest),
         "login" => account::login(rest),
         "logout" => account::logout(rest),
-        "share" => fail("Share links aren't available yet. To send a run, print it as a report with rvrs last --json."),
+        "share" => share::command(rest),
         "node" => node::run(rest),
         "nodes" => remote::nodes(rest),
         "schedule" | "schedules" | "alerts" => fail("Schedules and alerts aren't available yet. A node makes a run when you ask it to, with --node."),

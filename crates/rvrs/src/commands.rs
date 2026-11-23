@@ -396,7 +396,7 @@ fn count_of(count: usize, one: &str, many: &str) -> String {
 }
 
 /// How messages name a run: "1.1.1.1 · traceroute (abc234)", with the start of its id.
-fn run_name(run: &Run) -> String {
+pub fn run_name(run: &Run) -> String {
     format!(
         "{} \u{00B7} {} ({})",
         run.target,
@@ -438,7 +438,7 @@ pub fn kept_message(run: &Run, kept: &Kept) -> String {
 }
 
 /// A run named by id, from history and then saved runs, or the newest in history.
-fn pick_run(id: Option<&str>) -> Result<Run, ExitCode> {
+pub fn pick_run(id: Option<&str>) -> Result<Run, ExitCode> {
     let history = History::open();
     match id {
         Some(id) => {

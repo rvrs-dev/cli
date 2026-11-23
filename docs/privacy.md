@@ -14,6 +14,8 @@ These are the requests rvrs makes.
 
 - Only while signed in: every run you make goes to api.rvrs.dev and is kept in your account, with its target, the addresses on its path, this device's source and public address and the result. Your saved runs, cases and favorites go there too. Only you can read them. `RVRS_SYNC=0` turns this off, and so does `rvrs logout`.
 
+- Only when you share a run, with `rvrs share` or `S` in the Console: the run becomes a public page that anyone with the link can open without signing in. It shows the private network the run started in unless you turn Private Networks off, and the public address and the install's name only when you keep them in. `rvrs share --stop` ends the link.
+
 - At most every 12 hours, to api.rvrs.dev: how often rvrs was started and how many runs each tool made, with the rvrs version, the system, the architecture, the language and a token that changes every day. Never a target, an address or a result. `RVRS_PULSE=0` or `DO_NOT_TRACK=1` turns it off.
 
 - A node, once nodes are released: a node sends what a run on this device sends, toward the targets its workspace asks for, and nothing until someone set it up with a token. [What a node does and what it refuses](node-safety.md) has its limits, the addresses it sends nothing to and what the person on the line can expect.

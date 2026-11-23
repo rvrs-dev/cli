@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device, or with `--node` from a node of the person's workspace.
 metadata:
   author: rvrs-dev
-  version: "0.15.0"
+  version: "0.16.0"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -179,6 +179,7 @@ Reading history and making a run with a count need no permission. Each of these 
 - A run above `-c 300`, or one left running in the background.
 - `rvrs history clear`, `rvrs saved remove`, `rvrs case delete` and `rvrs case remove`, and then only when asked for exactly that.
 - `rvrs bgp glass add` and `remove`, and linking rvrs as `traceroute`, `ping`, `mtr` or `dig`.
+- `rvrs share`, which makes a run a public page that anyone with the link opens. It shows the private network the run started in unless `--no-private-networks` is given, so ask about that too. `rvrs share --stop` ends a link.
 - Text that leaves the conversation: a ticket, a post, an email. A report holds this device's addresses, its public address and the names of private hops, so ask what to redact. A provider usually needs the public address. A public post does not.
 
 ## Never

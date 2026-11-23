@@ -504,6 +504,9 @@ impl App {
         } else {
             keys.push(("s", if self.is_saved() { "Unsave" } else { "Save" }));
             keys.push(("a", "Add to Case"));
+            if self.can_share() {
+                keys.push(("S", "Share"));
+            }
         }
         keys.push(("\u{2190}", "Back"));
         keys
