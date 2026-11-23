@@ -32,14 +32,63 @@ const CHECK_EVERY: u64 = 24 * 3600;
 /// How this rvrs got onto this device, which decides how it is updated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Install {
-    /// Built from a git checkout: the repo's folder, and whether it is a release build.
-    Checkout { repo: PathBuf, release: bool },
+    /// Built from a git checkout: the repo's folder and how the running binary was built, so an
+    /// update builds the same binary again.
+    Checkout { repo: PathBuf, build: CheckoutBuild },
     /// Installed by Homebrew.
     Homebrew,
     /// Installed from a .deb or .rpm, into /usr/bin. The package manager owns the file.
     Package,
     /// A release binary, as the installer puts it in place.
     Binary { path: PathBuf },
+}
+
+/// How a checkout's binary was built, read off its path: `target/[<target>/]<profile>/rvrs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckoutBuild {
+    /// The Cargo profile: `dev` for `target/debug`, else the folder's name (`release`, `small`).
+    pub profile: String,
+    /// The target triple when it was built with `--target`.
+    pub target: Option<String>,
+}
+
+impl CheckoutBuild {
+    /// Reads the folders between `target` and the binary: `release`, or
+    /// `armv7-unknown-linux-musleabihf/small`.
+    fn of(folders: &[String]) -> Self {
+        let (target, profile) = match folders {
+            [target, profile] => (Some(target.clone()), profile.clone()),
+            [.., profile] => (None, profile.clone()),
+            [] => (None, "dev".to_string()),
+        };
+        let profile = if profile == "debug" {
+            "dev".to_string()
+        } else {
+            profile
+        };
+        Self { profile, target }
+    }
+
+    /// The arguments after `cargo build` that put the binary where this one is.
+    pub fn args(&self) -> Vec<String> {
+        let mut args: Vec<String> = match self.profile.as_str() {
+            "dev" => vec![],
+            "release" => vec!["--release".into()],
+            other => vec!["--profile".into(), other.into()],
+        };
+        if let Some(target) = &self.target {
+            args.extend(["--target".into(), target.clone()]);
+        }
+        args
+    }
+
+    /// The command as a person types it: "cargo build --profile small --target …".
+    fn command(&self) -> String {
+        std::iter::once("cargo build".to_string())
+            .chain(self.args())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 /// Tells the kinds apart by where the running binary lives.
@@ -51,15 +100,25 @@ pub fn install_of(executable: &Path) -> Install {
     if text == "/usr/bin/rvrs" {
         return Install::Package;
     }
-    // target/<profile>/rvrs inside a folder that is a git checkout with a Cargo.toml.
+    // target/[<target>/]<profile>/rvrs inside a folder that is a git checkout with a Cargo.toml.
     let mut folder = executable.parent();
     while let Some(current) = folder {
         if current.file_name().is_some_and(|name| name == "target") {
             if let Some(repo) = current.parent() {
                 if repo.join(".git").exists() && repo.join("Cargo.toml").exists() {
+                    let folders: Vec<String> = executable
+                        .parent()
+                        .and_then(|parent| parent.strip_prefix(current).ok())
+                        .map(|inside| {
+                            inside
+                                .components()
+                                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     return Install::Checkout {
                         repo: repo.to_path_buf(),
-                        release: text.contains("/release/"),
+                        build: CheckoutBuild::of(&folders),
                     };
                 }
             }
@@ -441,8 +500,8 @@ pub fn run(arguments: &[String]) -> ExitCode {
             println!("This rvrs was installed from a package. Update it with the newest .deb or .rpm from github.com/{REPO}/releases.");
             ExitCode::SUCCESS
         }
-        Install::Checkout { repo, release } => {
-            update_checkout(&repo, release, asked.check_only, &wanted, style)
+        Install::Checkout { repo, build } => {
+            update_checkout(&repo, &build, asked.check_only, &wanted, style)
         }
         Install::Binary { path } => update_binary(&path, asked.check_only, &wanted, style),
     }
@@ -455,7 +514,7 @@ fn current() -> String {
 /// A build from a checkout: fetch, show what is new, fast-forward, build.
 fn update_checkout(
     repo: &Path,
-    release: bool,
+    how: &CheckoutBuild,
     check_only: bool,
     wanted: &Wanted,
     style: Style,
@@ -540,16 +599,20 @@ fn update_checkout(
         }
         if git(repo, &["merge", "--ff-only", "--quiet", "@{u}"]).is_none() {
             return fail(&format!(
-                "{shown} has commits of its own that the remote doesn't, so rvrs left it alone. Rebase or merge there, then build with cargo build --release."
+                "{shown} has commits of its own that the remote doesn't, so rvrs left it alone. Rebase or merge there, then build with {}.",
+                how.command()
             ));
         }
     }
     println!();
+    // The profile and the target the running binary was built with, so the build lands where
+    // it is and replaces it.
     let mut build = Command::new("cargo");
-    build.arg("build").current_dir(repo).stdin(Stdio::null());
-    if release {
-        build.arg("--release");
-    }
+    build
+        .arg("build")
+        .args(how.args())
+        .current_dir(repo)
+        .stdin(Stdio::null());
     // The build features: the pulled Cargo.toml's default features, less what this build leaves
     // out, so one added in the new commits is built in.
     if !wanted.left_out.is_empty() {
@@ -568,9 +631,16 @@ fn update_checkout(
         Ok(output) if output.status.success() => {}
         Ok(output) => {
             let _ = std::io::stderr().write_all(&output.stderr);
-            return fail("The build failed, so the rvrs you have is unchanged. cargo's output is above.");
+            return fail(
+                "The build failed, so the rvrs you have is unchanged. cargo's output is above.",
+            );
         }
-        Err(error) => return fail(&format!("Couldn't run cargo ({error}). The new commits are pulled. cargo build --release builds them.")),
+        Err(error) => {
+            return fail(&format!(
+                "Couldn't run cargo ({error}). The new commits are pulled. {} builds them.",
+                how.command()
+            ))
+        }
     }
     write_found(
         &cache_file(),
@@ -1013,19 +1083,28 @@ mod tests {
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         std::fs::create_dir_all(repo.join("target/release")).unwrap();
         std::fs::write(repo.join("Cargo.toml"), "").unwrap();
+        let built = |path: &str| match install_of(&repo.join(path)) {
+            Install::Checkout { repo: found, build } if found == repo => Some(build.command()),
+            _ => None,
+        };
         assert_eq!(
-            install_of(&repo.join("target/release/rvrs")),
-            Install::Checkout {
-                repo: repo.clone(),
-                release: true
-            }
+            built("target/release/rvrs").as_deref(),
+            Some("cargo build --release")
+        );
+        assert_eq!(built("target/debug/rvrs").as_deref(), Some("cargo build"));
+        // The small build, and builds for another target, are built again the same way, so the
+        // update replaces the binary that is running.
+        assert_eq!(
+            built("target/small/rvrs").as_deref(),
+            Some("cargo build --profile small")
         );
         assert_eq!(
-            install_of(&repo.join("target/debug/rvrs")),
-            Install::Checkout {
-                repo: repo.clone(),
-                release: false
-            }
+            built("target/armv7-unknown-linux-musleabihf/small/rvrs").as_deref(),
+            Some("cargo build --profile small --target armv7-unknown-linux-musleabihf")
+        );
+        assert_eq!(
+            built("target/x86_64-unknown-linux-musl/release/rvrs").as_deref(),
+            Some("cargo build --release --target x86_64-unknown-linux-musl")
         );
         let _ = std::fs::remove_dir_all(repo);
     }
