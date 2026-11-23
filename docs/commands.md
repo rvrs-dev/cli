@@ -31,6 +31,9 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs share [id]` | Prints the share link of the newest run, or the one named: a public page anyone with the link opens. `--stop` ends the link. [Share links](#share-links) has the options |
 | `rvrs nodes` | Lists the nodes in your fleet: who is online, when each was last seen, its version and its tags |
 | `rvrs node` | Runs this machine as a node. It takes a token as `RVRS_TOKEN`, makes the runs asked of it and sends each result. [Nodes](node.md) has the flags |
+| `rvrs schedules` | Lists the schedules you made: what each runs, how often, where, on how many nodes and when it last ran. `--json` prints the API's answer |
+| `rvrs schedule add <tool> <target> --every <interval>` | Has nodes repeat a run: on the nodes `--node` names, on the nodes a selector matches with `--fleet <selector>`, or on every node with `--all-nodes`. `--name` names it. [Schedules](node.md#schedules) has the rest |
+| `rvrs schedule show\|pause\|resume\|rm <id>` | Shows a schedule, pauses it, has its nodes run it again, or deletes it and keeps the runs it made. The start of an id is enough |
 | `rvrs status` | Checks that this device can run the tools, lists the build features of this build and says who is signed in |
 | `rvrs completions install` | Sets up tab completion for zsh, bash or fish |
 | `rvrs update` | Brings rvrs up to date, however it was installed. `--with` and `--without` change its [build features](build-features.md) |
@@ -47,9 +50,8 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | --- | --- |
 | `rvrs iperf3` | Download and upload throughput against an iperf3 server, as the rvrs app measures it |
 | `rvrs nodes show\|rename\|remove <name>` | Shows a node, renames it or takes it out of the fleet |
-| `rvrs schedule <tool> <target> --node <name> --every <time>` | Has a node repeat a run |
-| `rvrs schedules`, `rvrs alerts` | List the fleet's schedules and the alerts they sent |
-| `--fleet` | Runs it from every node in the fleet |
+| `rvrs alerts` | Lists the alerts sent when a scheduled run's result changed |
+| `--fleet` on a tool | Runs it from every node in the fleet |
 
 ## The report
 
