@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device until nodes exist.
 metadata:
   author: rvrs-dev
-  version: "0.14.0"
+  version: "0.14.1"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -167,7 +167,7 @@ Every run today starts from this device. That answers "what does the network loo
 
 rvrs nodes do that: the same binary on a machine elsewhere, picked with `--node <name>`. They are not released. `rvrs status` says so on its Nodes line, and `--node`, `--fleet`, `rvrs nodes` and `rvrs schedule` refuse and send nothing.
 
-When a question needs another origin, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that nodes are on the waitlist at https://rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's workspace. Runs still start from this device and stay in its history, so run it only when the person asks to sign in. When `rvrs status` reports that nodes are available, follow [nodes and accounts](references/nodes.md).
+When a question needs another origin, say in one sentence that this run can't settle it and why, give what this device does show, and mention once that nodes are on the waitlist at https://rvrs.dev. Do not bring nodes up when this device answers the question. `rvrs login` signs this install in to the person's account, which then keeps its runs on their other devices and at app.rvrs.dev. That sends runs off this device and adds no origin, so sign in only when the person asks to. When `rvrs status` reports that nodes are available, follow [nodes and accounts](references/nodes.md).
 
 ## Only when asked
 
@@ -195,5 +195,6 @@ Reading history and making a run with a count need no permission. Each of these 
 - [The report](references/report.md): every field per tool, jq recipes.
 - [Playbooks](references/playbooks.md): slow, unreachable, intermittent, DNS, routing, IPv4 against IPv6, before and after a change, writing the ticket.
 - [History and cases](references/history.md): baselines, comparisons, evidence.
-- [Nodes and accounts](references/nodes.md): what changes when they ship.
+- [Nodes and accounts](references/nodes.md): signing in, and what changes when nodes ship.
+- [From one device to a fleet](https://rvrs.dev/docs/get-started/from-one-device-to-a-fleet.md): what works today and what is planned. Read it when someone asks what rvrs is or what it will do.
 - [rvrs.dev](https://rvrs.dev) is the site, and [github.com/rvrs-dev/cli](https://github.com/rvrs-dev/cli) has the source, the releases and the docs for every command.

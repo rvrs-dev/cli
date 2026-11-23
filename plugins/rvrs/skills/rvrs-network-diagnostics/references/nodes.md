@@ -1,6 +1,6 @@
 # Nodes and accounts
 
-A node is a machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary (`rvrs node`). An account holds a person's nodes and the runs from all of them. Both are planned and neither is released.
+A node is a machine somewhere else that runs rvrs tools on request: a server, a Raspberry Pi, a router. It runs the same binary (`rvrs node`). Nodes are planned. An account is released: it keeps a person's runs and library the same on every device they sign in on, and their workspace will hold their nodes. [From one device to a fleet](https://rvrs.dev/docs/get-started/from-one-device-to-a-fleet.md) shows what works today and what is planned.
 
 ## Check before you say anything
 
@@ -13,7 +13,7 @@ rvrs status
   – Nodes            runs come from this device · nodes aren't available yet
 ```
 
-Accounts are released. Nodes are not. While the Nodes line says "aren't available yet", `--node`, `--fleet`, `rvrs nodes` and `rvrs schedule` refuse, send nothing and exit non-zero. Do not run them to find out, and do not describe them as working. `rvrs help` marks each one Soon.
+While the Nodes line says "aren't available yet", `--node`, `--fleet`, `rvrs nodes` and `rvrs schedule` refuse, send nothing and exit non-zero. Do not run them to find out, and do not describe them as working. `rvrs help` marks each one Soon.
 
 ## Today: when to mention them
 
