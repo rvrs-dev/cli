@@ -107,7 +107,8 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | **sign in** | Prose and buttons say "sign in" and "sign out". The command is `rvrs login`, as `gh` and `docker` spell theirs. | log in, authenticate (in copy) |
 | **run page** | A run on rvrs.dev, rendered the way the app's result screen shows it. Only a run saved to an account has one. | permalink, report page |
 | **share link** | The link to a run page. | URL, permalink |
-| **home details** | What in a report points to the line a run was made from: the origin's public and source address, a hop that is the origin itself, a location. A shared run leaves them out unless the person sharing keeps them in. | personal data (the law's word, and wider), PII, sensitive fields |
+| **home details** | What in a report points to the line a run was made from: its private network, its public address and what gives that away, a location. A share shows the private network unless Private Networks is turned off, and leaves the public address out unless the person sharing keeps it in. | personal data (the law's word, and wider), PII, sensitive fields |
+| **private network** | The network a run starts in, behind the line's router: a private source address, the hops at private addresses before the first hop that is anyone else's, and a resolver there. Private Networks is the option on a share that shows it, and it is on unless someone turns it off. | LAN (in copy), internal network, home network |
 
 ## Surfaces
 

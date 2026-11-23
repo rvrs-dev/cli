@@ -92,6 +92,6 @@ A node on your line was put there by whoever runs it: you, your team or your pro
 - It measures the path, latency and loss to targets its workspace asks for, what resolvers answer for a name, and what route collectors see for a prefix.
 - It sends only its own probes and reads only the replies to them. It never looks at traffic that isn't its own, and it never lists the devices on your network.
 - A report carries the target, the addresses on the path, the address the probes left from and your line's public address. The first hops of a path are your own router and your provider's.
-- The runs belong to the node's workspace. What points to your line is for the workspace's admins and is left out when a run is shared, unless someone keeps it in: the public address, the address the probes left from, your router and the devices of your network, and a location.
+- The runs belong to the node's workspace. When someone there shares a run, the share leaves out your line's public address unless they keep it in. It shows the first hops of the path, your router among them, unless they turn Private Networks off. A location is never more precise than a person set it.
 - It sends nothing to devices on your network unless the node's owner allowed that range.
 - You can turn it off on the device. Turned off, it makes no call until it is turned on again.
