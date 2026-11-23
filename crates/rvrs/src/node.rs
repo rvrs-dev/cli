@@ -10,6 +10,7 @@
 //! it makes no call at all.
 
 mod api;
+mod kept;
 mod outbox;
 mod runner;
 mod service;
@@ -33,7 +34,8 @@ pub const FILE_NAME: &str = "node.json";
 /// The environment variable that names the node's file.
 pub const ENV_CONFIG: &str = "RVRS_NODE_CONFIG";
 
-/// Where the node keeps its state when nothing says otherwise: its token and its outbox.
+/// Where the node keeps its state when nothing says otherwise: its token, its outbox and its
+/// copy of its schedules.
 pub const ENV_STATE: &str = "RVRS_NODE_STATE";
 /// Ranges of private or shared address space the node's owner lets it probe.
 pub const ENV_ALLOW: &str = "RVRS_NODE_ALLOW";
@@ -314,6 +316,7 @@ pub fn run(arguments: &[String]) -> ExitCode {
             api: api::Api::new(&crate::account::api_base(), Secret::new(token.expose())),
             guard: Guard::new(limits, &crate::features::included(), allowed.clone()),
             outbox: outbox::Outbox::open(&state.join("outbox")),
+            schedules: kept::KeptCopy::at(&state),
             declaration: declaration.clone(),
             name: host_name(),
             hands: service::Hands::default(),

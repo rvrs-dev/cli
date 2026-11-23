@@ -131,6 +131,31 @@ impl Api {
         Answer::read(status, &text, retry_after)
     }
 
+    fn get(&self, path: &str, seconds: u64) -> Answer {
+        let asked = Self::agent(Some(seconds))
+            .get(format!("{}{path}", self.base))
+            .header("accept", "application/json")
+            .header("authorization", self.bearer())
+            .call();
+        let Ok(mut response) = asked else {
+            return Answer::None;
+        };
+        let status = response.status().as_u16();
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse().ok());
+        let text = response.body_mut().read_to_string().unwrap_or_default();
+        Answer::read(status, &text, retry_after)
+    }
+
+    /// Reads the node's copy of its schedules. An API from before schedules refuses with a 404
+    /// in its own words. A 404 that is a page came from something on the way and is no answer.
+    pub fn schedules(&self) -> Answer {
+        self.get("/v1/nodes/me/schedules", 20)
+    }
+
     /// Says what the node is. The answer names the node and where its stream is.
     pub fn heartbeat(&self, beat: &Value) -> Answer {
         self.post("/v1/nodes/me/heartbeats", beat, 20)

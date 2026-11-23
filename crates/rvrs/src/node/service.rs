@@ -6,12 +6,19 @@
 //! within the node's own limits and its result waits in the outbox until the API has answered
 //! for it.
 //!
+//! A node also repeats runs by itself: its schedules (`rvrs_core::node::schedules`). It reads its
+//! copy of them after every `hello`, after every `schedules` event and when a heartbeat's answer
+//! names another version, keeps the copy beside the outbox, and starts each run when it is due,
+//! with the API in reach or not. A scheduled run passes the same check as a run that was asked
+//! for, and its result waits in the same outbox.
+//!
 //! Nothing here trusts a wake-up to arrive. The node claims after every `hello` and every `work`,
 //! every third of the lease while it holds a run, after a stream that failed to open, and at a
 //! random time while it has nothing to do. Every number it waits by comes from the API, as a
 //! length in seconds, and is counted on a clock that only goes forward.
 //!
-//! No line it prints carries a token, a target or anything from a report.
+//! No line it prints carries a token, a target or anything from a report. A run is named by its
+//! id and a schedule by its own.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
@@ -24,6 +31,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rvrs_core::model::{Run, Tool};
 use rvrs_core::node::refusal::{Identity, Refusal};
 use rvrs_core::node::request::{Admitted, Request};
+use rvrs_core::node::schedules::{Copy, Due, LeftOut, Schedules};
 use rvrs_core::node::{Guard, Heartbeat, Outbox as SaidOutbox, Stopped, System, PROTOCOL};
 use rvrs_core::node_config::NodeDeclaration;
 use rvrs_core::report::Report;
@@ -32,6 +40,7 @@ use rvrs_core::FamilyChoice;
 use serde_json::{json, Value};
 
 use super::api::{Answer, Api};
+use super::kept::KeptCopy;
 use super::outbox::{Entry, Outbox};
 use super::runner;
 use crate::help::VERSION;
@@ -96,6 +105,8 @@ pub struct Settings {
     pub api: Api,
     pub guard: Guard,
     pub outbox: Outbox,
+    /// Where the node keeps its copy of its schedules.
+    pub schedules: KeptCopy,
     pub declaration: NodeDeclaration,
     /// What the node calls itself until the API has said its name.
     pub name: String,
@@ -128,6 +139,8 @@ pub enum Ended {
 enum StreamEvent {
     Hello(Value),
     Work,
+    /// The node's schedules changed. The copy says how.
+    Schedules,
     /// A keep-alive, or an event this version doesn't know. Either shows the stream is alive.
     Line,
     /// The stream is over. With an answer, it never opened.
@@ -142,6 +155,8 @@ enum Event {
 /// A run thread's result.
 struct Made {
     request: Request,
+    /// The schedule the node made the run by. None for a run that was asked for.
+    schedule: Option<String>,
     started: Instant,
     what: Result<Run, Refusal>,
 }
@@ -192,6 +207,21 @@ fn report_id(request: &Request) -> String {
     format!("{}-{}", request.run, request.attempt)
 }
 
+/// The id of the report for a scheduled run. No run id and no attempt name such a run, so the
+/// id is 26 random characters, 128 bits, and repeats on no node. It is kept with the result, so it
+/// is the same every time the node sends it.
+fn scheduled_report_id() -> String {
+    word(26)
+}
+
+/// "1 schedule", "3 schedules".
+fn counted(schedules: usize) -> String {
+    match schedules {
+        1 => "1 schedule".to_string(),
+        many => format!("{many} schedules"),
+    }
+}
+
 /// True when a 2xx answer to a result is the API's receipt for it: it names a run, and for a run
 /// that was asked for it names that run.
 fn is_receipt(answer: &Value, entry: &Entry) -> bool {
@@ -200,6 +230,15 @@ fn is_receipt(answer: &Value, entry: &Entry) -> bool {
         (Some(id), None) => !id.is_empty(),
         (None, _) => false,
     }
+}
+
+/// The body of a result for a run that was asked for: the report and the claim it was made
+/// under.
+fn claimed(report: &Report, request: &Request) -> Value {
+    json!({
+        "report": report,
+        "claim": { "run": request.run, "attempt": request.attempt },
+    })
 }
 
 fn unix_seconds() -> u64 {
@@ -220,6 +259,7 @@ fn read_events(body: Box<dyn Read + Send>, send: impl Fn(StreamEvent) -> bool) {
                     serde_json::from_str(&data).unwrap_or(Value::Null),
                 )),
                 "work" => Some(StreamEvent::Work),
+                "schedules" => Some(StreamEvent::Schedules),
                 // An event with a name this version doesn't know is ignored.
                 "" => None,
                 _ => Some(StreamEvent::Line),
@@ -262,6 +302,19 @@ struct Node {
     numbers: Numbers,
     lease: u64,
     runs: HashMap<(String, u32), Held>,
+    /// The schedules the node holds and when each is due.
+    schedules: Schedules,
+    kept: KeptCopy,
+    /// The scheduled runs the node is making, by their schedule, each with what ends it.
+    scheduled: HashMap<String, Arc<AtomicBool>>,
+    /// The copy is to be read now: after `hello`, after a `schedules` event, and when a
+    /// heartbeat's answer named another version.
+    read_now: bool,
+    /// A read that got no answer is made again then.
+    next_read: Option<Instant>,
+    read_window: u64,
+    /// The log said that the copy is older than it is good for.
+    said_expired: bool,
     sender: Sender<Event>,
     receiver: Receiver<Event>,
     stream: Option<Stream>,
@@ -297,10 +350,14 @@ impl Node {
         }
     }
 
-    /// Ends every run the node is making. Their results still go to the outbox.
+    /// Ends every run the node is making, the scheduled ones too. Their results still go to the
+    /// outbox.
     fn stop_runs(&mut self) {
         for held in self.runs.values() {
             held.stop.store(true, Ordering::Relaxed);
+        }
+        for stop in self.scheduled.values() {
+            stop.store(true, Ordering::Relaxed);
         }
     }
 
@@ -318,6 +375,9 @@ impl Node {
             (401, _) => {
                 self.stop_runs();
                 self.close_stream();
+                // Without a token the node has no schedules, and keeps no copy of any.
+                self.schedules.clear();
+                self.kept.remove();
                 self.ended = Some(Ended::NoToken);
                 self.say("The API doesn't know this node's token, or the token was revoked. The node sends nothing until it is given a new one.");
                 true
@@ -325,6 +385,8 @@ impl Node {
             (403, "FLEET_STOPPED") => {
                 self.stop_runs();
                 self.close_stream();
+                // The copy stays. No run of it starts until the node has read it again.
+                self.schedules.hold();
                 self.paused_until = Some(now + ASK_AGAIN);
                 self.say("An admin stopped this workspace's fleet. The node ended its runs, keeps its results and asks again in an hour.");
                 true
@@ -380,6 +442,13 @@ impl Node {
                     .and_then(|revision| u32::try_from(revision).ok());
                 if let Some(events) = answer["events"].as_str() {
                     self.events = Some(events.to_string());
+                }
+                // The answer names the version of the copy the node should hold. Another one
+                // than the node holds means its copy is behind.
+                if let Some(version) = answer["schedules"].as_str() {
+                    if self.schedules.version() != Some(version) {
+                        self.read_now = true;
+                    }
                 }
             }
             Answer::Refused {
@@ -454,11 +523,14 @@ impl Node {
                 self.window = self.numbers.reconnect;
                 self.claim_window = self.numbers.reconnect;
                 self.send_window = self.numbers.reconnect;
+                self.read_window = self.numbers.reconnect;
                 self.claim_now = true;
+                self.read_now = true;
                 self.next_send = now;
                 self.say("The event stream is open.");
             }
             StreamEvent::Work => self.claim_now = true,
+            StreamEvent::Schedules => self.read_now = true,
             StreamEvent::Line => {}
             StreamEvent::Ended(None) => self.stream_failed(now),
             StreamEvent::Ended(Some(Answer::Refused { status, code, .. })) => {
@@ -564,7 +636,8 @@ impl Node {
         }
         // While it holds a run the node claims every third of the lease, which keeps the lease.
         // With nothing to do it claims at a random time between half of claimSeconds and all.
-        let holds = !self.runs.is_empty() || self.outbox.waiting() > 0;
+        // A scheduled run's result is held under no lease, so it keeps no claim coming.
+        let holds = !self.runs.is_empty() || !self.outbox.claims().is_empty();
         self.next_claim = now
             + if holds {
                 Duration::from_secs((self.lease / 3).max(1))
@@ -573,11 +646,9 @@ impl Node {
             };
     }
 
-    fn keep(&mut self, report: &Report, request: &Request, started: Instant) {
-        let body = json!({
-            "report": report,
-            "claim": { "run": request.run, "attempt": request.attempt },
-        });
+    /// Keeps a result until the API has answered for it: the report, with the claim it was made
+    /// under or the schedule it belongs to.
+    fn keep(&mut self, body: Value, started: Instant) {
         if !self.outbox.put(body, Some(started)) {
             self.say("The outbox's folder can't be written. This result waits in memory and is lost if the node stops before the API has it.");
         }
@@ -589,7 +660,23 @@ impl Node {
         let id = report_id(request);
         let mut report = refusal.report(request, &self.identity(), id, unix_seconds());
         report.origin.metadata_revision = self.revision;
-        self.keep(&report, request, started);
+        self.keep(claimed(&report, request), started);
+    }
+
+    /// A schedule failed the node's check. One report says why, with the schedule's id beside
+    /// it, and no run of the schedule starts until a copy says something else about it.
+    fn refuse_schedule(
+        &mut self,
+        refusal: &Refusal,
+        schedule: &str,
+        request: &Request,
+        started: Instant,
+    ) {
+        self.say(&refusal.schedule_log_line(schedule));
+        let id = scheduled_report_id();
+        let mut report = refusal.report(request, &self.identity(), id, unix_seconds());
+        report.origin.metadata_revision = self.revision;
+        self.keep(json!({ "report": report, "schedule": schedule }), started);
     }
 
     /// Starts a run the API handed over, or refuses it. A run the node holds already, as this
@@ -626,6 +713,18 @@ impl Node {
             "run {} attempt {}: started",
             request.run, request.attempt
         ));
+        self.make(request, None, admitted, stop, now);
+    }
+
+    /// Makes an admitted run on a thread of its own, which hands the run back to the loop.
+    fn make(
+        &self,
+        request: Request,
+        schedule: Option<String>,
+        admitted: Admitted,
+        stop: Arc<AtomicBool>,
+        now: Instant,
+    ) {
         let guard = self.guard.clone();
         let hands = Arc::clone(&self.hands);
         let sender = self.sender.clone();
@@ -642,15 +741,161 @@ impl Node {
                 };
             let _ = sender.send(Event::Made(Box::new(Made {
                 request,
+                schedule,
                 started: now,
                 what,
             })));
         });
     }
 
+    /// The report of a run the node made, as the node sends it: under the id given, with the
+    /// target as it was asked and the node as its origin.
+    fn report_of(&self, run: &Run, id: String, target: &str) -> Report {
+        let mut report = Report::of(run);
+        report.id = id;
+        // The report names the target as it was asked, whatever the tool made of it.
+        report.target = target.to_string();
+        report.origin.kind = "node".into();
+        report.origin.node = Some(self.name.clone());
+        report.origin.node_id = self.id.clone();
+        report.origin.metadata_revision = self.revision;
+        report
+    }
+
+    /// Reads the node's copy of its schedules. The loop makes the call and waits for its
+    /// answer, so there is one read at a time.
+    fn read_schedules(&mut self, now: Instant) {
+        self.read_now = false;
+        self.next_read = None;
+        let answer = match self.api.schedules() {
+            Answer::Taken(answer) => match Copy::read(&answer) {
+                Some(copy) => {
+                    // Every next start counts from the moment of the answer.
+                    let changed = self.schedules.replace(&copy, Instant::now());
+                    self.read_window = self.numbers.reconnect;
+                    self.said_expired = false;
+                    let on_disk = self.kept.save(&copy);
+                    if changed {
+                        self.say(&format!(
+                            "The node keeps {}{}.",
+                            counted(self.schedules.len()),
+                            if on_disk { "" } else { ", in memory" }
+                        ));
+                    }
+                    return;
+                }
+                // A good status without a copy in it is no answer of the API's.
+                None => Answer::None,
+            },
+            answer => answer,
+        };
+        match answer {
+            Answer::Taken(_) => {}
+            Answer::Refused {
+                status,
+                code,
+                retry_after,
+            } => {
+                if self.refused(status, &code, now) {
+                    return;
+                }
+                match status {
+                    // An API from before schedules. The node holds none, and asks again after
+                    // its next hello.
+                    404 => {
+                        if self.schedules.version().is_some() {
+                            self.say("The API has no schedules for this node. The node holds none and asks again when it next connects.");
+                        }
+                        self.schedules.clear();
+                        self.kept.remove();
+                    }
+                    429 => {
+                        let wait = retry_after.unwrap_or(self.numbers.reconnect);
+                        self.next_read = Some(now + Duration::from_secs(wait));
+                    }
+                    // The call is wrong and stays wrong. It is not repeated.
+                    _ => {}
+                }
+            }
+            Answer::None => {
+                self.next_read = Some(now + within(self.read_window));
+                self.read_window = (self.read_window * 2).min(WINDOW_AT_MOST);
+            }
+        }
+    }
+
+    /// Starts the scheduled runs that are due. A run is due once: one the node can't start now
+    /// is left out and never made up.
+    fn start_due(&mut self) {
+        let now = Instant::now();
+        if self.schedules.expired(now) && !self.said_expired {
+            self.said_expired = true;
+            self.read_now = true;
+            self.say("The node's copy of its schedules is older than it is good for. No scheduled run starts until the node has read it again.");
+        }
+        for due in self.schedules.due(&mut self.guard, now) {
+            match due {
+                Due::Start {
+                    schedule,
+                    request,
+                    admitted,
+                } => {
+                    let stop = Arc::new(AtomicBool::new(false));
+                    self.scheduled.insert(schedule.clone(), Arc::clone(&stop));
+                    self.make(request, Some(schedule), admitted, stop, now);
+                }
+                Due::Refuse {
+                    schedule,
+                    request,
+                    refusal,
+                } => self.refuse_schedule(&refusal, &schedule, &request, now),
+                Due::LeftOut { schedule, why } => match why {
+                    LeftOut::AtALimit => self.say(&format!(
+                        "schedule {schedule}: left out, the node is at one of its limits"
+                    )),
+                    LeftOut::StillGoing => self.say(&format!(
+                        "schedule {schedule}: left out, its last run is still going"
+                    )),
+                    // The copy was read again a moment after the schedule's last run.
+                    LeftOut::TooSoon => {}
+                },
+            }
+        }
+    }
+
+    /// A scheduled run ended. Its report goes to the outbox with the schedule's id beside it,
+    /// also when the schedule left the copy while the run was going.
+    fn on_scheduled(&mut self, schedule: &str, made: Made) {
+        self.schedules.finished(schedule);
+        self.scheduled.remove(schedule);
+        let run = match made.what {
+            Ok(run) => run,
+            // The name resolved to an address the node sends nothing to.
+            Err(refusal) => {
+                self.schedules.refuse(schedule);
+                return self.refuse_schedule(&refusal, schedule, &made.request, made.started);
+            }
+        };
+        (self.count)(Counted::Run(run.tool));
+        let mut report = self.report_of(&run, scheduled_report_id(), &made.request.target);
+        if let Err(unfit) = self.guard.fit(&mut report) {
+            self.outbox.lost();
+            self.say(&format!("schedule {schedule}: not sent. {unfit}"));
+            return;
+        }
+        self.say(&format!("schedule {schedule}: {}", report.outcome));
+        self.keep(
+            json!({ "report": report, "schedule": schedule }),
+            made.started,
+        );
+    }
+
     /// A run thread ended. Its report goes to the outbox, unless the API said to drop the run.
     fn on_made(&mut self, made: Made) {
         self.guard.finish();
+        if let Some(schedule) = made.schedule.clone() {
+            return self.on_scheduled(&schedule, made);
+        }
         let key = (made.request.run.clone(), made.request.attempt);
         let Some(held) = self.runs.remove(&key) else {
             return;
@@ -663,14 +908,7 @@ impl Node {
             Err(refusal) => return self.refuse(&refusal, &made.request, made.started),
         };
         (self.count)(Counted::Run(run.tool));
-        let mut report = Report::of(&run);
-        report.id = report_id(&made.request);
-        // The report names the target as it was asked, whatever the tool made of it.
-        report.target = made.request.target.clone();
-        report.origin.kind = "node".into();
-        report.origin.node = Some(self.name.clone());
-        report.origin.node_id = self.id.clone();
-        report.origin.metadata_revision = self.revision;
+        let mut report = self.report_of(&run, report_id(&made.request), &made.request.target);
         if let Some(verdict) = &held.unknown_verdict {
             report.outcome = "stopped".into();
             report.error = Some(format!(
@@ -690,7 +928,7 @@ impl Node {
             "run {} attempt {}: {}",
             made.request.run, made.request.attempt, report.outcome
         ));
-        self.keep(&report, &made.request, made.started);
+        self.keep(claimed(&report, &made.request), made.started);
     }
 
     /// Sends the oldest result that waits. One a turn of the loop: a node that comes back with
@@ -756,6 +994,7 @@ impl Node {
             self.paused_until = None;
             self.next_heartbeat = now;
             self.claim_now = true;
+            self.read_now = true;
         }
         if now >= self.next_heartbeat || self.outbox.dropped() != self.said_dropped {
             self.heartbeat(now);
@@ -781,6 +1020,14 @@ impl Node {
         if self.ended.is_some() || self.paused_until.is_some() {
             return;
         }
+        if self.read_now || self.next_read.is_some_and(|at| now >= at) {
+            self.read_schedules(now);
+        }
+        if self.ended.is_some() || self.paused_until.is_some() {
+            return;
+        }
+        // The scheduled runs go on with the API in reach or out of it.
+        self.start_due();
         if self.outbox.waiting() > 0 && now >= self.next_send {
             self.send(now);
         }
@@ -796,6 +1043,12 @@ impl Node {
             self.say(&format!(
                 "{} files in the outbox held no result that could be read. They were removed and count as dropped.",
                 self.outbox.unreadable()
+            ));
+        }
+        if !self.schedules.is_empty() {
+            self.say(&format!(
+                "The node starts with the {} it kept.",
+                counted(self.schedules.len())
             ));
         }
         loop {
@@ -830,6 +1083,13 @@ pub fn run(settings: Settings) -> Ended {
     let (sender, receiver) = mpsc::channel();
     let now = Instant::now();
     let numbers = Numbers::default();
+    // A node with a disk starts from the copy it kept, each schedule at a random time within
+    // its interval, so it measures also when the API is out of reach at the start.
+    let mut kept = settings.schedules;
+    let schedules = match kept.load() {
+        Some(copy) => Schedules::from_kept(&copy, now, random),
+        None => Schedules::none(),
+    };
     Node {
         api: Arc::new(settings.api),
         guard: settings.guard,
@@ -847,6 +1107,13 @@ pub fn run(settings: Settings) -> Ended {
         numbers,
         lease: 90,
         runs: HashMap::new(),
+        schedules,
+        kept,
+        scheduled: HashMap::new(),
+        read_now: false,
+        next_read: None,
+        read_window: numbers.reconnect,
+        said_expired: false,
         sender,
         receiver,
         stream: None,
