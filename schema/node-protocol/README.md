@@ -110,7 +110,7 @@ A location is `lat` and `lon` in decimal degrees, a `place` of 1 to 100 characte
 - An enroll sets the declaration only when it makes the node, which is the 201. The heartbeat speaks for the node from then on, so enrolls that arrive out of order can't undo each other.
 - A tag set on the web is never undone by a declaration. The API keeps what the node declared apart from what a person edited and works out the tags that count: the declaration with the edits applied. A location works the same way. A node that restarts, reconnects or declares again leaves a person's edits where they are.
 - A run's report carries a snapshot of its origin as it was when the run was made: `origin.tags` and `origin.location`, the second already rounded. Every change to an install's tags or location, from a declaration or from an edit on the web, makes a revision, a number that goes up by one, and the API keeps what each revision said. The enroll and heartbeat answers carry the current one as `node.metadataRevision`.
-- A node writes the revision it last read into `origin.metadataRevision` of every report it makes, and keeps it with the report in its outbox. A run that waits a day for the uplink is therefore made under the revision of the day it ran. A run the API handed out takes its revision when the API gives it out, which the node doesn't have to do.
+- A node writes the revision it held when the run started into `origin.metadataRevision` of every report it makes, and keeps it with the report in its outbox. A tag edited while a long MTR runs is no part of that MTR. A run that waits a day for the uplink is therefore made under the revision of the day it ran. A run the API handed out takes its revision when the API gives it out, which the node doesn't have to do.
 - The API checks the revision and writes `tags` and `location` itself. The node never says what its tags are, only which revision it worked under: a revision that isn't the node's own, including another node's, or that nobody made, is ignored, and the run takes the revision that was current when it started (by `startedAgoMilliseconds`, which the API can trust, and for a node that sent neither, when the result arrived). Whatever tags and location the report carries are replaced.
 - Who made the run is the token's alone. The API never takes the node's name or id from the report, whatever it says in `origin`.
 - Changing a node's tags or location afterwards leaves every earlier run as it was. A report from before this has neither.
@@ -251,7 +251,13 @@ A node's name can change and its id can't. A run keeps both: the id, so runs of 
 
 `startedAgoMilliseconds` is how long before this request the run started, by a clock on the node that only counts forward. It needs no synchronized clock, and it stays right when a run waited in the outbox for hours. A node that restarted since the run leaves it out, since that clock started over.
 
-Beyond who made it, the report is never rewritten. `startedAt` stays the node's word. A reader that orders runs or compares them across origins goes by `observedStartedAt` where there is one, and by `startedAt` where there is none. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
+Beyond who made it, the report is never rewritten. `startedAt` stays the node's word. A reader that orders runs, charts them or compares them across origins goes by the best of three, in this order:
+
+1. `observedStartedAt`, where there is one.
+2. `startedAt`, where it is believable: no more than 8 days before `receivedAt`, which is as long as an outbox keeps a run, and not after it. A node that restarted with runs in its outbox can say no more than this.
+3. `receivedAt`, where `startedAt` is not believable. The run started before it arrived, so this is its latest possible moment. A reader says so where it shows the time.
+
+So a run from a router whose clock says 1970 is placed in the hour it arrived in and is never lost to 1970. For a run that was asked for, `claimedAt` and `receivedAt` bound it either way: it started after the first and ended before the second.
 
 A router that booted without a synchronized clock may report `startedAt` as `1970-01-01T00:04:10Z`. With `startedAgoMilliseconds` of 14,412 and a result received at `2026-11-22T20:15:16.412Z`, the run's `observedStartedAt` is `2026-11-22T20:15:02.000Z`.
 
@@ -268,11 +274,11 @@ POST /v1/schedules
 ```
 
 - `intervalSeconds` is 60 to 86,400.
-- A schedule says where it runs in one of three ways: `nodes` names up to 50 nodes by name or id, `selector` takes every node whose tags match, and `fleet: true` takes every node of the workspace. A body with none of them, or with two, is answered 422.
+- A schedule says where it runs in one of three ways: `nodes` names up to 50 nodes by name or id, `selector` takes every node whose tags match, and `fleet: true` takes every node of the workspace. A body with none of them, or with two, is answered 422, and so is an empty `nodes`.
 - A selector is terms joined by commas, which mean and: `isp=telia`, `isp!=telia`, `isp` (has the tag), `!isp` (lacks it), `line in (ftth,cable)` and `line notin (dsl,lte)`. A node without the tag meets `!=` and `notin`. `GET /v1/nodes` and `GET /v1/runs` read `tag` the same way.
 - A selector and the fleet are read again whenever nodes or their tags change. A node that gains the tag starts the schedule, and one that loses it stops.
 - A schedule's tool and target never change. Another target is another schedule, so a schedule's runs are one series.
-- `PATCH /v1/schedules/{id}` changes `name`, `options`, `intervalSeconds`, where it runs and `paused`. A paused schedule runs on no node and keeps its runs.
+- `PATCH /v1/schedules/{id}` changes `name`, `options`, `intervalSeconds`, where it runs and `paused`. A paused schedule runs on no node and keeps its runs. A run of it that is going on a node is stopped when the node reads its copy.
 - Making a schedule that says the same as one the person has, in tool, target, options, interval and where it runs, answers 200 with that one. Two of them would send every run twice.
 - A schedule belongs to the person who made it, and so do its runs. Anyone else gets 404 `SCHEDULE_NOT_FOUND`.
 - 404 `NODE_NOT_FOUND` says `nodes` names a node the workspace doesn't have, and `details.node` is the name it didn't find. 403 `SCHEDULE_LIMIT` says the workspace has as many schedules as it may.
@@ -286,7 +292,8 @@ A schedule on a thousand nodes must never send a thousand runs in the same secon
 
 - For each schedule and node the API works out an offset into the interval, from the two ids. It is the same every time, and the offsets of many nodes fill the interval evenly.
 - A node gets no moment, since its clock can be wrong. It gets `startsInMilliseconds`: how long after this answer its next run of the schedule starts. From there it repeats every `everySeconds`, by a clock that only counts forward.
-- One target gets 10 scheduled run starts a second from one workspace at most, across every schedule that names it. When the schedules for a target would start more, the API makes each of them longer by the same factor and hands out the longer interval as `everySeconds`. 3,000 nodes that ping one target every 60 seconds would start 50 runs a second, so each node runs every 300 seconds. `intervalSeconds` stays what the person asked for.
+- One target gets about 10 scheduled run starts a second from one workspace, across every schedule that names it. When the schedules for a target would start more, the API makes each of them longer by the same factor and hands out the longer interval as `everySeconds`. 3,000 nodes that ping one target every 60 seconds would start 50 runs a second, so each node runs every 300 seconds. `intervalSeconds` stays what the person asked for.
+- That number is a budget for the average and no ceiling for a single second. A hash places the nodes, so some seconds hold more than their share: of 6,000 nodes on 600 seconds, the busiest second holds about 20. A node that is cut off keeps its place by its own clock and drifts until it reads its copy again. A controller that has to promise a ceiling hands out the places itself.
 - The API works `everySeconds` out again when nodes join or leave a selector, and the nodes whose copy changed read it again.
 
 ### The node's copy
@@ -308,13 +315,14 @@ A node reads its copy:
 
 What it does with it:
 
-- The answer replaces the copy the node held, whole. A schedule that is no longer in it ends at once, and a run of it that is going is finished and sent.
+- The answer replaces the copy the node held, whole. A schedule that is no longer in it ends at once: no further run of it starts, and a run of it that is going is stopped. What that run measured is sent with the outcome `stopped`, as a run a person stopped is. So pausing or deleting a schedule ends its packets on every node that hears of it, and a schedule that only changed its interval or options keeps the run it is making.
 - The node keeps the copy where it keeps its outbox. A node with a disk starts from it after a restart.
 - Every answer sets each schedule's next start anew, to `startsInMilliseconds` from the answer. The API works out the same place in the interval each time, so a schedule that didn't change keeps its rhythm and a node's drifting clock is put right. A start that would come less than half of `everySeconds` after the schedule's last one is left out.
 - A node that starts from its kept copy without an answer starts each schedule at a random time within its `everySeconds`.
 - A run is due once. When the node is at one of its limits, or the schedule's last run is still going, the run is left out. A node never makes up the runs it missed, after a pause, a restart or a day without power.
 - A scheduled run counts against the node's limits like any other run, and is checked like one: the tool, every option, the limits and the target. A schedule that fails the check is refused once: the node sends one report with the outcome `refused` and starts no run of it until a copy says something else about that schedule or the node restarts.
-- A copy is good for `keepSeconds` after its answer, counted while the node runs. After that the node stops its schedules until it has read the copy again. The time is the outbox's 7 days: a run older than that would never be sent.
+- A copy is good for `keepSeconds` after its answer. After that the node starts no scheduled run until it has read the copy again. The time is the outbox's 7 days: a run older than that would never be sent.
+- A restart never makes a copy fresh. The node keeps the copy's age with it: how long it has run with this copy, written down every few minutes, and when the answer came by its own clock. After a restart the age is the longer of the two: the time it ran, with a few minutes more for what a crash could have lost, and the time its clock says has passed, where the clock moved forward. A clock that reads earlier than the answer adds nothing. A kept copy without its age is no copy, and the node starts without schedules.
 - 401 ends the node's schedules and its copy. After 403 `FLEET_STOPPED` the node keeps the copy and starts no run of it until it has read the copy again.
 - An API from before schedules answers 404. The node holds no schedules then, and asks again after its next `hello`.
 
@@ -330,7 +338,8 @@ POST /v1/runs
 
 - It waits in the outbox like any result, so a node cut off from the API for an hour sends that hour's runs when it is back, oldest first.
 - The API stores it as a run of that schedule, in the account of the person who made the schedule. It is taken while the schedule is paused and after it was deleted, since the node made it before it heard.
-- 422 says `schedule` is no schedule of the node's workspace, or the report's `tool` or `target` is not the schedule's. The result leaves the outbox.
+- Only a node the API handed the schedule to sends its runs. The API keeps which node read a copy with which schedule, and takes a run that started while the node could hold it: before the node read a copy without the schedule, and within the time a copy is good for after the last one that held it. A run that arrives later than an outbox could have kept it is not taken. A node that only knows a schedule's id writes nothing into its series.
+- 422 says `schedule` is no schedule of the node's workspace, the node was not handed it or its hold on it is over for this run, or the report's `tool` or `target` is not the schedule's. The result leaves the outbox.
 - A run with `claim` carries no `schedule`.
 - `GET /v1/runs` leaves scheduled runs out, so a device's history holds what a person ran. `schedule=<id>` reads the runs of one schedule.
 
@@ -439,7 +448,7 @@ Every number the node acts on reaches it from the API, so each can change withou
 | A read that waits | 30 s at most | `wait` |
 | A result's body | 2 MiB | |
 | A schedule's interval | 60 to 86,400 s | `intervalSeconds`, the person's |
-| Scheduled run starts at one target | 10 a second from one workspace | The API, as `everySeconds` |
+| Scheduled run starts at one target | About 10 a second from one workspace, on average | The API, as `everySeconds` |
 | A node's copy of its schedules | 50 schedules, good for 604,800 s | `keepSeconds` in the copy |
 | `schedules`, while a node's copy is behind | Every 15 s | The API |
 
@@ -523,6 +532,7 @@ A node reads its schedules when it connects and when they change, and asks for n
 4. An hour later the uplink is back. A stream opens, `hello` arrives, the node reads its copy, which is the same version, and sends the 60 runs from its outbox, oldest first, between its claims. Each says how long ago it started, so the API places it in the hour it was made.
 5. The schedule's chart shows `fra-1` without a gap, and for `cpe-4471` an hour of lost packets where the uplink was gone.
 6. Had the node lost power for that hour, there would be a gap. It makes up no run it missed.
+7. Had it restarted during that hour with the runs in its outbox, they would arrive without how long ago they started. The API places each by the node's clock where that is believable, and by its arrival otherwise.
 
 ## How the rvrs API keeps its side
 
@@ -542,7 +552,8 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 - A node's offset into a schedule's interval is a hash of the schedule's id and the node's id, in milliseconds. Nothing is stored per node and schedule.
 - A change to a schedule that goes by a selector or the fleet raises a number on its workspace, and a node's copy is behind while the number it last read is another. A schedule that names its nodes marks those nodes as behind and no other, and so does a change to a node's tags. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
-- How many nodes a schedule runs on, and the interval the cap leaves it, are counted when a schedule changes and, within 15 seconds, when nodes or their tags did. A fleet that enrolls is counted once per pass and never once per node.
+- How many nodes a schedule runs on, and the interval the budget leaves it, are counted when a schedule changes and, within 15 seconds, when nodes or their tags did. Every such change raises a number on the workspace, and a count writes the number it began at when it is done, so a change that lands while a count runs is counted by the next pass. A fleet that enrolls is counted once per pass and never once per node.
+- Which node was handed which schedule is a row per node and schedule, written when the node reads its copy and at most once an hour after that.
 
 ## Left out on purpose
 

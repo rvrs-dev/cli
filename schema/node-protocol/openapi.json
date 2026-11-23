@@ -510,7 +510,7 @@
           "runs"
         ],
         "summary": "Send a finished run",
-        "description": "The route every install sends its runs through. A node adds claim for a run that was asked for. The API takes the result when its attempt is the run's newest and the run has no result yet, whether or not the lease ran out in between. A run is told apart by the install and the report's id, so sending it again changes nothing and answers 200. A claimed result whose report names another tool or another target than the run was asked with, or whose id the node used for another run, is answered 422. The body may be up to 2 MiB. A scheduled run names its schedule in schedule: it is stored as a run of that schedule, also while the schedule is paused and after it was deleted, and answered 422 when the schedule is not the workspace's or the report names another tool or target than the schedule.",
+        "description": "The route every install sends its runs through. A node adds claim for a run that was asked for. The API takes the result when its attempt is the run's newest and the run has no result yet, whether or not the lease ran out in between. A run is told apart by the install and the report's id, so sending it again changes nothing and answers 200. A claimed result whose report names another tool or another target than the run was asked with, or whose id the node used for another run, is answered 422. The body may be up to 2 MiB. A scheduled run names its schedule in schedule: it is stored as a run of that schedule, also while the schedule is paused and after it was deleted, when the node was handed the schedule and the run started while it held it. It is answered 422 when the schedule is not the workspace's, the node was not handed it, or the report names another tool or target than the schedule.",
         "security": [
           {
             "node": []
@@ -2005,7 +2005,7 @@
           "schedule": {
             "type": "string",
             "format": "uuid",
-            "description": "The schedule a run the node made by itself belongs to. Left out for any other run, and never sent with claim."
+            "description": "The schedule a run the node made by itself belongs to. Left out for any other run, and never sent with claim. Only a node that was handed the schedule sends its runs."
           }
         }
       },
@@ -2323,7 +2323,7 @@
           "everySeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "The interval the node keeps: what the person asked for, or longer when the cap per target made it so."
+            "description": "The interval the node keeps: what the person asked for, or longer when the budget per target made it so."
           },
           "startsInMilliseconds": {
             "type": "integer",
@@ -2350,7 +2350,7 @@
           "keepSeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "How long the copy is good for after this answer, counted while the node runs. After that the node stops its schedules until it has read the copy again."
+            "description": "How long the copy is good for after this answer. After that the node starts no scheduled run until it has read the copy again. A restart never makes a copy fresh: the node keeps the copy's age with it."
           },
           "schedules": {
             "type": "array",
@@ -2405,7 +2405,7 @@
               "minLength": 1,
               "maxLength": 100
             },
-            "description": "The nodes it runs on, each by name or id."
+            "description": "The nodes it runs on, each by name or id, at least one. An empty list is answered 422."
           },
           "selector": {
             "type": "string",
@@ -2449,7 +2449,7 @@
               "minLength": 1,
               "maxLength": 100
             },
-            "description": "The nodes it runs on, each by name or id."
+            "description": "The nodes it runs on, each by name or id, at least one. An empty list is answered 422."
           },
           "selector": {
             "type": "string",
@@ -2523,7 +2523,7 @@
           "everySeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "The interval the nodes keep. Longer than intervalSeconds when the schedules for this target would otherwise start more than 10 runs a second."
+            "description": "The interval the nodes keep. Longer than intervalSeconds when the schedules for this target would otherwise start more than about 10 runs a second, on average."
           },
           "nodes": {
             "type": "array",
