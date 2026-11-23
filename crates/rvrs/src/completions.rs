@@ -53,6 +53,40 @@ _rvrs_case() {
   esac
 }
 
+_rvrs_schedule() {
+  local -a actions
+  actions=(
+    'add:Make a schedule'
+    'show:Show one schedule'
+    'pause:Have no node run a schedule'
+    'resume:Have its nodes run it again'
+    'rm:Delete a schedule and keep its runs'
+  )
+  if (( CURRENT == 3 )); then
+    _describe -t actions 'action' actions
+    return
+  fi
+  case $words[3] in
+    add)
+      if (( CURRENT == 4 )); then
+        _values 'tool' traceroute ping mtr dig bgp
+      else
+        _arguments \
+          '--every=[the time between two runs on one node]:interval:(1m 5m 15m 1h 24h)' \
+          '*--node=[a node to run it on]:node:' \
+          '--fleet=[every node whose tags match]:selector:' \
+          '--all-nodes[every node of the workspace]' \
+          '--name=[what people call the schedule]:name:' \
+          '--json[print the schedule as the API answers it]' \
+          '*:target:_rvrs_targets'
+      fi
+      ;;
+    show|pause|resume|rm)
+      _arguments '--json[print the schedule as the API answers it]'
+      ;;
+  esac
+}
+
 _rvrs() {
   local -a commands
   commands=(
@@ -74,6 +108,8 @@ _rvrs() {
     'logout:Sign out and revoke this install'\''s credential'
     'sync:Send runs to the account and read what is new'
     'share:Print the share link of a run, a public page'
+    'schedule:Have nodes repeat a run, or show, pause, resume or delete a schedule'
+    'schedules:List the schedules you made'
     'status:Check that this device can run the tools'
     'update:Bring rvrs up to date'
     'completions:Set up tab completion'
@@ -220,6 +256,9 @@ _rvrs() {
         '--json[print the link with what it shows]' \
         '1:run:_rvrs_runs'
       ;;
+    schedule|schedules)
+      _rvrs_schedule
+      ;;
     favorite)
       _arguments '1:host:_rvrs_targets'
       ;;
@@ -251,7 +290,7 @@ pub const BASH: &str = r#"_rvrs() {
   previous="${COMP_WORDS[COMP_CWORD-1]}"
   command="${COMP_WORDS[1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout sync share status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
+    COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp last show history save saved case cases favorite favorites login logout sync share schedule schedules status update completions help $(rvrs __targets 2>/dev/null)" -- "$current"))
     return
   fi
   case "$command" in
@@ -330,6 +369,19 @@ pub const BASH: &str = r#"_rvrs() {
       ;;
     share)
       COMPREPLY=($(compgen -W "--no-private-networks --public-address --install-name --stop --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
+      ;;
+    schedule|schedules)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=($(compgen -W "add show pause resume rm --json" -- "$current"))
+      elif [ "${COMP_WORDS[2]}" = "add" ] && [ "$COMP_CWORD" -eq 3 ]; then
+        COMPREPLY=($(compgen -W "traceroute ping mtr dig bgp" -- "$current"))
+      elif [ "${COMP_WORDS[2]}" = "add" ] && [[ "$current" == -* ]]; then
+        COMPREPLY=($(compgen -W "--every --node --fleet --all-nodes --name --json" -- "$current"))
+      elif [ "${COMP_WORDS[2]}" = "add" ] && [ "$previous" = "--every" ]; then
+        COMPREPLY=($(compgen -W "1m 5m 15m 1h 24h" -- "$current"))
+      elif [ "${COMP_WORDS[2]}" = "add" ]; then
+        COMPREPLY=($(compgen -W "$(rvrs __targets 2>/dev/null)" -- "$current"))
+      fi
       ;;
     case|cases)
       if [ "$COMP_CWORD" -eq 2 ]; then
@@ -422,6 +474,20 @@ complete -c rvrs -n '__fish_seen_subcommand_from share' -l public-address -d 'Sh
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l install-name -d 'Show the name of the install that made the run'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l stop -d 'End the link'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l json -d 'Print the link with what it shows'
+complete -c rvrs -n __fish_use_subcommand -a schedule -d 'Have nodes repeat a run, or show, pause, resume or delete a schedule'
+complete -c rvrs -n __fish_use_subcommand -a schedules -d 'List the schedules you made'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and not __fish_seen_subcommand_from add show pause resume rm' -a add -d 'Make a schedule'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and not __fish_seen_subcommand_from add show pause resume rm' -a show -d 'Show one schedule'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and not __fish_seen_subcommand_from add show pause resume rm' -a pause -d 'Have no node run a schedule'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and not __fish_seen_subcommand_from add show pause resume rm' -a resume -d 'Have its nodes run it again'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and not __fish_seen_subcommand_from add show pause resume rm' -a rm -d 'Delete a schedule and keep its runs'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add; and not __fish_seen_subcommand_from traceroute ping mtr dig bgp' -a 'traceroute ping mtr dig bgp' -d 'Tool'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add' -l every -x -a '1m 5m 15m 1h 24h' -d 'The time between two runs on one node'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add' -l node -x -d 'A node to run it on'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add' -l fleet -x -d 'Every node whose tags match'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add' -l all-nodes -d 'Every node of the workspace'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules; and __fish_seen_subcommand_from add' -l name -x -d 'What people call the schedule'
+complete -c rvrs -n '__fish_seen_subcommand_from schedule schedules' -l json -d 'Print the schedule as the API answers it'
 complete -c rvrs -n '__fish_seen_subcommand_from saved' -a remove -d 'Remove a saved run and its place in every case'
 complete -c rvrs -n '__fish_seen_subcommand_from saved' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
 complete -c rvrs -n '__fish_seen_subcommand_from case cases; and not __fish_seen_subcommand_from new rename delete add remove' -a 'new' -d 'Start a case'
@@ -533,6 +599,9 @@ mod tests {
                 script.contains("bgp") && script.contains("bird-lg-go"),
                 "{shell}"
             );
+            for word in ["schedules", "pause", "resume", "all-nodes", "every"] {
+                assert!(script.contains(word), "{shell} lacks {word}");
+            }
         }
         assert!(script("powershell").is_none());
     }

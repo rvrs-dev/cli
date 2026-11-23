@@ -140,11 +140,11 @@ fn request(
         |error: ureq::Error| format!("Couldn't reach the rvrs API at {} ({error}).", api_base());
     let bearer = token.map(|token| format!("Bearer {token}"));
     let mut response = match (method, body) {
-        ("POST" | "PUT", Some(body)) => {
-            let call = if method == "PUT" {
-                agent.put(&url)
-            } else {
-                agent.post(&url)
+        ("POST" | "PUT" | "PATCH", Some(body)) => {
+            let call = match method {
+                "PUT" => agent.put(&url),
+                "PATCH" => agent.patch(&url),
+                _ => agent.post(&url),
             };
             let mut call = call.header("content-type", "application/json");
             if let Some(bearer) = &bearer {

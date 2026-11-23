@@ -85,6 +85,11 @@ pub fn take_flags(arguments: &mut Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// The flags of waiting that were typed. A command that asks no node for a run refuses them.
+pub fn waiting() -> Waiting {
+    WAITING.get().copied().unwrap_or_default()
+}
+
 fn milliseconds(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
@@ -226,7 +231,7 @@ pub fn bgp() -> Value {
 }
 
 /// The sentence of the API's error, or one that names the status when there is none.
-fn refusal(status: u16, body: &Value) -> String {
+pub(crate) fn refusal(status: u16, body: &Value) -> String {
     body["error"]["message"]
         .as_str()
         .map(str::to_string)
@@ -313,7 +318,7 @@ pub fn run(node: &str, tool: &str, target: &str, options: Value, common: &Common
     if account::token().is_none() {
         return fail("Asking a node for a run takes an account. Sign in with rvrs login.");
     }
-    let waiting = WAITING.get().copied().unwrap_or_default();
+    let waiting = waiting();
     let mut request = json!({
         "node": node,
         "tool": tool,
