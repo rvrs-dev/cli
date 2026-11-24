@@ -1,11 +1,15 @@
-//! The share sheet: `S` on a run that has ended. It opens over the screen with what the link
-//! does and the switches for what the page shows, and makes nothing until Return (the user's
-//! rule for every surface, 2026-11-23: the sheet first, then the link). The link is made on a
-//! thread, so the Console keeps drawing, then shown with Open Link, Copy Link and Stop Sharing.
+//! The share sheet: `S` on a run that has ended. It opens over the screen and reads, on a
+//! thread, the run's live link and the workspace's rules for links. Then it says what the link
+//! does and has the switches for what the page shows, starting where the live link has them or
+//! at the workspace's defaults, and makes nothing until Return (the user's rule for every
+//! surface, 2026-11-23: the sheet first, then the link). The link is made on a thread, so the
+//! Console keeps drawing, then shown with Open Link, Copy Link and Stop Sharing, and Return
+//! changes what it shows when a switch moved. As on the web, a member of a workspace where only
+//! owners and admins share reads why there is no link, and can still stop one they made before.
 
 use std::sync::mpsc::{self, Receiver};
 
-use crate::share::{self, Share, Shows};
+use crate::share::{self, Rules, Share, Shows, Standing};
 
 use super::*;
 
@@ -46,13 +50,14 @@ impl Choice {
 /// Where the sheet stands.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum Stage {
-    /// The switches, before anything is made.
+    /// Asking the API for the run's live link and the workspace's rules.
+    Reading,
+    /// The switches, with the live link when the run has one. Nothing is made until Return.
     Choosing,
-    /// Asking the API for the link.
+    /// Asking the API for the link, or to change what it shows.
     Sharing,
-    Shared(Share),
     /// Asked whether to end the link.
-    Stopping(Share),
+    Stopping,
     /// Asking the API to end the link.
     Ending,
     Failed(String),
@@ -60,6 +65,7 @@ pub(super) enum Stage {
 
 /// What the thread doing the work tells the Console.
 enum Message {
+    Read(Standing),
     Shared(Share),
     Ended,
     Failed(String),
@@ -67,7 +73,11 @@ enum Message {
 
 /// What the Console does once the thread is done.
 pub(super) enum Done {
-    Shared(String),
+    /// A new link, to copy, or a link that shows something else from now on.
+    Shared {
+        url: String,
+        new: bool,
+    },
     Ended,
 }
 
@@ -77,6 +87,10 @@ pub(super) struct Sheet {
     /// The switches this run has something for, each with what it covers in the run.
     choices: Vec<(Choice, String)>,
     row: usize,
+    /// The workspace's rules, once the API has answered.
+    rules: Option<Rules>,
+    /// The run's live link.
+    link: Option<Share>,
     pub(super) stage: Stage,
     messages: Option<Receiver<Message>>,
 }
@@ -92,6 +106,7 @@ fn private_network(run: &Run) -> Option<String> {
 }
 
 impl Sheet {
+    /// The sheet for a run, reading where its share stands at once.
     fn new(run: Run, install: Option<String>) -> Self {
         let mut choices = Vec::new();
         if let Some(address) = private_network(&run) {
@@ -103,43 +118,76 @@ impl Sheet {
         if let Some(name) = run.from.clone().or(install) {
             choices.push((Choice::InstallName, name));
         }
-        Self {
+        let mut sheet = Self {
             run,
             shows: Shows::default(),
             choices,
             row: 0,
-            stage: Stage::Choosing,
+            rules: None,
+            link: None,
+            stage: Stage::Reading,
             messages: None,
-        }
+        };
+        sheet.read();
+        sheet
     }
 
     fn busy(&self) -> bool {
-        matches!(self.stage, Stage::Sharing | Stage::Ending)
+        matches!(self.stage, Stage::Reading | Stage::Sharing | Stage::Ending)
+    }
+
+    /// Whether this account makes links and changes what they show.
+    fn can_share(&self) -> bool {
+        self.rules.is_some_and(|rules| rules.can_share)
+    }
+
+    /// Whether ↑↓ and space move between the switches and turn them.
+    fn switching(&self) -> bool {
+        self.stage == Stage::Choosing && self.can_share() && !self.choices.is_empty()
+    }
+
+    /// Whether the switches say something else than the live link shows.
+    fn changed(&self) -> bool {
+        self.link
+            .as_ref()
+            .is_some_and(|link| link.shows != self.shows)
+    }
+
+    /// Whether Return makes the link or changes what it shows.
+    fn can_send(&self) -> bool {
+        self.can_share() && (self.link.is_none() || self.changed())
+    }
+
+    fn work(&mut self, stage: Stage, job: impl FnOnce() -> Message + Send + 'static) {
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(job());
+        });
+        self.stage = stage;
+        self.messages = Some(receiver);
+    }
+
+    fn read(&mut self) {
+        let run = self.run.clone();
+        self.work(Stage::Reading, move || match share::standing(&run) {
+            Ok(standing) => Message::Read(standing),
+            Err(message) => Message::Failed(message),
+        });
     }
 
     fn share(&mut self) {
-        let (sender, receiver) = mpsc::channel();
         let (run, shows) = (self.run.clone(), self.shows);
-        std::thread::spawn(move || {
-            let _ = sender.send(match share::make(&run, shows) {
-                Ok(share) => Message::Shared(share),
-                Err(message) => Message::Failed(message),
-            });
+        self.work(Stage::Sharing, move || match share::make(&run, shows) {
+            Ok(share) => Message::Shared(share),
+            Err(message) => Message::Failed(message),
         });
-        self.stage = Stage::Sharing;
-        self.messages = Some(receiver);
     }
 
     fn end(&mut self, id: String) {
-        let (sender, receiver) = mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = sender.send(match share::end(&id) {
-                Ok(()) => Message::Ended,
-                Err(message) => Message::Failed(message),
-            });
+        self.work(Stage::Ending, move || match share::end(&id) {
+            Ok(()) => Message::Ended,
+            Err(message) => Message::Failed(message),
         });
-        self.stage = Stage::Ending;
-        self.messages = Some(receiver);
     }
 
     /// Folds in what the thread said since the last frame.
@@ -147,10 +195,22 @@ impl Sheet {
         let message = self.messages.as_ref()?.try_recv().ok()?;
         self.messages = None;
         match message {
+            Message::Read(standing) => {
+                self.shows = standing.start();
+                self.rules = Some(standing.rules);
+                self.link = standing.link;
+                self.stage = Stage::Choosing;
+                None
+            }
             Message::Shared(share) => {
-                let url = share.url.clone();
-                self.stage = Stage::Shared(share);
-                Some(Done::Shared(url))
+                let done = Done::Shared {
+                    url: share.url.clone(),
+                    new: self.link.is_none(),
+                };
+                self.shows = share.shows;
+                self.link = Some(share);
+                self.stage = Stage::Choosing;
+                Some(done)
             }
             Message::Ended => Some(Done::Ended),
             Message::Failed(sentence) => {
@@ -162,24 +222,57 @@ impl Sheet {
 
     pub(super) fn keys(&self) -> Vec<(&'static str, &'static str)> {
         match self.stage {
-            Stage::Choosing if self.choices.is_empty() => {
-                vec![("\u{21B5}", "Generate Link"), ("\u{2190}", "Close")]
-            }
-            Stage::Choosing => vec![
-                ("\u{2191}\u{2193}", "Option"),
-                ("space", "Switch"),
-                ("\u{21B5}", "Generate Link"),
-                ("\u{2190}", "Close"),
-            ],
-            Stage::Shared(_) => vec![
-                ("o", "Open Link"),
-                ("c", "Copy Link"),
-                ("x", "Stop Sharing"),
-                ("\u{2190}", "Close"),
-            ],
-            Stage::Stopping(_) => vec![("\u{21B5}", "Stop Sharing"), ("\u{2190}", "Cancel")],
+            Stage::Reading | Stage::Sharing | Stage::Ending => Vec::new(),
+            Stage::Stopping => vec![("\u{21B5}", "Stop Sharing"), ("\u{2190}", "Cancel")],
             Stage::Failed(_) => vec![("\u{21B5}", "Try Again"), ("\u{2190}", "Close")],
-            Stage::Sharing | Stage::Ending => Vec::new(),
+            Stage::Choosing => {
+                let mut keys = Vec::new();
+                if self.switching() {
+                    keys.push(("\u{2191}\u{2193}", "Option"));
+                    keys.push(("space", "Switch"));
+                }
+                if self.can_send() {
+                    keys.push((
+                        "\u{21B5}",
+                        if self.link.is_some() {
+                            "Update Link"
+                        } else {
+                            "Generate Link"
+                        },
+                    ));
+                }
+                if self.link.is_some() {
+                    keys.push(("o", "Open Link"));
+                    keys.push(("c", "Copy Link"));
+                    keys.push(("x", "Stop Sharing"));
+                }
+                keys.push(("\u{2190}", "Close"));
+                keys
+            }
+        }
+    }
+
+    /// The sentences at the top of the sheet: what the link does, or why there is none, and
+    /// when it stops working.
+    fn sentence(&self) -> String {
+        match (&self.link, self.can_share()) {
+            (Some(link), _) => {
+                let mut sentence = "This run is a public page. Anyone with the link can open it without signing in.".to_string();
+                if let Some(expiry) = link.expires_at.as_deref().and_then(share::expires_on) {
+                    sentence.push(' ');
+                    sentence.push_str(&expiry);
+                }
+                sentence
+            }
+            (None, true) => {
+                let mut sentence = "Generate Link makes a public page of this run. Anyone with the link can open it without signing in.".to_string();
+                if let Some(days) = self.rules.and_then(|rules| rules.expires_in_days) {
+                    sentence.push(' ');
+                    sentence.push_str(&share::expires_after(days));
+                }
+                sentence
+            }
+            (None, false) => share::NOT_ALLOWED.to_string(),
         }
     }
 }
@@ -207,10 +300,11 @@ impl App {
             return;
         };
         match done {
-            Done::Shared(url) => {
+            Done::Shared { url, new: true } => {
                 copy_to_clipboard(&url);
                 self.toast("Link copied");
             }
+            Done::Shared { new: false, .. } => self.toast("Link updated"),
             Done::Ended => {
                 self.share = None;
                 self.toast("Sharing stopped");
@@ -227,37 +321,44 @@ impl App {
             return;
         }
         let close = matches!(key.code, KeyCode::Esc | KeyCode::Left);
+        let url = sheet.link.as_ref().map(|link| link.url.clone());
         match (&sheet.stage, key.code) {
-            (Stage::Stopping(share), _) if close => sheet.stage = Stage::Shared(share.clone()),
+            (Stage::Stopping, _) if close => sheet.stage = Stage::Choosing,
             (_, _) if close => self.share = None,
-            (Stage::Choosing, KeyCode::Down | KeyCode::Char('j')) => {
+            (Stage::Choosing, KeyCode::Down | KeyCode::Char('j')) if sheet.switching() => {
                 sheet.row = (sheet.row + 1).min(sheet.choices.len().saturating_sub(1));
             }
-            (Stage::Choosing, KeyCode::Up | KeyCode::Char('k')) => {
+            (Stage::Choosing, KeyCode::Up | KeyCode::Char('k')) if sheet.switching() => {
                 sheet.row = sheet.row.saturating_sub(1);
             }
-            (Stage::Choosing, KeyCode::Char(' ') | KeyCode::Right) => {
+            (Stage::Choosing, KeyCode::Char(' ') | KeyCode::Right) if sheet.switching() => {
                 if let Some((choice, _)) = sheet.choices.get(sheet.row) {
                     choice.flip(&mut sheet.shows);
                 }
             }
-            (Stage::Choosing | Stage::Failed(_), KeyCode::Enter) => sheet.share(),
-            (Stage::Shared(share), KeyCode::Char('o')) => {
-                let url = share.url.clone();
-                if !account::open_link(&url) {
-                    self.toast("Couldn't open a browser. Copy the link with c");
+            (Stage::Choosing, KeyCode::Enter) if sheet.can_send() => sheet.share(),
+            // A read that failed is read again. A share that failed is sent again.
+            (Stage::Failed(_), KeyCode::Enter) if sheet.rules.is_none() => sheet.read(),
+            (Stage::Failed(_), KeyCode::Enter) => sheet.share(),
+            (Stage::Choosing, KeyCode::Char('o')) => {
+                if let Some(url) = url {
+                    if !account::open_link(&url) {
+                        self.toast("Couldn't open a browser. Copy the link with c");
+                    }
                 }
             }
-            (Stage::Shared(share), KeyCode::Char('c')) => {
-                let url = share.url.clone();
-                self.copy(&url);
+            (Stage::Choosing, KeyCode::Char('c')) => {
+                if let Some(url) = url {
+                    self.copy(&url);
+                }
             }
-            (Stage::Shared(share), KeyCode::Char('x')) => {
-                sheet.stage = Stage::Stopping(share.clone());
+            (Stage::Choosing, KeyCode::Char('x')) if sheet.link.is_some() => {
+                sheet.stage = Stage::Stopping;
             }
-            (Stage::Stopping(share), KeyCode::Enter) => {
-                let id = share.id.clone();
-                sheet.end(id);
+            (Stage::Stopping, KeyCode::Enter) => {
+                if let Some(id) = sheet.link.as_ref().map(|link| link.id.clone()) {
+                    sheet.end(id);
+                }
             }
             _ => {}
         }
@@ -279,77 +380,85 @@ impl App {
                 .collect()
         };
         let mut lines: Vec<Line> = vec![Line::default()];
-        match &sheet.stage {
-            Stage::Choosing | Stage::Sharing | Stage::Failed(_) => {
-                lines.extend(wrapped(
-                    "Generate Link makes a public page of this run. Anyone with the link can open it without signing in.",
-                    dim,
-                ));
-                if !sheet.choices.is_empty() {
+        match (&sheet.stage, sheet.rules) {
+            (Stage::Reading, _) => lines.push(Line::styled(
+                format!("  {spinner} Reading the workspace\u{2019}s sharing settings"),
+                dim,
+            )),
+            (Stage::Ending, _) => {
+                lines.push(Line::styled(format!("  {spinner} Stopping the link"), dim));
+            }
+            // The read failed, so there is nothing to show but why.
+            (Stage::Failed(sentence), None) => {
+                lines.extend(wrapped(sentence, Paint::new().fg(Color::Red)));
+            }
+            (stage, _) => {
+                if let Some(link) = &sheet.link {
+                    lines.push(Line::styled(
+                        format!("  {}", truncate_end(&link.url, columns.saturating_sub(2))),
+                        bold.fg(ACCENT),
+                    ));
                     lines.push(Line::default());
                 }
-                let choosing = sheet.stage == Stage::Choosing;
-                for (index, (choice, detail)) in sheet.choices.iter().enumerate() {
-                    let check = if choice.on(sheet.shows) {
-                        "[\u{2713}]"
-                    } else {
-                        "[ ]"
-                    };
-                    let text = format!("  {check} {:<18}", choice.title());
-                    let room = columns.saturating_sub(width(&text) + 1);
-                    if choosing && index == sheet.row {
-                        lines.push(Line::styled(
-                            fit(&format!("{text}{}", truncate_end(detail, room)), columns),
-                            selected(),
-                        ));
-                    } else {
-                        lines.push(Line::from(vec![
-                            Span::raw(text),
-                            Span::styled(truncate_end(detail, room), dim),
-                        ]));
+                lines.extend(wrapped(&sheet.sentence(), dim));
+                // A member who may not share sees no switches until they have a link.
+                let shown = sheet.link.is_some() || sheet.can_share();
+                if shown && !sheet.choices.is_empty() {
+                    lines.push(Line::default());
+                    for (index, (choice, detail)) in sheet.choices.iter().enumerate() {
+                        let check = if choice.on(sheet.shows) {
+                            "[\u{2713}]"
+                        } else {
+                            "[ ]"
+                        };
+                        let text = format!("  {check} {:<18}", choice.title());
+                        let room = columns.saturating_sub(width(&text) + 1);
+                        if sheet.switching() && index == sheet.row {
+                            lines.push(Line::styled(
+                                fit(&format!("{text}{}", truncate_end(detail, room)), columns),
+                                selected(),
+                            ));
+                        } else {
+                            lines.push(Line::from(vec![
+                                Span::raw(text),
+                                Span::styled(truncate_end(detail, room), dim),
+                            ]));
+                        }
                     }
                 }
-                lines.push(Line::default());
-                match &sheet.stage {
-                    Stage::Sharing => lines.push(Line::styled(
+                let last: Vec<Line> = match stage {
+                    Stage::Sharing if sheet.link.is_some() => {
+                        vec![Line::styled(format!("  {spinner} Updating the link"), dim)]
+                    }
+                    Stage::Sharing => vec![Line::styled(
                         format!("  {spinner} Generating the link"),
                         dim,
-                    )),
-                    Stage::Failed(sentence) => {
-                        lines.extend(wrapped(sentence, Paint::new().fg(Color::Red)))
-                    }
-                    _ => lines.push(Line::from(vec![
+                    )],
+                    Stage::Failed(sentence) => wrapped(sentence, Paint::new().fg(Color::Red)),
+                    Stage::Stopping => wrapped(
+                        "The link stops working for everyone.",
+                        Paint::new().fg(Color::Yellow),
+                    ),
+                    _ if sheet.can_send() => vec![Line::from(vec![
                         Span::styled(
                             "  <\u{21B5}> ",
                             Paint::new().fg(KEY).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled("Generate Link", bold),
-                    ])),
-                }
-            }
-            Stage::Shared(share) | Stage::Stopping(share) => {
-                lines.push(Line::styled(
-                    format!("  {}", truncate_end(&share.url, columns.saturating_sub(2))),
-                    bold.fg(ACCENT),
-                ));
-                lines.push(Line::default());
-                lines.extend(wrapped(
-                    &format!(
-                        "This run is a public page. Anyone with the link can open it without signing in. {}",
-                        share::what_it_shows(share.shows)
-                    ),
-                    dim,
-                ));
-                if matches!(sheet.stage, Stage::Stopping(_)) {
+                        Span::styled(
+                            if sheet.link.is_some() {
+                                "Update Link"
+                            } else {
+                                "Generate Link"
+                            },
+                            bold,
+                        ),
+                    ])],
+                    _ => Vec::new(),
+                };
+                if !last.is_empty() {
                     lines.push(Line::default());
-                    lines.extend(wrapped(
-                        "The link stops working for everyone.",
-                        Paint::new().fg(Color::Yellow),
-                    ));
+                    lines.extend(last);
                 }
-            }
-            Stage::Ending => {
-                lines.push(Line::styled(format!("  {spinner} Stopping the link"), dim));
             }
         }
         let box_height = (lines.len() as u16 + 3).min(area.height.saturating_sub(2));
@@ -393,6 +502,8 @@ fn wrap(text: &str, columns: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rvrs_core::model::Tool;
+    use rvrs_core::FamilyChoice;
 
     #[test]
     fn sentences_wrap_at_words() {
@@ -401,5 +512,169 @@ mod tests {
             ["Anyone with", "the link can", "open it"]
         );
         assert_eq!(wrap("", 12), Vec::<String>::new());
+    }
+
+    /// A sheet that read nothing yet, with one switch, and no thread behind it.
+    fn sheet() -> Sheet {
+        Sheet {
+            run: Run::new(Tool::Ping, "192.0.2.1", FamilyChoice::Auto, 0, 0),
+            shows: Shows::default(),
+            choices: vec![(Choice::InstallName, "MacBook Pro".to_string())],
+            row: 0,
+            rules: None,
+            link: None,
+            stage: Stage::Reading,
+            messages: None,
+        }
+    }
+
+    fn link(shows: Shows, expires_at: Option<&str>) -> Share {
+        Share {
+            id: "q3Lr8XwT2a".to_string(),
+            url: "https://app.rvrs.dev/r/q3Lr8XwT2a".to_string(),
+            run: "4f6c8f0e-2b7d-4c55-9a8e-1d2f3a4b5c6d".to_string(),
+            shows,
+            created_at: "2026-11-23T20:15:04.000Z".to_string(),
+            expires_at: expires_at.map(str::to_string),
+        }
+    }
+
+    /// The sheet once the API answered this.
+    fn read(standing: Standing) -> Sheet {
+        let mut sheet = sheet();
+        let (sender, receiver) = mpsc::channel();
+        sender.send(Message::Read(standing)).unwrap();
+        sheet.messages = Some(receiver);
+        assert!(sheet.tick().is_none());
+        sheet
+    }
+
+    fn rules(defaults: Shows, expires_in_days: Option<u32>, can_share: bool) -> Rules {
+        Rules {
+            defaults,
+            expires_in_days,
+            can_share,
+        }
+    }
+
+    fn names(sheet: &Sheet) -> Vec<&'static str> {
+        sheet.keys().into_iter().map(|(_, name)| name).collect()
+    }
+
+    #[test]
+    fn a_new_link_starts_at_the_workspaces_defaults_and_says_when_it_stops() {
+        let defaults = Shows {
+            install_name: true,
+            ..Shows::default()
+        };
+        let sheet = read(Standing {
+            link: None,
+            rules: rules(defaults, Some(30), true),
+        });
+        assert_eq!(sheet.stage, Stage::Choosing);
+        assert_eq!(sheet.shows, defaults);
+        assert_eq!(
+            sheet.sentence(),
+            "Generate Link makes a public page of this run. Anyone with the link can open it without signing in. The link stops working after 30 days."
+        );
+        assert_eq!(
+            names(&sheet),
+            ["Option", "Switch", "Generate Link", "Close"]
+        );
+    }
+
+    #[test]
+    fn a_shared_run_opens_on_its_link() {
+        let shows = Shows {
+            public_address: true,
+            ..Shows::default()
+        };
+        let mut sheet = read(Standing {
+            link: Some(link(shows, None)),
+            rules: rules(Shows::default(), Some(30), true),
+        });
+        assert_eq!(sheet.shows, shows);
+        assert_eq!(
+            sheet.sentence(),
+            "This run is a public page. Anyone with the link can open it without signing in."
+        );
+        assert_eq!(
+            names(&sheet),
+            [
+                "Option",
+                "Switch",
+                "Open Link",
+                "Copy Link",
+                "Stop Sharing",
+                "Close"
+            ]
+        );
+        // A switch that moved makes Return change what the link shows.
+        Choice::InstallName.flip(&mut sheet.shows);
+        assert!(names(&sheet).contains(&"Update Link"));
+    }
+
+    #[test]
+    fn a_link_that_expires_says_the_day() {
+        let sheet = read(Standing {
+            link: Some(link(Shows::default(), Some("2026-12-24T12:00:00.000Z"))),
+            rules: rules(Shows::default(), Some(30), true),
+        });
+        let sentence = sheet.sentence();
+        assert!(
+            sentence.starts_with(
+                "This run is a public page. Anyone with the link can open it without signing in. The link stops working on Dec 2"
+            ),
+            "{sentence}"
+        );
+    }
+
+    #[test]
+    fn a_member_who_may_not_share_reads_why_and_keeps_stop_sharing() {
+        let sheet = read(Standing {
+            link: None,
+            rules: rules(Shows::default(), Some(30), false),
+        });
+        assert_eq!(
+            sheet.sentence(),
+            "Only owners and admins of this workspace share runs."
+        );
+        assert_eq!(names(&sheet), ["Close"]);
+        assert!(!sheet.can_send() && !sheet.switching());
+        let held = read(Standing {
+            link: Some(link(Shows::default(), None)),
+            rules: rules(Shows::default(), None, false),
+        });
+        assert_eq!(
+            names(&held),
+            ["Open Link", "Copy Link", "Stop Sharing", "Close"]
+        );
+    }
+
+    #[test]
+    fn a_new_link_is_copied_and_a_changed_one_is_not() {
+        let mut sheet = read(Standing {
+            link: None,
+            rules: Rules::default(),
+        });
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(Message::Shared(link(Shows::default(), None)))
+            .unwrap();
+        sheet.messages = Some(receiver);
+        assert!(matches!(sheet.tick(), Some(Done::Shared { new: true, .. })));
+        let (sender, receiver) = mpsc::channel();
+        let wider = Shows {
+            public_address: true,
+            ..Shows::default()
+        };
+        sender.send(Message::Shared(link(wider, None))).unwrap();
+        sheet.messages = Some(receiver);
+        assert!(matches!(
+            sheet.tick(),
+            Some(Done::Shared { new: false, .. })
+        ));
+        assert_eq!(sheet.shows, wider);
+        assert_eq!(sheet.stage, Stage::Choosing);
     }
 }

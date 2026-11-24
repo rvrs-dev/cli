@@ -308,6 +308,16 @@ pub fn main(style: Style) -> String {
                 "Leave the private network out of the page",
                 false,
             ),
+            (
+                "share --no-public-address",
+                "Leave the public address out of the page",
+                false,
+            ),
+            (
+                "share --no-install-name",
+                "Leave the install's name out of the page",
+                false,
+            ),
             ("share --stop [id]", "End a run's share link", false),
         ],
     ));

@@ -249,9 +249,12 @@ _rvrs() {
       ;;
     share)
       _arguments \
-        '--no-private-networks[leave the private network out of the page]' \
-        '--public-address[show the public address on the page]' \
-        '--install-name[show the name of the install that made the run]' \
+        '(--no-private-networks)--private-networks[show the private network on the page]' \
+        '(--private-networks)--no-private-networks[leave the private network out of the page]' \
+        '(--no-public-address)--public-address[show the public address on the page]' \
+        '(--public-address)--no-public-address[leave the public address out of the page]' \
+        '(--no-install-name)--install-name[show the name of the install that made the run]' \
+        '(--install-name)--no-install-name[leave the name of the install out of the page]' \
         '--stop[end the link]' \
         '--json[print the link with what it shows]' \
         '1:run:_rvrs_runs'
@@ -368,7 +371,7 @@ pub const BASH: &str = r#"_rvrs() {
       COMPREPLY=($(compgen -W "remove --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
       ;;
     share)
-      COMPREPLY=($(compgen -W "--no-private-networks --public-address --install-name --stop --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
+      COMPREPLY=($(compgen -W "--private-networks --no-private-networks --public-address --no-public-address --install-name --no-install-name --stop --json $(rvrs __runs 2>/dev/null | cut -d: -f1)" -- "$current"))
       ;;
     schedule|schedules)
       if [ "$COMP_CWORD" -eq 2 ]; then
@@ -469,9 +472,12 @@ complete -c rvrs -n '__fish_seen_subcommand_from favorite favorites' -a '(rvrs _
 complete -c rvrs -n '__fish_seen_subcommand_from save' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
 complete -c rvrs -n __fish_use_subcommand -a share -d 'Print the share link of a run, a public page'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -a '(rvrs __runs 2>/dev/null | string replace : \t)'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l private-networks -d 'Show the private network on the page'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l no-private-networks -d 'Leave the private network out of the page'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l public-address -d 'Show the public address on the page'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l no-public-address -d 'Leave the public address out of the page'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l install-name -d 'Show the name of the install that made the run'
+complete -c rvrs -n '__fish_seen_subcommand_from share' -l no-install-name -d 'Leave the name of the install out of the page'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l stop -d 'End the link'
 complete -c rvrs -n '__fish_seen_subcommand_from share' -l json -d 'Print the link with what it shows'
 complete -c rvrs -n __fish_use_subcommand -a schedule -d 'Have nodes repeat a run, or show, pause, resume or delete a schedule'
