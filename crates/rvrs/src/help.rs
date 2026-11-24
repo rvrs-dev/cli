@@ -306,7 +306,12 @@ pub fn main(style: Style) -> String {
             ),
             (
                 "share --no-public-address",
-                "Leave the public address out, and --no-install-name the install's name",
+                "Leave the public address out of the page",
+                false,
+            ),
+            (
+                "share --no-install-name",
+                "Leave the install's name out of the page",
                 false,
             ),
             ("share --stop [id]", "End a run's share link", false),
