@@ -1,0 +1,65 @@
+{
+  "window": "7d",
+  "from": "2026-11-18T00:00:00.000Z",
+  "to": "2026-11-24T22:34:28.907Z",
+  "runs": 3,
+  "runsBefore": 0,
+  "groups": [
+    {
+      "name": "laptop",
+      "id": "00000000-0000-4000-8000-000000000005",
+      "runs": 3,
+      "runsBefore": 0,
+      "median": 12,
+      "medianBefore": null,
+      "jitter": 1.2,
+      "loss": 0,
+      "withLoss": 0,
+      "failed": 0,
+      "worthALook": null,
+      "link": "https://app.rvrs.dev/runs?install=00000000-0000-4000-8000-000000000005&since=7d"
+    }
+  ],
+  "latency": {
+    "tool": null,
+    "install": null,
+    "target": null,
+    "stepSeconds": 3600,
+    "points": [
+      {
+        "at": "2026-11-23T10:00:00.000Z",
+        "runs": 1,
+        "latency": 12,
+        "jitter": 1.2,
+        "loss": 0,
+        "withLoss": 0,
+        "failed": 0
+      },
+      {
+        "at": "2026-11-24T10:00:00.000Z",
+        "runs": 1,
+        "latency": 12,
+        "jitter": 1.2,
+        "loss": 0,
+        "withLoss": 0,
+        "failed": 0
+      },
+      {
+        "at": "2026-11-24T11:00:00.000Z",
+        "runs": 1,
+        "latency": 12.5,
+        "jitter": 1,
+        "loss": 0,
+        "withLoss": 0,
+        "failed": 0
+      }
+    ],
+    "runs": 3,
+    "latency": 12.166666666666666,
+    "jitter": 1.1333333333333333,
+    "loss": 0,
+    "withLoss": 0,
+    "failed": 0
+  },
+  "link": "https://app.rvrs.dev/overview?window=7d"
+}

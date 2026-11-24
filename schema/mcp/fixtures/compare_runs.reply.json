@@ -1,0 +1,162 @@
+{
+  "runs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "tool": "Ping",
+      "target": "example.com",
+      "state": "ended",
+      "outcome": "reached",
+      "summary": "5 pkt · 0.0% loss · 12.0 ms avg",
+      "startedAt": "2026-11-23T10:00:00.000Z",
+      "origin": {
+        "kind": "device",
+        "name": "laptop"
+      },
+      "trigger": "manual",
+      "scheduleId": null,
+      "address": "104.20.23.154",
+      "family": "IPv4",
+      "link": "https://app.rvrs.dev/runs/00000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "tool": "Ping",
+      "target": "example.com",
+      "state": "ended",
+      "outcome": "reached",
+      "summary": "5 pkt · 0.0% loss · 12.0 ms avg",
+      "startedAt": "2026-11-24T10:00:00.000Z",
+      "origin": {
+        "kind": "device",
+        "name": "laptop"
+      },
+      "trigger": "manual",
+      "scheduleId": null,
+      "address": "104.20.23.154",
+      "family": "IPv4",
+      "link": "https://app.rvrs.dev/runs/00000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "differs": [],
+  "figures": [
+    {
+      "name": "loss",
+      "values": [
+        {
+          "text": "0.0%",
+          "delta": null
+        },
+        {
+          "text": "0.0%",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "min",
+      "values": [
+        {
+          "text": "11.1 ms",
+          "delta": null
+        },
+        {
+          "text": "11.1 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "avg",
+      "values": [
+        {
+          "text": "12.0 ms",
+          "delta": null
+        },
+        {
+          "text": "12.0 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "max",
+      "values": [
+        {
+          "text": "12.9 ms",
+          "delta": null
+        },
+        {
+          "text": "12.9 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "jitter",
+      "values": [
+        {
+          "text": "1.2 ms",
+          "delta": null
+        },
+        {
+          "text": "1.2 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "p50",
+      "values": [
+        {
+          "text": "11.9 ms",
+          "delta": null
+        },
+        {
+          "text": "11.9 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "p95",
+      "values": [
+        {
+          "text": "12.9 ms",
+          "delta": null
+        },
+        {
+          "text": "12.9 ms",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "sent",
+      "values": [
+        {
+          "text": "5",
+          "delta": null
+        },
+        {
+          "text": "5",
+          "delta": null
+        }
+      ]
+    },
+    {
+      "name": "received",
+      "values": [
+        {
+          "text": "5",
+          "delta": null
+        },
+        {
+          "text": "5",
+          "delta": null
+        }
+      ]
+    }
+  ],
+  "paths": [],
+  "link": "https://app.rvrs.dev/compare?runs=00000000-0000-4000-8000-000000000003,00000000-0000-4000-8000-000000000002"
+}

@@ -2,6 +2,8 @@
 
 An agent skill for network diagnostics with the [rvrs CLI](https://github.com/rvrs-dev/cli): ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. The agent makes each run with a fixed count, reads it as JSON and compares it with the earlier runs rvrs keeps on this device.
 
+The plugin also connects the [rvrs MCP server](https://rvrs.dev/mcp-server-network-diagnostics), which reads your rvrs account: the runs your iPhone, your CLIs and your nodes made, their comparisons and summaries, and each run drawn in the chat as rvrs draws it. It makes no runs. It asks you to sign in to rvrs the first time, and reads nothing until you allow it at app.rvrs.dev.
+
 [rvrs.dev](https://rvrs.dev) · [The skill on rvrs.dev](https://rvrs.dev/ai-agent-network-diagnostics-skill) · [rvrs CLI on GitHub](https://github.com/rvrs-dev/cli)
 
 Ask things like:
@@ -21,12 +23,20 @@ Any agent that reads skills, through [skills.sh](https://skills.sh):
 npx skills add rvrs-dev/cli --skill rvrs-network-diagnostics
 ```
 
-Claude Code, as a plugin:
+Claude Code, as a plugin with the skill and the MCP server:
 
 ```text
 /plugin marketplace add rvrs-dev/cli
 /plugin install rvrs@rvrs
 ```
+
+The MCP server alone, in Claude Code:
+
+```bash
+claude mcp add --transport http rvrs https://mcp.rvrs.dev
+```
+
+In Claude and ChatGPT on the web, add `https://mcp.rvrs.dev` as a connector: [the steps for each agent](https://rvrs.dev/docs/get-started/mcp).
 
 The skill needs the `rvrs` binary, version 0.10 or newer, on macOS or Linux. When it is missing the agent asks, then installs it into `~/.local/bin` without root:
 
@@ -56,7 +66,9 @@ rvrs needs no account. [What leaves this device](https://github.com/rvrs-dev/cli
 
 ```text
 .claude-plugin/plugin.json      Claude Code and the Claude plugin directory
-.codex-plugin/plugin.json       Codex and ChatGPT
+.mcp.json                       the MCP server, for Claude
+plugin.json, mcp.json           ChatGPT and Codex: the plugin and its MCP server
+.codex-plugin/plugin.json       Codex before plugin.json
 skills/rvrs-network-diagnostics/
   SKILL.md                      the loop, the commands, the rules of evidence
   references/                   setup, the report, playbooks, history and cases, nodes

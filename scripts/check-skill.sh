@@ -1,6 +1,7 @@
 #!/bin/sh
 # Checks the agent skill and its plugin manifests: the frontmatter the Agent Skills spec asks
-# for, links that resolve, one version everywhere, and no command the CLI doesn't have.
+# for, links that resolve, one version everywhere, the MCP server named the same in both MCP
+# configs, and no command the CLI doesn't have.
 # With a built binary (RVRS=target/release/rvrs) it also asks rvrs about each command it finds.
 set -eu
 # Running rvrs here must not count as using it.
@@ -51,10 +52,15 @@ for doc in "$file" "$skill"/references/*.md; do
   done
 done | grep . && failed=1
 
-# One version: the skill, both manifests, and the CLI's VERSION as major.minor.
+# One version: the skill, every manifest, and the CLI's VERSION as major.minor.
 version=$(printf '%s\n' "$front" | sed -n 's/^  version: "\(.*\)"/\1/p')
-for manifest in "$plugin/.claude-plugin/plugin.json" "$plugin/.codex-plugin/plugin.json"; do
-  grep -q "\"version\": \"$version\"" "$manifest" || fail "$(basename "$(dirname "$manifest")")/plugin.json is not at $version"
+for manifest in "$plugin/.claude-plugin/plugin.json" "$plugin/.codex-plugin/plugin.json" "$plugin/plugin.json"; do
+  grep -q "\"version\": \"$version\"" "$manifest" || fail "${manifest#"$plugin/"} is not at $version"
+done
+
+# Claude's .mcp.json and OpenAI's mcp.json name the same MCP server.
+for config in "$plugin/.mcp.json" "$plugin/mcp.json"; do
+  grep -q '"url": "https://mcp.rvrs.dev"' "$config" || fail "$(basename "$config") does not name https://mcp.rvrs.dev"
 done
 case "$version" in
   "$(cat "$root/VERSION")".*) ;;

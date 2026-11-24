@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "rvrs",
+  "version": "0.17.1",
+  "description": "Network diagnostics for agents with the rvrs CLI: ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. Every run is a JSON report, compared with the history rvrs keeps, so an agent can say what changed and name the runs that show it. The rvrs MCP server adds the person's account: runs from every device and node, drawn in the chat.",
+  "author": {
+    "name": "rvrs",
+    "url": "https://rvrs.dev"
+  },
+  "homepage": "https://rvrs.dev/mcp-server-network-diagnostics",
+  "repository": "https://github.com/rvrs-dev/cli",
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "networking",
+    "network-diagnostics",
+    "network-troubleshooting",
+    "network-tools",
+    "ping",
+    "traceroute",
+    "mtr",
+    "dig",
+    "dns",
+    "bgp",
+    "asn",
+    "rpki",
+    "latency",
+    "packet-loss",
+    "ipv6",
+    "connectivity",
+    "looking-glass",
+    "sysadmin",
+    "devops",
+    "sre",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "rvrs",
+        "shortDescription": "Traceroute, MTR, ping, DNS and BGP runs from your rvrs account",
+        "longDescription": "Reads your rvrs account: the runs your iPhone, your CLIs and your nodes made, compared with each other and drawn as rvrs draws them, with a link to every run. With a shell, the skill makes new runs with the rvrs CLI.",
+        "developerName": "rvrs",
+        "category": "Developer Tools",
+        "websiteURL": "https://rvrs.dev",
+        "supportURL": "https://github.com/rvrs-dev/cli/issues",
+        "privacyPolicyURL": "https://rvrs.dev/privacy",
+        "logo": "./.claude-plugin/icon.png",
+        "composerIcon": "./.claude-plugin/icon.png"
+      }
+    }
+  }
+}

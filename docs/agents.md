@@ -1,6 +1,6 @@
 # rvrs for agents
 
-An AI agent with a shell can use rvrs the way a network engineer does: make a run, read it, compare it with an earlier one, and say what changed. The skill in [`plugins/rvrs`](../plugins/rvrs) teaches it how.
+An AI agent with a shell can use rvrs the way a network engineer does: make a run, read it, compare it with an earlier one, and say what changed. The skill in [`plugins/rvrs`](../plugins/rvrs) teaches it how. An agent without a shell, such as Claude or ChatGPT in a browser, reads a person's rvrs account through [the MCP server](#the-mcp-server).
 
 ## Install the skill
 
@@ -40,14 +40,27 @@ The agent needs `rvrs` 0.10 or newer on `PATH`. When it is missing, the skill ha
 
 Every run starts from this device. The skill tells the agent to say so when a question needs another origin, and to use `--node` and `rvrs nodes` once `rvrs status` reports them. Until then those commands refuse and send nothing. `rvrs login` exists, and the skill has the agent run it only when the person asks, leaving the browser step to them.
 
+## The MCP server
+
+`https://mcp.rvrs.dev` serves the Model Context Protocol for a person's rvrs account. An agent that connects reads the runs every device and node of theirs made, their nodes, comparisons and summaries, and shows a run's result drawn as rvrs draws it, in the agents that draw. It makes no runs and changes nothing yet. [`schema/mcp`](../schema/mcp) is the contract: every MCP tool, the instructions it sends, and a reply of each.
+
+```bash
+claude mcp add --transport http rvrs https://mcp.rvrs.dev
+```
+
+The first call opens a sign-in to rvrs in the browser. The agent then reads nothing until the person allows it on its page at app.rvrs.dev, where two switches add the private network and the public address to what it reads.
+
+With both, the skill reads the account through the MCP tools and makes new runs with the CLI. Its section The MCP server lists which MCP tool stands for which command. A run made with the CLI reaches the account once `rvrs login` signed the install in.
+
 ## Publishing the skill
 
 | Where | What it reads | How |
 | --- | --- | --- |
 | skills.sh | This repository | Nothing to submit. A skill is listed once people install it with `npx skills add` |
 | Claude Code | `.claude-plugin/marketplace.json` | Nothing to submit. `/plugin marketplace add rvrs-dev/cli` |
-| Claude plugin directory | This repository, path `plugins/rvrs` | Submit at claude.ai/directory/manage as a plugin bundle. It reviews each version |
-| ChatGPT and Codex | A zip of `plugins/rvrs` | `scripts/package-skill.sh`, then upload at platform.openai.com/plugins. A skills-only listing can't gain an MCP server later, so that submission waits for MCP or goes in as its own listing |
+| Claude directory | This repository, path `plugins/rvrs`, and the MCP server | Submit at claude.ai/directory/manage: the plugin bundle, and the MCP server as a connector paired with it. Each version is reviewed |
+| ChatGPT and Codex | A zip of `plugins/rvrs`: `plugin.json` and `mcp.json` with the skill | `scripts/package-skill.sh`, then upload at platform.openai.com/plugins with the MCP server, which OpenAI checks at `/.well-known/openai-apps-challenge` |
+| MCP registry | `server.json` under the name `dev.rvrs/rvrs` | `mcp-publisher` after a TXT record on rvrs.dev proves the name |
 | rvrs.dev | `/.well-known/agent-skills/` | `scripts/update-skill.sh` in the site repository |
 
 `scripts/check-skill.sh` parses the frontmatter as YAML and checks its fields, the links, that the skill, both manifests and `VERSION` agree on the version, that no address outside the documentation ranges is in it, and, with `RVRS=target/release/rvrs`, that every command the skill names exists. CI runs it. Bump the three versions together with `VERSION`.

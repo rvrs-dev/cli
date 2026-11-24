@@ -55,6 +55,12 @@ For your agent, the [skill](docs/agents.md) that teaches it to diagnose a networ
 npx skills add rvrs-dev/cli
 ```
 
+For an agent that reads your rvrs account, such as Claude or ChatGPT in a browser, the [MCP server](docs/agents.md#the-mcp-server) at `https://mcp.rvrs.dev`:
+
+```bash
+claude mcp add --transport http rvrs https://mcp.rvrs.dev
+```
+
 From source, with Rust 1.82 or newer:
 
 ```bash

@@ -1,0 +1,2057 @@
+[
+  {
+    "name": "get_status",
+    "title": "Status",
+    "description": "Whose rvrs account this agent reads, what it holds and what the agent may read. It counts the runs, the installs by product (the iPhone and iPad app, the CLI, nodes and agents) and the nodes online. Call it first in a conversation. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {}
+    },
+    "annotations": {
+      "title": "Status",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "connectedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "reads": {
+              "type": "object",
+              "properties": {
+                "privateNetworks": {
+                  "type": "boolean"
+                },
+                "publicAddress": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "privateNetworks",
+                "publicAddress"
+              ],
+              "additionalProperties": false
+            },
+            "link": {
+              "type": "string",
+              "format": "uri",
+              "description": "The page on the web app, for the person who is signed in."
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "connectedAt",
+            "reads",
+            "link"
+          ],
+          "additionalProperties": false
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspace": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "plan": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "name",
+            "workspace",
+            "plan"
+          ],
+          "additionalProperties": false
+        },
+        "runs": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "newest": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "total",
+            "newest"
+          ],
+          "additionalProperties": false
+        },
+        "installs": {
+          "type": "object",
+          "properties": {
+            "ios": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "cli": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "node": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "mcp": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "ios",
+            "cli",
+            "node",
+            "mcp"
+          ],
+          "additionalProperties": false,
+          "description": "The installs of the account that are not revoked, by product."
+        },
+        "nodes": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "online": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "total",
+            "online"
+          ],
+          "additionalProperties": false
+        },
+        "links": {
+          "type": "object",
+          "properties": {
+            "runs": {
+              "type": "string",
+              "format": "uri"
+            },
+            "installs": {
+              "type": "string",
+              "format": "uri"
+            },
+            "docs": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "runs",
+            "installs",
+            "docs"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "agent",
+        "account",
+        "runs",
+        "installs",
+        "nodes",
+        "links"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "find_runs",
+    "title": "Find Runs",
+    "description": "The runs of this account, newest first, as one line each: tool, target, origin, outcome and summary, with a link. Filters combine: tool, target, part of a target, the device or node a run came from, a tag selector, how it was started, its outcome, loss, a window, a case and saved runs. With like, it lists the runs to compare one run with. For figures over many runs, summarize_runs reads less. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "enum": [
+            "ping",
+            "traceroute",
+            "mtr",
+            "dns",
+            "bgp",
+            "iperf3"
+          ]
+        },
+        "target": {
+          "description": "A target as it was typed, such as example.com or 1.1.1.1, without regard to case.",
+          "type": "string",
+          "maxLength": 255
+        },
+        "search": {
+          "description": "Part of a target.",
+          "type": "string",
+          "maxLength": 255
+        },
+        "install": {
+          "description": "Where the runs were made: a device or a node, by its name or id.",
+          "type": "string",
+          "maxLength": 100
+        },
+        "tags": {
+          "description": "A selector on the tags the origin had: isp=telia, isp!=telia, isp, !isp, line in (ftth,cable), joined by commas to mean and.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "request",
+            "schedule"
+          ]
+        },
+        "schedule": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "reached",
+            "exhausted",
+            "stopped",
+            "failed",
+            "refused"
+          ]
+        },
+        "loss": {
+          "description": "True for the runs that lost at least one probe.",
+          "type": "boolean"
+        },
+        "since": {
+          "type": "string",
+          "enum": [
+            "24h",
+            "7d",
+            "30d"
+          ]
+        },
+        "case": {
+          "description": "A case by its name.",
+          "type": "string",
+          "maxLength": 100
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "like": {
+          "description": "A run to compare with: the runs with its tool, target, origin, destination address and IP family, without it.",
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "limit": {
+          "description": "20 unless given.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "cursor": {
+          "description": "The cursor of the page before.",
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "annotations": {
+      "title": "Find Runs",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "runs": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "tool": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "target": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "state": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "origin": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "trigger": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "scheduleId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "address": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The address the target resolved to."
+              },
+              "family": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "link": {
+                "type": "string",
+                "format": "uri",
+                "description": "The page on the web app, for the person who is signed in."
+              }
+            },
+            "required": [
+              "id",
+              "tool",
+              "target",
+              "state",
+              "outcome",
+              "summary",
+              "startedAt",
+              "origin",
+              "trigger",
+              "scheduleId",
+              "address",
+              "family",
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "link": {
+          "type": "string",
+          "format": "uri",
+          "description": "Runs on the web app with the same filters."
+        }
+      },
+      "required": [
+        "runs",
+        "total",
+        "cursor",
+        "link"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_run",
+    "title": "Run",
+    "description": "One run of this account: its status line, figures, the path hop by hop, DNS sources and records, and rvrs’s interpretation, worded as an inference. brief, the default, leaves out each probe and full has them. A run asked of a node that hasn’t ended is waited for up to 30 seconds and answered with where it stands. Agents that draw show the result as the web app does. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "detail": {
+          "description": "brief, unless given, leaves out each probe. full has every sample and record.",
+          "type": "string",
+          "enum": [
+            "brief",
+            "full"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "annotations": {
+      "title": "Run",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://rvrs/run.html"
+      }
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "standing": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "trigger": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "scheduleId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "tags": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9._-]{0,62}$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "tags"
+          ],
+          "additionalProperties": false
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "tool": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "family": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 20
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "origin": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "node": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nodeId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "install": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceAddress": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publicAddress": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "metadataRevision": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "location": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lon": {
+                              "type": "number"
+                            },
+                            "place": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 100
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "precision": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 20
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "lat",
+                            "lon"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": {}
+                },
+                "outcome": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "summary": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "measured": {
+                  "default": [],
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "value": {
+                        "type": "number"
+                      },
+                      "unit": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 20
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "value"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "hops": {
+                  "anyOf": [
+                    {
+                      "maxItems": 255,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ttl": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "address": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hostname": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 255
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "asn": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "network": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 255
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lossPercent": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "avgMilliseconds": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "minMilliseconds": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "maxMilliseconds": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "jitterMilliseconds": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "sent": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "received": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "samples": {
+                            "anyOf": [
+                              {
+                                "maxItems": 2000,
+                                "type": "array",
+                                "items": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "ttl"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "records": {
+                  "anyOf": [
+                    {
+                      "maxItems": 500,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "maxLength": 20
+                          },
+                          "name": {
+                            "type": "string",
+                            "maxLength": 255
+                          },
+                          "ttl": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "type": "string",
+                            "maxLength": 4096
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "name",
+                          "value"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sources": {
+                  "anyOf": [
+                    {
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 255
+                          },
+                          "kind": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "server": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 255
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "milliseconds": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "addresses": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 64
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 500
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "kind",
+                          "status"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "probe": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "port": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 20
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "protocol",
+                        "port"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "mtu": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "bytes": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "finding": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "limitedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 64
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "tried": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "finding"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "samples": {
+                  "anyOf": [
+                    {
+                      "maxItems": 5000,
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "interpretation": {
+                  "default": [],
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "sentence": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "schema",
+                "id",
+                "tool",
+                "target",
+                "startedAt",
+                "origin",
+                "outcome",
+                "summary",
+                "measured",
+                "interpretation",
+                "sentence"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "link": {
+          "type": "string",
+          "format": "uri",
+          "description": "The page on the web app, for the person who is signed in."
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "standing",
+        "tool",
+        "target",
+        "startedAt",
+        "trigger",
+        "scheduleId",
+        "origin",
+        "report",
+        "link"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "list_nodes",
+    "title": "Nodes",
+    "description": "The nodes of this workspace by name, all or those a tag selector matches: online or not, when the API last heard from each, its rvrs version, its build features and its tags. A node is a machine elsewhere that runs rvrs and makes runs for the workspace. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "tags": {
+          "description": "A selector on the nodes’ tags, as find_runs takes it.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "limit": {
+          "description": "50 unless given.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "annotations": {
+      "title": "Nodes",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 63
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "lastSeenAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "features": {
+                "maxItems": 40,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9._-]{0,62}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
+                }
+              },
+              "link": {
+                "type": "string",
+                "format": "uri",
+                "description": "The page on the web app, for the person who is signed in."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "online",
+              "lastSeenAt",
+              "version",
+              "features",
+              "tags",
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "nodes",
+        "cursor"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "compare_runs",
+    "title": "Compare Runs",
+    "description": "Two to six runs side by side, the first as the baseline. It says first what the runs do not share (tool, target, destination address, IP family, origin, probe count), then each figure with its distance from the baseline, and the hop where each path leaves the baseline’s. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "ids": {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "description": "The runs to compare, the first as the baseline the others are measured against."
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    },
+    "annotations": {
+      "title": "Compare Runs",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "runs": {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "tool": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "target": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "state": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "origin": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "trigger": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "scheduleId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "address": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The address the target resolved to."
+              },
+              "family": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "link": {
+                "type": "string",
+                "format": "uri",
+                "description": "The page on the web app, for the person who is signed in."
+              }
+            },
+            "required": [
+              "id",
+              "tool",
+              "target",
+              "state",
+              "outcome",
+              "summary",
+              "startedAt",
+              "origin",
+              "trigger",
+              "scheduleId",
+              "address",
+              "family",
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "differs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "tool",
+              "target",
+              "address",
+              "family",
+              "origin",
+              "count"
+            ]
+          },
+          "description": "What the runs do not share. Figures compare like with like only where this is empty."
+        },
+        "figures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "delta": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "delta"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": "One per run, in order. delta is the distance from the baseline."
+              }
+            },
+            "required": [
+              "name",
+              "values"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "partsAt": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "partsAt"
+            ],
+            "additionalProperties": false
+          },
+          "description": "For each run after the baseline, the first TTL where its path leaves the baseline’s. Null when no hop differs."
+        },
+        "link": {
+          "type": "string",
+          "format": "uri",
+          "description": "Compare on the web app."
+        }
+      },
+      "required": [
+        "runs",
+        "differs",
+        "figures",
+        "paths",
+        "link"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "summarize_runs",
+    "title": "Summarize Runs",
+    "description": "The runs of the past 24 hours, 7 days or 30 days, grouped by the device or node they came from or by target, each against the window before: runs, median latency, jitter, loss and failures, and why a group is worth a look. Then latency, jitter and loss over time for ping, traceroute and MTR, narrowed by tool, origin and target. These are the figures Overview shows on the web app. Safe to repeat.",
+    "inputSchema": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "window": {
+          "description": "7d unless given.",
+          "type": "string",
+          "enum": [
+            "24h",
+            "7d",
+            "30d"
+          ]
+        },
+        "by": {
+          "description": "install unless given.",
+          "type": "string",
+          "enum": [
+            "install",
+            "target"
+          ]
+        },
+        "tool": {
+          "description": "Narrows the latency over time.",
+          "type": "string",
+          "enum": [
+            "ping",
+            "traceroute",
+            "mtr"
+          ]
+        },
+        "install": {
+          "description": "Narrows the latency over time, by name or id.",
+          "type": "string",
+          "maxLength": 100
+        },
+        "target": {
+          "description": "Narrows the latency over time.",
+          "type": "string",
+          "maxLength": 255
+        }
+      }
+    },
+    "annotations": {
+      "title": "Summarize Runs",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "window": {
+          "type": "string",
+          "enum": [
+            "24h",
+            "7d",
+            "30d"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "runsBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Runs in the window of the same length before."
+        },
+        "groups": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The install’s id, when the runs are grouped by install."
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "runsBefore": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "median": {
+                "description": "Median of the runs’ average round trips, in ms.",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "medianBefore": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "jitter": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "loss": {
+                "description": "The average share of probes lost, in percent.",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "withLoss": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "worthALook": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Why the group is worth a look: failed runs, loss, or latency up."
+              },
+              "link": {
+                "type": "string",
+                "format": "uri",
+                "description": "The page on the web app, for the person who is signed in."
+              }
+            },
+            "required": [
+              "name",
+              "id",
+              "runs",
+              "runsBefore",
+              "median",
+              "medianBefore",
+              "jitter",
+              "loss",
+              "withLoss",
+              "failed",
+              "worthALook",
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "latency": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "install": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stepSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "points": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "runs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "latency": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "jitter": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "loss": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "withLoss": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "at",
+                  "runs",
+                  "latency",
+                  "jitter",
+                  "loss",
+                  "withLoss",
+                  "failed"
+                ],
+                "additionalProperties": false
+              },
+              "description": "The steps that had a ping, traceroute or MTR, oldest first."
+            },
+            "runs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "latency": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "jitter": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "loss": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "withLoss": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "tool",
+            "install",
+            "target",
+            "stepSeconds",
+            "points",
+            "runs",
+            "latency",
+            "jitter",
+            "loss",
+            "withLoss",
+            "failed"
+          ],
+          "additionalProperties": false
+        },
+        "link": {
+          "type": "string",
+          "format": "uri",
+          "description": "Overview on the web app."
+        }
+      },
+      "required": [
+        "window",
+        "from",
+        "to",
+        "runs",
+        "runsBefore",
+        "groups",
+        "latency",
+        "link"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

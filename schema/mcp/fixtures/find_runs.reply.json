@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "tool": "Ping",
+      "target": "example.com",
+      "state": "ended",
+      "outcome": "reached",
+      "summary": "5 pkt · 0.0% loss · 12.0 ms avg",
+      "startedAt": "2026-11-24T10:00:00.000Z",
+      "origin": {
+        "kind": "device",
+        "name": "laptop"
+      },
+      "trigger": "manual",
+      "scheduleId": null,
+      "address": "104.20.23.154",
+      "family": "IPv4",
+      "link": "https://app.rvrs.dev/runs/00000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "tool": "Ping",
+      "target": "example.com",
+      "state": "ended",
+      "outcome": "reached",
+      "summary": "5 pkt · 0.0% loss · 12.0 ms avg",
+      "startedAt": "2026-11-23T10:00:00.000Z",
+      "origin": {
+        "kind": "device",
+        "name": "laptop"
+      },
+      "trigger": "manual",
+      "scheduleId": null,
+      "address": "104.20.23.154",
+      "family": "IPv4",
+      "link": "https://app.rvrs.dev/runs/00000000-0000-4000-8000-000000000003"
+    }
+  ],
+  "total": 2,
+  "cursor": null,
+  "link": "https://app.rvrs.dev/runs?tool=ping"
+}
