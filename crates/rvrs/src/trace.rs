@@ -39,9 +39,9 @@ pub fn look(json: bool, classic: bool, multicall: bool) -> Look {
     }
 }
 
-/// What --fleet says until a run can be asked of every node at once.
+/// What --fleet says until a run can be asked of a fleet, the nodes a selector matches.
 pub const NO_FLEET: &str =
-    "A run from every node at once isn't available yet. --node <name> runs from one node.";
+    "A run from a fleet isn't available yet. --node <name> runs from one node.";
 
 pub fn run(args: TraceArgs, multicall: bool) -> ExitCode {
     if args.common.fleet {

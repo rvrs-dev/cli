@@ -29,7 +29,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs logout` | Signs out and revokes this install's credential |
 | `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
 | `rvrs share [id]` | Prints the share link of the newest run, or the one named: a public page anyone with the link opens. `--stop` ends the link. [Share links](#share-links) has the options |
-| `rvrs nodes` | Lists the nodes in your fleet: who is online, when each was last seen, its version and its tags |
+| `rvrs nodes` | Lists your workspace's nodes: who is online, when each was last seen, its version and its tags |
 | `rvrs node` | Runs this machine as a node. It takes a token as `RVRS_TOKEN`, makes the runs asked of it and sends each result. [Nodes](node.md) has the flags |
 | `rvrs schedules` | Lists the schedules you made: what each runs, how often, where, on how many nodes and when it last ran. `--json` prints the API's answer |
 | `rvrs schedule add <tool> <target> --every <interval>` | Has nodes repeat a run: on the nodes `--node` names, on the nodes a selector matches with `--fleet <selector>`, or on every node with `--all-nodes`. `--name` names it. [Schedules](node.md#schedules) has the rest |
@@ -49,9 +49,9 @@ Flags on every run: `--json` prints the report, `--classic` prints the original 
 | Command | Will do |
 | --- | --- |
 | `rvrs iperf3` | Download and upload throughput against an iperf3 server, as the rvrs app measures it |
-| `rvrs nodes show\|rename\|remove <name>` | Shows a node, renames it or takes it out of the fleet |
+| `rvrs nodes show\|rename\|remove <name>` | Shows a node, renames it or takes it out of the workspace |
 | `rvrs alerts` | Lists the alerts sent when a scheduled run's result changed |
-| `--fleet` on a tool | Runs it from every node in the fleet |
+| `--fleet <selector>` on a tool | Runs it from a fleet, every node whose tags match |
 
 ## The report
 

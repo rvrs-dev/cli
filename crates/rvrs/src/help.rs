@@ -222,10 +222,14 @@ pub fn main(style: Style) -> String {
         style,
         "Nodes",
         &[
-            ("node", "Run this machine as a node in your fleet", false),
+            (
+                "node",
+                "Run this machine as a node of your workspace",
+                false,
+            ),
             (
                 "nodes",
-                "List the nodes in your fleet and whether each is online",
+                "List your workspace's nodes and whether each is online",
                 false,
             ),
             (
@@ -235,7 +239,7 @@ pub fn main(style: Style) -> String {
             ),
             (
                 "nodes rename|remove <name>",
-                "Rename a node, or take it out of the fleet",
+                "Rename a node, or take it out of the workspace",
                 true,
             ),
         ],
@@ -243,7 +247,7 @@ pub fn main(style: Style) -> String {
     out.push('\n');
     out.push_str(&section_marked(
         style,
-        "Fleet",
+        "Schedules",
         &[
             (
                 "schedule add <tool> <target>",
@@ -345,7 +349,11 @@ pub fn main(style: Style) -> String {
                 "With --node: how long the request waits for the node",
                 false,
             ),
-            ("--fleet", "Run from every node in the fleet", true),
+            (
+                "--fleet <selector>",
+                "Run from every node whose tags match",
+                true,
+            ),
         ],
     ));
     out.push('\n');
