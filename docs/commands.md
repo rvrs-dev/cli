@@ -28,7 +28,7 @@ Every command rvrs has, the report `--json` prints, and the files rvrs keeps.
 | `rvrs login` | Signs this install in to your workspace: it shows a code, you confirm it in the browser. `--no-browser` only prints the link |
 | `rvrs logout` | Signs out and revokes this install's credential |
 | `rvrs sync` | Sends this device's runs to your account and reads what is new, now, and says what went each way |
-| `rvrs share [id]` | Prints the share link of the newest run, or the one named: a public page anyone with the link opens. `--stop` ends the link. [Share links](#share-links) has the options |
+| `rvrs share [id]` | Prints the share link of the newest run, or the one named: a public page anyone with the link opens. What it shows starts at the workspace's defaults. `--stop` ends the link. [Share links](#share-links) has the options |
 | `rvrs nodes` | Lists the nodes in your fleet: who is online, when each was last seen, its version and its tags |
 | `rvrs node` | Runs this machine as a node. It takes a token as `RVRS_TOKEN`, makes the runs asked of it and sends each result. [Nodes](node.md) has the flags |
 | `rvrs schedules` | Lists the schedules you made: what each runs, how often, where, on how many nodes and when it last ran. `--json` prints the API's answer |
@@ -129,15 +129,17 @@ rvrs share 49fpsw --public-address
 rvrs share --stop 49fpsw       # the link stops working for everyone
 ```
 
-The link prints alone on stdout, so `rvrs share | pbcopy` copies it, and a sentence on stderr says what the page shows. `--json` prints the link with its id, the run's id in the account and what it shows.
+The link prints alone on stdout, so `rvrs share | pbcopy` copies it, and a sentence on stderr says what the page shows and, when the link expires, the day it stops working: "The link stops working on Dec 24, 2026." `--json` prints the link with its id, the run's id in the account, what it shows and `expiresAt`, which is null for a link that works until it is stopped.
+
+Each option starts at your workspace's default, which its owners and admins set on the web, and a flag changes it. A workspace that set nothing shows the private network and leaves the public address and the install's name out.
 
 | Option | The page |
 | --- | --- |
-| Private Networks, on | Shows the private network the run started in: the source address, the router and its name, the hops at private addresses before the first public one. `--no-private-networks` takes their addresses and names off and keeps their figures |
-| `--public-address` | Shows the line's public address and what gives it away, such as a hop at that address. Left out by default |
-| `--install-name` | Shows the name of the install that made the run. Left out by default. A node's name always shows |
+| `--private-networks`, `--no-private-networks` | Shows the private network the run started in: the source address, the router and its name, the hops at private addresses before the first public one. Left out, their addresses and names come off and their figures stay |
+| `--public-address`, `--no-public-address` | Shows the line's public address and what gives it away, such as a hop at that address |
+| `--install-name`, `--no-install-name` | Shows the name of the install that made the run. A node's name always shows |
 
-A run has one link. Sharing it again keeps the link and changes what it shows to the options of the newer share. `--stop` takes no option, and a run without a link says so. The Console shares with `S` on a run, after you choose what the page shows.
+A run has one link. Sharing it again prints the same link: an option no flag names stays as the link has it, and a flag changes what it shows. A link keeps the expiry it was made with. In a workspace where only owners and admins share, a member gets no link: `rvrs share` says "Only owners and admins of this workspace share runs." and exits 1, prints a link the member made before as it is, and refuses a flag that would change it. `--stop` ends a link for anyone who made it. It takes no option, and a run without a link says so. The Console shares with `S` on a run, after you choose what the page shows.
 
 ## Updates
 

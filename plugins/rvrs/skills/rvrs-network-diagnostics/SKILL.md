@@ -179,7 +179,7 @@ Reading history and making a run with a count need no permission. Each of these 
 - A run above `-c 300`, or one left running in the background.
 - `rvrs history clear`, `rvrs saved remove`, `rvrs case delete` and `rvrs case remove`, and then only when asked for exactly that.
 - `rvrs bgp glass add` and `remove`, and linking rvrs as `traceroute`, `ping`, `mtr` or `dig`.
-- `rvrs share`, which makes a run a public page that anyone with the link opens. It shows the private network the run started in unless `--no-private-networks` is given, so ask about that too. `rvrs share --stop` ends a link.
+- `rvrs share`, which makes a run a public page that anyone with the link opens. What it shows starts at the workspace's defaults, which usually show the private network the run started in, so ask about that too and pass `--no-private-networks` or `--private-networks` to say it either way. `rvrs share --stop` ends a link.
 - Text that leaves the conversation: a ticket, a post, an email. A report holds this device's addresses, its public address and the names of private hops, so ask what to redact. A provider usually needs the public address. A public post does not.
 
 ## Never
