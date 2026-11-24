@@ -300,7 +300,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped every node of the workspace (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -383,7 +383,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped every node of the workspace (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -466,7 +466,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped every node of the workspace (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -574,7 +574,7 @@
             }
           },
           "403": {
-            "description": "An admin stopped the workspace's fleet (FLEET_STOPPED). The result stays in the outbox.",
+            "description": "An admin stopped every node of the workspace (FLEET_STOPPED). The result stays in the outbox.",
             "content": {
               "application/json": {
                 "schema": {
@@ -884,7 +884,7 @@
             }
           },
           "403": {
-            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped the workspace's fleet (FLEET_STOPPED).",
+            "description": "The credential is not a node's (FORBIDDEN), or an admin stopped every node of the workspace (FLEET_STOPPED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -973,7 +973,7 @@
           "schedules"
         ],
         "summary": "Make a schedule",
-        "description": "A tool, a target, options, an interval and where it runs: the nodes it names, a selector on their tags, or the whole fleet. The nodes it runs on read it within seconds and each starts at its own place in the interval. A retry is safe: a schedule that says the same as one the person has answers 200 with that one.",
+        "description": "A tool, a target, options, an interval and where it runs: the nodes it names, a selector on their tags, or every node. The nodes it runs on read it within seconds and each starts at its own place in the interval. A retry is safe: a schedule that says the same as one the person has answers 200 with that one.",
         "security": [
           {
             "login": []
@@ -2415,7 +2415,7 @@
           },
           "fleet": {
             "type": "boolean",
-            "description": "true has it run on every node of the workspace."
+            "description": "true has it run on every node of the workspace. The name is from before a fleet meant the nodes a selector matches."
           }
         }
       },
@@ -2459,7 +2459,7 @@
           },
           "fleet": {
             "type": "boolean",
-            "description": "true has it run on every node of the workspace."
+            "description": "true has it run on every node of the workspace. The name is from before a fleet meant the nodes a selector matches."
           },
           "paused": {
             "type": "boolean",
@@ -2545,7 +2545,7 @@
                 }
               }
             },
-            "description": "The nodes it names. Empty when it goes by a selector or the fleet."
+            "description": "The nodes it names. Empty when it goes by a selector or runs on every node."
           },
           "selector": {
             "type": [

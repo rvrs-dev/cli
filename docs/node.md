@@ -110,7 +110,7 @@ Whoever starts the node sets these, as flags of `rvrs node` or in the environmen
 | It couldn't read its schedules for 7 days, restarts and the time it was switched off included | Starts no scheduled run until it has read them again |
 | A schedule was paused or deleted while a run of it was going | Stops that run when it reads its schedules and sends what it measured, with the outcome `stopped` |
 | Its token was revoked or replaced | Ends its runs, deletes its copy of its schedules and makes no further call. Give it the new token and start it again |
-| An admin stopped the fleet | Ends its runs, keeps its results and its schedules, and asks again in an hour. No scheduled run starts until the fleet is resumed |
+| An admin stopped every node of the workspace | Ends its runs, keeps its results and its schedules, and asks again in an hour. No scheduled run starts until the nodes are resumed |
 | It was asked for a run it won't make | Answers with the reason: a private address, an option it doesn't know, a run over its limits |
 | A schedule names a run it won't make | Sends one result with the reason and starts no run of that schedule until the schedule changes or the node restarts |
 | A scheduled run is due while the node is at a limit, or while the schedule's last run is still going | Leaves that run out and says so in its log. It makes up no run |

@@ -274,9 +274,9 @@ POST /v1/schedules
 ```
 
 - `intervalSeconds` is 60 to 86,400.
-- A schedule says where it runs in one of three ways: `nodes` names up to 50 nodes by name or id, `selector` takes every node whose tags match, and `fleet: true` takes every node of the workspace. A body with none of them, or with two, is answered 422, and so is an empty `nodes`.
+- A schedule says where it runs in one of three ways: `nodes` names up to 50 nodes by name or id, `selector` takes every node whose tags match, and `fleet: true` takes every node of the workspace. A body with none of them, or with two, is answered 422, and so is an empty `nodes`. The field `fleet` keeps the name it shipped with: in the glossary a fleet is the nodes a selector matches.
 - A selector is terms joined by commas, which mean and: `isp=telia`, `isp!=telia`, `isp` (has the tag), `!isp` (lacks it), `line in (ftth,cable)` and `line notin (dsl,lte)`. A node without the tag meets `!=` and `notin`. `GET /v1/nodes` and `GET /v1/runs` read `tag` the same way.
-- A selector and the fleet are read again whenever nodes or their tags change. A node that gains the tag starts the schedule, and one that loses it stops.
+- A selector, and every node, are read again whenever nodes or their tags change. A node that gains the tag starts the schedule, and one that loses it stops.
 - A schedule's tool and target never change. Another target is another schedule, so a schedule's runs are one series.
 - `PATCH /v1/schedules/{id}` changes `name`, `options`, `intervalSeconds`, where it runs and `paused`. A paused schedule runs on no node and keeps its runs. A run of it that is going on a node is stopped when the node reads its copy.
 - Making a schedule that says the same as one the person has, in tool, target, options, interval and where it runs, answers 200 with that one. Two of them would send every run twice.
@@ -353,14 +353,14 @@ A finished run waits on the node until the API has answered for it.
 - The node sends the oldest first, one at a time, and waits when the API answers 429.
 - A run sent twice counts once.
 
-## Stopping a node, and a fleet
+## Stopping a node, and all nodes
 
 A person can take a node's work away in two ways, and both reach the node as the answer to its next call.
 
 - Revoking a node is for good. Its stream ends, and every call with its token answers 401. The node enrolls again, with a new `key`, to come back.
-- Stopping the fleet is for every node of a workspace at once, and it can be undone. Their streams end, and every call with one of their tokens answers 403 `FLEET_STOPPED` until the fleet is resumed. No token is revoked, so a resumed node needs nothing new. It asks again after an hour.
+- Stopping all nodes is for every node of a workspace at once, and it can be undone. Their streams end, and every call with one of their tokens answers 403 `FLEET_STOPPED` until they are resumed. The code keeps the name it shipped with. No token is revoked, so a resumed node needs nothing new. It asks again after an hour.
 - A node that reads either answer ends the runs it is making at once and sends no further probe. A node that holds a run claims every third of `leaseSeconds`, so that is within 30 seconds.
-- After `FLEET_STOPPED` the results in the outbox wait for the fleet to resume, within the outbox's caps. After 401 they have nowhere to go.
+- After `FLEET_STOPPED` the results in the outbox wait for the nodes to be resumed, within the outbox's caps. After 401 they have nowhere to go.
 
 ## Listing the nodes
 
@@ -549,9 +549,9 @@ Nothing here binds another controller. It is how the rvrs API meets the rules ab
 - Revoking a node ends its stream at once, and every later call of its token answers 401. Replacing its token does the same for the token it had.
 - A node counts as online by what the stream service wrote last. A stream that opens or closes is written within a second. A stream service that dies without closing its streams takes its nodes offline 90 seconds later. A line that drops without closing the connection can show its node as online until that connection times out.
 - A node's newest stream is the one that counts. On the same instance of the stream service the older one ends at once, and on another instance within 15 seconds.
-- Stopping a workspace's fleet is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
+- Stopping every node of a workspace is one row. Every call with a node's token reads it, and the stream service ends the streams of that workspace's nodes.
 - A node's offset into a schedule's interval is a hash of the schedule's id and the node's id, in milliseconds. Nothing is stored per node and schedule.
-- A change to a schedule that goes by a selector or the fleet raises a number on its workspace, and a node's copy is behind while the number it last read is another. A schedule that names its nodes marks those nodes as behind and no other, and so does a change to a node's tags. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
+- A change to a schedule that goes by a selector or runs on every node raises a number on its workspace, and a node's copy is behind while the number it last read is another. A schedule that names its nodes marks those nodes as behind and no other, and so does a change to a node's tags. The stream service writes `schedules` to the nodes that are behind, 500 a second at most, so a fleet reads its copies over minutes and never in one second.
 - How many nodes a schedule runs on, and the interval the budget leaves it, are counted when a schedule changes and, within 15 seconds, when nodes or their tags did. Every such change raises a number on the workspace, and a count writes the number it began at when it is done, so a change that lands while a count runs is counted by the next pass. A fleet that enrolls is counted once per pass and never once per node.
 - Which node was handed which schedule is a row per node and schedule, written when the node reads its copy and at most once an hour after that.
 
