@@ -379,8 +379,8 @@ impl Schedules {
             .collect()
     }
 
-    /// The fleet was stopped. The node keeps its copy and starts no run of it until it has read
-    /// the copy again.
+    /// Every node of the workspace was stopped. The node keeps its copy and starts no run of it
+    /// until it has read the copy again.
     pub fn hold(&mut self) {
         self.held = true;
     }

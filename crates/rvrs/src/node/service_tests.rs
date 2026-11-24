@@ -740,7 +740,7 @@ fn a_stopped_fleet_ends_the_runs_and_keeps_their_results_for_later() {
         .push_back(Reply::Json(403, fixture("claim.stopped.json")));
     let started = node(&fake, "fleet");
     assert!(fake.until(|_| started.said(&format!("run {RUN} attempt 1: stopped"))));
-    assert!(started.said("An admin stopped this workspace's fleet."));
+    assert!(started.said("An admin stopped every node of this workspace."));
     // The node asks again in an hour. Until then it calls nothing, and the result waits.
     let calls = fake.calls.lock().unwrap().len();
     std::thread::sleep(Duration::from_millis(1500));
@@ -1281,11 +1281,11 @@ fn a_stopped_fleet_keeps_the_copy_and_starts_no_scheduled_run() {
     fake.script().streams.push_back(vec![HELLO.into()]);
     let started = quick_node(&fake, "stopped-fleet");
     assert!(fake.until(|fake| !fake.calls_to("/v1/runs").is_empty()));
-    // The next result is answered with the stopped fleet.
+    // The next result is answered with every node stopped.
     fake.script()
         .results
         .push_back(Reply::Json(403, fixture("claim.stopped.json")));
-    assert!(fake.until(|_| started.said("An admin stopped this workspace's fleet.")));
+    assert!(fake.until(|_| started.said("An admin stopped every node of this workspace.")));
     std::thread::sleep(Duration::from_millis(300));
     // Nothing is called and no scheduled run starts: what waits in the outbox stays as it is.
     let calls = fake.calls.lock().unwrap().len();
@@ -1294,7 +1294,7 @@ fn a_stopped_fleet_keeps_the_copy_and_starts_no_scheduled_run() {
     std::thread::sleep(Duration::from_millis(2500));
     assert_eq!(fake.calls.lock().unwrap().len(), calls);
     assert_eq!(waiting_in(&started), waiting);
-    // The copy is still there for when the fleet is resumed.
+    // The copy is still there for when the nodes are resumed.
     assert!(started.state.join("schedules.json").exists());
     started.stop();
 }

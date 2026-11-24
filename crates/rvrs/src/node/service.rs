@@ -396,7 +396,7 @@ impl Node {
                 // The copy stays. No run of it starts until the node has read it again.
                 self.schedules.hold();
                 self.paused_until = Some(now + ASK_AGAIN);
-                self.say("An admin stopped this workspace's fleet. The node ended its runs, keeps its results and asks again in an hour.");
+                self.say("An admin stopped every node of this workspace. This node ended its runs, keeps its results and asks again in an hour.");
                 true
             }
             (403, _) => {
