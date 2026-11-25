@@ -183,6 +183,10 @@ fn console_keys() -> Vec<(&'static str, &'static str)> {
             "\u{21B5}",
             "In the field: run it. ping example.com picks the tool too",
         ),
+        (
+            "\u{2191} \u{2193}  \u{2192}",
+            "In the field: pick a host it suggests, from favorites, then history, and complete it",
+        ),
         ("tab", "In the field: the next tool"),
         (
             "/",

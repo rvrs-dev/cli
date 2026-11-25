@@ -35,7 +35,7 @@ Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the n
 | t, m, p, d, b | On a list: picks traceroute, MTR, ping, dig or BGP and opens the target field. In a result they act on the selected hop or record instead |
 | : | Opens the target field for the tool chosen last, from a list or a result |
 | Return | In the field: runs the tool against the target. `ping example.com` picks the tool too. With nothing typed, the field closes |
-| typing | In the field: the target, and Recent narrows to runs that match it. ↓ goes into them |
+| typing | In the field: the target. Under the field it suggests hosts that hold what is typed: favorites, then hosts from history, the ones that start with it first. ↑ ↓ pick one, → completes the field with it, Return runs it. The list below stays as it is |
 | / | Searches the list on screen: Recent, Favorites, Cases, a trace's or an MTR's hops (address, name or network), a DNS lookup's records, a BGP lookup's rows. The selection lands on the first hit, Return keeps the search, esc drops it |
 | tab | In the field: the next tool. In a result: between the hops and a hop's details. In a DNS or BGP lookup: the next tab |
 | 1 2 3 4 | In a DNS lookup: Overview, Records, Compare, Trace |

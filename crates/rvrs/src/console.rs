@@ -319,6 +319,9 @@ pub struct App {
     /// Whether the Target field has the keys. It never has them by itself: a tool's key or `:`
     /// gives them to it, and until then every key is a command, as in k9s.
     field: bool,
+    /// The host picked among what the field suggests, by its place in `suggestions`. None while
+    /// the typed text is what Return runs.
+    suggestion: Option<usize>,
     /// What `/` narrows the list on screen to: Recent, the hops, the records or a lookup's rows.
     search: String,
     /// Whether the keys go to the search line at the foot of the screen.
@@ -426,6 +429,9 @@ fn record_found(record: &Record, words: &[String]) -> bool {
     )
 }
 
+/// How many hosts the field suggests at most.
+const SUGGESTIONS: usize = 8;
+
 /// Where the keys are, as far as a search cares: a search belongs to the list it narrowed and
 /// ends when the screen shows another one.
 #[derive(Debug, Clone, PartialEq)]
@@ -522,6 +528,7 @@ impl App {
             section: Section::Console,
             input: String::new(),
             field: false,
+            suggestion: None,
             search: String::new(),
             searching: false,
             // traceroute, or the first tool this build runs.
@@ -556,12 +563,63 @@ impl App {
         }
     }
 
-    /// The words the list is narrowed to: what is typed in the Target field, which suggests
-    /// runs from history, and the search.
+    /// The words the list is narrowed to: the search's. What is typed in the Target field never
+    /// narrows it: the field suggests hosts of its own.
     fn filter(&self) -> Vec<String> {
-        let mut filter = words(&self.input);
-        filter.extend(self.search_words());
-        filter
+        self.search_words()
+    }
+
+    /// What the field holds: a tool named in front, as in `ping example.com`, and the target
+    /// being typed.
+    fn typed(&self) -> (Option<Tool>, String) {
+        let text = self.input.trim_start();
+        if let Some((first, rest)) = text.split_once(' ') {
+            let named = Tool::ALL.into_iter().find(|tool| {
+                crate::features::runs(*tool) && tool.command() == first.to_lowercase()
+            });
+            if let Some(tool) = named {
+                return (Some(tool), rest.trim().to_string());
+            }
+        }
+        (None, text.trim_end().to_string())
+    }
+
+    /// The hosts the field suggests for what is typed, as the app suggests them: favorites, then
+    /// hosts from history, newest first. Those that start with what is typed come before those
+    /// that only hold it.
+    fn suggestions(&self) -> Vec<String> {
+        let (_, typed) = self.typed();
+        let typed = typed.to_lowercase();
+        if typed.is_empty() || typed.contains(' ') {
+            return Vec::new();
+        }
+        let mut seen = std::collections::HashSet::new();
+        let (mut starting, mut holding) = (Vec::new(), Vec::new());
+        let hosts = self
+            .favorites
+            .hosts
+            .iter()
+            .chain(self.history.runs.iter().map(|run| &run.target));
+        for host in hosts {
+            let lower = host.to_lowercase();
+            if !lower.contains(&typed) || !seen.insert(lower.clone()) {
+                continue;
+            }
+            if lower.starts_with(&typed) {
+                starting.push(host.clone());
+            } else {
+                holding.push(host.clone());
+            }
+        }
+        starting.extend(holding);
+        starting.truncate(SUGGESTIONS);
+        starting
+    }
+
+    /// The suggestion that is picked, while it is still among the suggestions.
+    fn picked(&self) -> Option<String> {
+        self.suggestion
+            .and_then(|index| self.suggestions().into_iter().nth(index))
     }
 
     /// The words of the search, lower case.
@@ -844,6 +902,8 @@ impl App {
         self.case = None;
         self.row = None;
         self.field = false;
+        self.input.clear();
+        self.suggestion = None;
         self.details = false;
         self.details_focus = false;
         self.pane = Pane::Start;
@@ -867,6 +927,7 @@ impl App {
         self.pane = Pane::Start;
         self.row = None;
         self.field = true;
+        self.suggestion = None;
         // A new target is a new question: the suggestions follow what is typed, not an old search.
         self.search.clear();
         self.searching = false;
@@ -1106,6 +1167,7 @@ impl App {
         self.details_focus = false;
         self.input.clear();
         self.field = false;
+        self.suggestion = None;
         self.row = None;
     }
 
@@ -1369,41 +1431,68 @@ impl App {
         self.tool = available[(current + step) % available.len()];
     }
 
-    /// The Target field while it has the keys: typing goes into it and narrows Recent to runs
-    /// that match, Return runs it, tab picks the tool, and esc gives the keys back to the list.
+    /// The Target field while it has the keys. Typing goes into it and it suggests hosts under
+    /// itself: the arrows pick one, right completes the field with it, Return runs it, or what
+    /// is typed when none is picked. Tab picks the tool, and esc gives the keys back to the list.
     fn field_key(&mut self, key: KeyEvent) {
-        let count = self.rows().len();
+        let count = self.suggestions().len();
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => {
                 self.input.clear();
                 self.field = false;
+                self.suggestion = None;
                 self.row = None;
             }
             KeyCode::Left if self.input.is_empty() => self.field = false,
-            KeyCode::Enter if self.input.trim().is_empty() => self.field = false,
-            KeyCode::Enter => self.run_input(),
-            // Down goes from the field into the runs it suggests.
             KeyCode::Down if count > 0 => {
-                self.field = false;
-                self.row = Some(0);
+                self.suggestion = Some(self.suggestion.map_or(0, |at| (at + 1).min(count - 1)));
             }
+            KeyCode::Char('n') if control && count > 0 => {
+                self.suggestion = Some(self.suggestion.map_or(0, |at| (at + 1).min(count - 1)));
+            }
+            KeyCode::Up => self.suggestion = self.suggestion.and_then(|at| at.checked_sub(1)),
+            KeyCode::Char('p') if control => {
+                self.suggestion = self.suggestion.and_then(|at| at.checked_sub(1))
+            }
+            // Right puts the picked host into the field, behind a tool named in front.
+            KeyCode::Right => {
+                if let Some(host) = self.picked() {
+                    self.input = match self.typed().0 {
+                        Some(tool) => format!("{} {host}", tool.command()),
+                        None => host,
+                    };
+                    self.suggestion = None;
+                }
+            }
+            KeyCode::Enter => match (self.picked(), self.typed().0) {
+                (Some(host), Some(tool)) => {
+                    self.tool = tool;
+                    self.start_with(tool, &host);
+                }
+                (Some(host), None) => self.start(&host),
+                (None, _) if self.input.trim().is_empty() => self.field = false,
+                (None, _) => self.run_input(),
+            },
             KeyCode::Tab => self.next_tool(false),
             KeyCode::BackTab => self.next_tool(true),
             KeyCode::Backspace => {
                 self.input.pop();
+                self.suggestion = None;
             }
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.input.clear()
+            KeyCode::Char('u') if control => {
+                self.input.clear();
+                self.suggestion = None;
             }
             KeyCode::Char('?') if self.input.is_empty() => self.open_help(),
-            // A space separates the words of a filter, or a tool from its target.
+            // A space separates a tool from its target.
             KeyCode::Char(' ') if !self.input.is_empty() && !self.input.ends_with(' ') => {
                 self.input.push(' ');
+                self.suggestion = None;
             }
-            KeyCode::Char(character)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !character.is_whitespace() =>
-            {
+            KeyCode::Char(character) if !control && !character.is_whitespace() => {
                 self.input.push(character);
+                self.suggestion = None;
             }
             _ => {}
         }
@@ -1466,13 +1555,8 @@ impl App {
                     other => other,
                 };
             }
-            // Up from the first row goes back to what is typed, when something is.
             KeyCode::Up | KeyCode::Char('k') if plain => {
                 self.row = match self.row {
-                    Some(0) if !self.input.is_empty() => {
-                        self.field = true;
-                        None
-                    }
                     Some(0) | None => None,
                     Some(row) => Some(row - 1),
                 };
@@ -2021,6 +2105,7 @@ impl App {
         } else if on_start {
             self.draw_prompt(frame, prompt);
             self.draw_recent(frame, main);
+            self.draw_suggestions(frame, prompt, main);
         } else {
             self.draw_run(frame, main);
         }
@@ -2206,21 +2291,18 @@ impl App {
             return keys;
         }
         if (self.pane == Pane::Start || self.shown.is_none()) && self.field {
-            let mut keys = vec![("\u{21B5}", "Run"), ("tab", "Tool")];
-            if self.rows().len() > 0 {
-                keys.push(("\u{2193}", "Suggestions"));
+            let mut keys = vec![("\u{21B5}", "Run")];
+            if !self.suggestions().is_empty() {
+                keys.push(("\u{2191}\u{2193}", "Suggestion"));
             }
+            if self.picked().is_some() {
+                keys.push(("\u{2192}", "Complete"));
+            }
+            keys.push(("tab", "Tool"));
             if self.input.is_empty() {
                 keys.push(("?", "Help"));
             }
-            keys.push((
-                "esc",
-                if self.input.is_empty() {
-                    "Close"
-                } else {
-                    "Clear"
-                },
-            ));
+            keys.push(("esc", "Close"));
             return keys;
         }
         if self.pane == Pane::Start || self.shown.is_none() {
@@ -2767,18 +2849,96 @@ impl App {
         }
     }
 
-    /// History as a table: Recent, or suggestions while a target is being typed.
+    /// The hosts the field suggests, in a box under it over the list: a heart on a favorite, the
+    /// newest run to the host and how long ago, and the picked one highlighted.
+    fn draw_suggestions(&self, frame: &mut Frame, prompt: Rect, main: Rect) {
+        if !self.field {
+            return;
+        }
+        let hosts = self.suggestions();
+        if hosts.is_empty() {
+            return;
+        }
+        let dim = Paint::new().add_modifier(Modifier::DIM);
+        let bold = Paint::new().add_modifier(Modifier::BOLD);
+        let now = format::now();
+        let facts: Vec<String> = hosts
+            .iter()
+            .map(|host| {
+                self.history
+                    .runs
+                    .iter()
+                    .find(|run| run.target.eq_ignore_ascii_case(host))
+                    .map_or_else(
+                        || "\u{2013}".to_string(),
+                        |run| {
+                            format!(
+                                "{} \u{00B7} {}",
+                                run.tool.command(),
+                                format::relative(run.started_at, now)
+                            )
+                        },
+                    )
+            })
+            .collect();
+        let host_width = hosts
+            .iter()
+            .map(|host| width(host))
+            .max()
+            .unwrap_or(0)
+            .min(48);
+        let fact_width = facts.iter().map(|fact| width(fact)).max().unwrap_or(0);
+        // Under the typed text: the box's frame and the heart's column sit left of it.
+        let text_x = prompt.x + 1 + width(&format!(" {}> ", self.tool.command())) as u16;
+        let x = text_x.saturating_sub(4).max(main.x);
+        let wanted = (host_width + fact_width + 8) as u16;
+        let rect = Rect {
+            x,
+            y: main.y,
+            width: wanted.min(main.right().saturating_sub(x)),
+            height: (hosts.len() as u16 + 2).min(main.height),
+        };
+        let block = Block::bordered().border_style(Paint::new().fg(ACCENT));
+        let inner = block.inner(rect);
+        let columns = usize::from(inner.width);
+        let lines: Vec<Line> = hosts
+            .iter()
+            .zip(&facts)
+            .enumerate()
+            .map(|(index, (host, fact))| {
+                let heart = if self.favorites.contains(host) {
+                    "\u{2665}"
+                } else {
+                    " "
+                };
+                let host = fit(&truncate_middle(host, host_width), host_width);
+                if self.suggestion == Some(index) {
+                    Line::styled(
+                        fit(&format!(" {heart} {host}  {fact}"), columns),
+                        selected(),
+                    )
+                } else {
+                    Line::from(vec![
+                        Span::styled(format!(" {heart} "), Paint::new().fg(TOOL)),
+                        Span::styled(host, bold),
+                        Span::styled(format!("  {fact}"), dim),
+                    ])
+                }
+            })
+            .collect();
+        frame.render_widget(Clear, rect);
+        frame.render_widget(block, rect);
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+
+    /// History as a table: Recent, Favorites, Cases or saved runs.
     fn draw_recent(&self, frame: &mut Frame, area: Rect) {
         let dim = Paint::new().add_modifier(Modifier::DIM);
         let bold = Paint::new().add_modifier(Modifier::BOLD);
         let rows = self.rows();
         let name = self.list_name();
-        // The typed words are the filter, and the panel says so.
-        let scope = if self.input.trim().is_empty() {
-            "all".to_string()
-        } else {
-            self.input.trim().to_lowercase()
-        };
+        // A search shows after the count. The field never narrows the list.
+        let scope = "all".to_string();
         let block = panel_searched(&name, &scope, &rows.len().to_string(), true, &self.search);
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -2789,7 +2949,7 @@ impl App {
 
         match &rows {
             rows if rows.len() == 0 => {
-                let filtered = !self.input.trim().is_empty() || !self.search.trim().is_empty();
+                let filtered = !self.search.trim().is_empty();
                 let in_case = self.open_case().is_some();
                 let title = match (self.section, filtered) {
                     (_, true) => "Nothing matches",
@@ -5635,29 +5795,57 @@ mod tests {
     }
 
     #[test]
-    fn a_tools_letter_opens_the_field_and_typing_suggests_runs() {
+    fn a_tools_letter_opens_the_field_and_typing_suggests_hosts() {
         let mut app = app_with(three_runs());
+        app.favorites.toggle("exact.example.net").unwrap();
         assert!(!app.field);
         // p picks ping and gives the field the keys. What follows is the target.
         press(&mut app, KeyCode::Char('p'));
         assert_eq!((app.tool, app.field), (Tool::Ping, true));
         type_text(&mut app, "exa");
         assert_eq!(app.input, "exa");
+        // Recent stays whole. The field suggests hosts in a box of its own: favorites first.
+        assert_eq!(app.suggestions(), ["exact.example.net", "example.com"]);
         let text = screen(&mut app, 150, 30).join("\n");
         assert!(
-            text.contains("ping> exa") && text.contains("Recent(exa)[2]"),
+            text.contains("ping> exa") && text.contains("Recent(all)[3]"),
+            "{text}"
+        );
+        assert!(
+            text.contains("\u{2665} exact.example.net")
+                && text.contains("example.com        traceroute \u{00B7}"),
             "{text}"
         );
         // The tools show beside the field while it has the keys.
         assert!(text.contains("\u{25CF} ping"), "{text}");
-        // Down goes into the runs it suggests, up comes back to the field.
+        // A host that starts with what is typed comes before one that only holds it.
+        type_text(&mut app, "mple");
+        assert_eq!(app.suggestions(), ["example.com", "exact.example.net"]);
+        // The arrows pick within the suggestions, and the list below doesn't move.
         press(&mut app, KeyCode::Down);
-        assert_eq!((app.field, app.row), (false, Some(0)));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        assert_eq!((app.suggestion, app.row), (Some(1), None));
         press(&mut app, KeyCode::Up);
-        assert!(app.field && app.row.is_none());
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.suggestion, None);
+        // Right completes the field with the one picked, behind a tool named in front.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Right);
+        assert_eq!((app.input.as_str(), app.suggestion), ("example.com", None));
+        app.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        type_text(&mut app, "mtr one");
+        assert_eq!(app.suggestions(), ["one.one.one.one"]);
+        app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        press(&mut app, KeyCode::Right);
+        assert_eq!(app.input, "mtr one.one.one.one");
         // esc empties the field and gives the keys back to the list.
         press(&mut app, KeyCode::Esc);
         assert!(!app.field && app.input.is_empty() && !app.quit);
+        assert!(screen(&mut app, 150, 30)
+            .join("\n")
+            .contains("Recent(all)[3]"));
+        let _ = std::fs::remove_file(app.favorites.path());
         // A tool's key drops a search, so what is typed alone narrows the suggestions.
         press(&mut app, KeyCode::Char('/'));
         type_text(&mut app, "zzz");
