@@ -30,6 +30,8 @@ use rvrs_core::{format, is_private, FamilyChoice};
 mod account_view;
 #[path = "console_bgp.rs"]
 mod bgp_view;
+#[path = "console_help.rs"]
+mod help_view;
 #[path = "console_run.rs"]
 mod run_picker;
 #[path = "console_share.rs"]
@@ -314,9 +316,16 @@ pub struct App {
     synced: Option<std::time::SystemTime>,
     section: Section,
     input: String,
+    /// Whether the Target field has the keys. It never has them by itself: a tool's key or `:`
+    /// gives them to it, and until then every key is a command, as in k9s.
+    field: bool,
+    /// What `/` narrows the list on screen to: Recent, the hops, the records or a lookup's rows.
+    search: String,
+    /// Whether the keys go to the search line at the foot of the screen.
+    searching: bool,
     /// The tool the field runs: the highlighted chip.
     tool: Tool,
-    /// Selected row of the list under the field, when the selection has left the field.
+    /// Selected row of the list under the field. None while nothing is selected.
     row: Option<usize>,
     pane: Pane,
     shown: Option<Shown>,
@@ -341,9 +350,12 @@ pub struct App {
     bgp_side: rvrs_core::bgp::Side,
     bgp_filter: PrefixFilter,
     bgp_days: u64,
+    /// How wide a BGP lookup's rows were last drawn, so the keys read the rows the screen shows.
+    bgp_columns: std::cell::Cell<usize>,
     /// What the daily look found when rvrs has fallen behind: "0.3.1 is out", "4 new commits".
     update: Option<String>,
-    help: bool,
+    /// Open while `?` shows the keys or a tool's commands.
+    help: Option<help_view::Help>,
     toast: Option<(String, Instant)>,
     frame: usize,
     /// How many rows PageUp and PageDown move: the list's height when it was last drawn.
@@ -371,11 +383,60 @@ impl Rows<'_> {
     }
 }
 
-/// What is typed in the Target field, read as a filter: every word must appear in the tool or
-/// the host. "ping git" keeps the pings to hosts with "git" in their name.
+/// What is typed in the Target field or the search, read as a filter: every word must appear in
+/// the tool or the host. "ping git" keeps the pings to hosts with "git" in their name.
 fn matches(filter: &[String], tool: &str, host: &str) -> bool {
-    let text = format!("{tool} {host}").to_lowercase();
-    filter.iter().all(|word| text.contains(word))
+    found(filter, &format!("{tool} {host}"))
+}
+
+/// Whether every word is somewhere in the text, without regard to case. No words find anything.
+fn found(words: &[String], text: &str) -> bool {
+    let text = text.to_lowercase();
+    words.iter().all(|word| text.contains(word.as_str()))
+}
+
+/// The words of a search or a filter, lower case.
+fn words(text: &str) -> Vec<String> {
+    text.split_whitespace().map(str::to_lowercase).collect()
+}
+
+/// What a hop answers to in a search: every address that replied, its name and its network.
+fn hop_found(run: &Run, hop: &Hop, words: &[String]) -> bool {
+    if words.is_empty() {
+        return true;
+    }
+    let mut text = String::new();
+    for address in hop.addresses() {
+        text.push_str(&format!("{address} "));
+        if let Some(name) = run.name(address) {
+            text.push_str(&format!("{name} "));
+        }
+        if let Some(network) = run.network(address) {
+            text.push_str(&format!("{} {} ", network.label(), network.name));
+        }
+    }
+    found(words, &text)
+}
+
+/// What a record answers to in a search: its name, type and value.
+fn record_found(record: &Record, words: &[String]) -> bool {
+    found(
+        words,
+        &format!("{} {} {}", record.name, record.type_name(), record.value),
+    )
+}
+
+/// Where the keys are, as far as a search cares: a search belongs to the list it narrowed and
+/// ends when the screen shows another one.
+#[derive(Debug, Clone, PartialEq)]
+struct Place {
+    pane: Pane,
+    section: Section,
+    case: Option<Scope>,
+    run: Option<String>,
+    dns_tab: DnsTab,
+    dns_source: usize,
+    bgp_tab: BgpTab,
 }
 
 pub fn open(target: Option<String>) -> ExitCode {
@@ -460,6 +521,9 @@ impl App {
             synced: sync_mark(),
             section: Section::Console,
             input: String::new(),
+            field: false,
+            search: String::new(),
+            searching: false,
             // traceroute, or the first tool this build runs.
             tool: Tool::ALL
                 .into_iter()
@@ -482,8 +546,9 @@ impl App {
             bgp_side: rvrs_core::bgp::Side::Left,
             bgp_filter: PrefixFilter::All,
             bgp_days: 7,
+            bgp_columns: std::cell::Cell::new(100),
             update: None,
-            help: false,
+            help: None,
             toast: None,
             frame: 0,
             page: 10,
@@ -491,16 +556,20 @@ impl App {
         }
     }
 
-    /// The words typed in the Target field, lower case.
+    /// The words the list is narrowed to: what is typed in the Target field, which suggests
+    /// runs from history, and the search.
     fn filter(&self) -> Vec<String> {
-        self.input
-            .split_whitespace()
-            .map(str::to_lowercase)
-            .collect()
+        let mut filter = words(&self.input);
+        filter.extend(self.search_words());
+        filter
     }
 
-    /// The list under the field, narrowed to what the typed words match. The field is the
-    /// filter: there is no second place to type.
+    /// The words of the search, lower case.
+    fn search_words(&self) -> Vec<String> {
+        words(&self.search)
+    }
+
+    /// The list under the field, narrowed to what the typed words match.
     fn rows(&self) -> Rows<'_> {
         let filter = self.filter();
         let keep = |run: &&Run| matches(&filter, run.tool.command(), &run.target);
@@ -768,14 +837,188 @@ impl App {
         }
     }
 
-    /// Opens a section's list. The open run stays open: Return on the empty field goes back to it.
+    /// Opens a section's list. The open run stays open: Return with nothing selected goes back to
+    /// it.
     fn go_to(&mut self, section: Section) {
         self.section = section;
         self.case = None;
         self.row = None;
+        self.field = false;
         self.details = false;
         self.details_focus = false;
         self.pane = Pane::Start;
+    }
+
+    /// Gives the keys to the Target field, for this tool. From a result or another section it
+    /// goes back to the Console first, where the field is.
+    fn type_target(&mut self, tool: Tool) {
+        if !crate::features::runs(tool) {
+            if let Some(feature) =
+                crate::features::of_tool(tool).filter(|name| !crate::features::has(name))
+            {
+                self.toast(crate::features::missing(feature));
+            }
+            return;
+        }
+        if self.section == Section::Account {
+            self.go_to(Section::Console);
+        }
+        self.tool = tool;
+        self.pane = Pane::Start;
+        self.row = None;
+        self.field = true;
+        // A new target is a new question: the suggestions follow what is typed, not an old search.
+        self.search.clear();
+        self.searching = false;
+    }
+
+    /// The tool a key picks on a list: the run picker's letters, t, m, p, d and b.
+    fn tool_of(key: &KeyEvent) -> Option<Tool> {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            return None;
+        }
+        let KeyCode::Char(typed) = key.code else {
+            return None;
+        };
+        Tool::ALL
+            .into_iter()
+            .filter(|tool| crate::features::runs(*tool))
+            .find(|tool| run_picker::letter(*tool) == typed)
+    }
+
+    /// Opens the search line at the foot of the screen. A new search starts empty.
+    fn open_search(&mut self) {
+        self.search.clear();
+        self.searching = true;
+    }
+
+    /// Where the keys are: a search ends when this changes.
+    fn place(&self) -> Place {
+        Place {
+            pane: if self.shown.is_some() {
+                self.pane
+            } else {
+                Pane::Start
+            },
+            section: self.section,
+            case: self.case.clone(),
+            run: self.run().map(|run| run.id.clone()),
+            dns_tab: self.dns_tab,
+            dns_source: self.dns_source,
+            bgp_tab: self.bgp_tab,
+        }
+    }
+
+    /// The hops a search leaves, by their place in the path. Every hop without one.
+    fn hop_rows(&self) -> Vec<usize> {
+        let Some(run) = self.run() else {
+            return Vec::new();
+        };
+        let words = self.search_words();
+        run.path()
+            .iter()
+            .enumerate()
+            .filter(|(_, hop)| hop_found(run, hop, &words))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// Moves the selected hop through the hops a search leaves: `by` rows down, or up when it
+    /// is negative. A hop the search left out steps to the nearest one it kept.
+    fn step_hop(&mut self, by: isize) {
+        let rows = self.hop_rows();
+        if rows.is_empty() {
+            return;
+        }
+        let count = rows.len() as isize;
+        // Between two rows, the first step down lands on the one below and up on the one above.
+        let target = match rows.iter().position(|index| *index >= self.hop) {
+            Some(at) if rows[at] == self.hop => at as isize + by,
+            Some(at) if by > 0 => at as isize + by - 1,
+            Some(at) => at as isize + by,
+            None if by > 0 => count - 1,
+            None => count + by,
+        };
+        self.hop = rows[target.clamp(0, count - 1) as usize];
+    }
+
+    /// After the search changed: the selection goes to the first row it leaves, so a search
+    /// lands on its first hit.
+    fn land_search(&mut self) {
+        let on_start = self.pane == Pane::Start || self.shown.is_none();
+        if on_start {
+            self.row = (self.rows().len() > 0).then_some(0);
+            return;
+        }
+        match self.run().map(|run| run.tool) {
+            Some(Tool::Traceroute | Tool::Mtr) => {
+                if let Some(first) = self.hop_rows().first() {
+                    self.hop = *first;
+                }
+                self.scroll = 0;
+            }
+            Some(Tool::Dns) => self.dns_row = 0,
+            Some(Tool::Bgp) => self.bgp_row = 0,
+            _ => {}
+        }
+    }
+
+    /// Whether `/` has rows to narrow on this screen.
+    fn can_search(&self) -> bool {
+        let on_start = self.pane == Pane::Start || self.shown.is_none();
+        if on_start {
+            return self.section != Section::Account;
+        }
+        match self.run() {
+            Some(run) if run.is_report_only() => false,
+            Some(run) => match run.tool {
+                Tool::Traceroute | Tool::Mtr => true,
+                Tool::Dns => matches!(self.dns_tab, DnsTab::Overview | DnsTab::Records),
+                Tool::Bgp => true,
+                Tool::Ping | Tool::Iperf3 => false,
+            },
+            None => false,
+        }
+    }
+
+    /// The search line takes the keys while it is open. Return keeps what it found and gives the
+    /// keys back to the list, esc drops it, and an arrow moves through what it found.
+    fn search_key(&mut self, key: KeyEvent) {
+        match key.code {
+            // esc leaves the selection where it was: a hop keeps its place in the path.
+            KeyCode::Esc => {
+                self.search.clear();
+                self.searching = false;
+                self.clamp_row();
+            }
+            KeyCode::Enter => self.searching = false,
+            KeyCode::Backspace => {
+                if self.search.pop().is_none() {
+                    self.searching = false;
+                }
+                self.land_search();
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.search.clear();
+                self.land_search();
+            }
+            KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => {
+                self.searching = false;
+                self.dispatch(key);
+            }
+            KeyCode::Char(character)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !(character == ' '
+                        && (self.search.is_empty() || self.search.ends_with(' '))) =>
+            {
+                self.search.push(character);
+                self.land_search();
+            }
+            _ => {}
+        }
     }
 
     fn toast(&mut self, text: impl Into<String>) {
@@ -862,6 +1105,7 @@ impl App {
         self.details = false;
         self.details_focus = false;
         self.input.clear();
+        self.field = false;
         self.row = None;
     }
 
@@ -1014,8 +1258,8 @@ impl App {
             self.quit = true;
             return;
         }
-        if self.help {
-            self.help = false;
+        if self.help.is_some() {
+            self.help_key(key);
             return;
         }
         // The picker takes every key while it is open, so a name can hold any character.
@@ -1031,6 +1275,21 @@ impl App {
             self.share_key(key);
             return;
         }
+        let place = self.place();
+        if self.searching {
+            self.search_key(key);
+        } else {
+            self.dispatch(key);
+        }
+        // A search narrows one list. Another list on screen starts without it.
+        if self.place() != place {
+            self.search.clear();
+            self.searching = false;
+        }
+    }
+
+    /// The keys of the screen underneath: the sections, then the list or the open run.
+    fn dispatch(&mut self, key: KeyEvent) {
         if let Some(section) = Section::of(&key) {
             self.go_to(section);
             return;
@@ -1040,14 +1299,33 @@ impl App {
             return;
         }
         match self.pane {
+            Pane::Start if self.field => self.field_key(key),
             Pane::Start => self.start_key(key),
             Pane::Result => self.result_key(key),
         }
     }
 
-    /// The Account section takes every key: there is no field to type into there.
+    /// The Account section takes every key: there is no field to type into there. A tool's key
+    /// and `:` go back to the Console's field, as they do from every list.
     fn account_key(&mut self, key: KeyEvent) {
         use account_view::State;
+        if !self.account.is_busy() {
+            if let Some(tool) = Self::tool_of(&key) {
+                self.type_target(tool);
+                return;
+            }
+            match key.code {
+                KeyCode::Char(':') => {
+                    self.type_target(self.tool);
+                    return;
+                }
+                KeyCode::Char('?') => {
+                    self.open_help();
+                    return;
+                }
+                _ => {}
+            }
+        }
         match (key.code, &self.account.state) {
             (KeyCode::Char('s' | 'S'), State::SignedOut | State::Failed(_)) => {
                 self.account.sign_in()
@@ -1074,19 +1352,92 @@ impl App {
         }
     }
 
+    /// The next tool this build runs, or the one before it.
+    fn next_tool(&mut self, back: bool) {
+        let available: Vec<Tool> = Tool::ALL
+            .into_iter()
+            .filter(|tool| crate::features::runs(*tool))
+            .collect();
+        if available.is_empty() {
+            return;
+        }
+        let current = available
+            .iter()
+            .position(|tool| *tool == self.tool)
+            .unwrap_or(0);
+        let step = if back { available.len() - 1 } else { 1 };
+        self.tool = available[(current + step) % available.len()];
+    }
+
+    /// The Target field while it has the keys: typing goes into it and narrows Recent to runs
+    /// that match, Return runs it, tab picks the tool, and esc gives the keys back to the list.
+    fn field_key(&mut self, key: KeyEvent) {
+        let count = self.rows().len();
+        match key.code {
+            KeyCode::Esc => {
+                self.input.clear();
+                self.field = false;
+                self.row = None;
+            }
+            KeyCode::Left if self.input.is_empty() => self.field = false,
+            KeyCode::Enter if self.input.trim().is_empty() => self.field = false,
+            KeyCode::Enter => self.run_input(),
+            // Down goes from the field into the runs it suggests.
+            KeyCode::Down if count > 0 => {
+                self.field = false;
+                self.row = Some(0);
+            }
+            KeyCode::Tab => self.next_tool(false),
+            KeyCode::BackTab => self.next_tool(true),
+            KeyCode::Backspace => {
+                self.input.pop();
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.clear()
+            }
+            KeyCode::Char('?') if self.input.is_empty() => self.open_help(),
+            // A space separates the words of a filter, or a tool from its target.
+            KeyCode::Char(' ') if !self.input.is_empty() && !self.input.ends_with(' ') => {
+                self.input.push(' ');
+            }
+            KeyCode::Char(character)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !character.is_whitespace() =>
+            {
+                self.input.push(character);
+            }
+            _ => {}
+        }
+    }
+
+    /// A list's keys: every key is a command, as in k9s. A tool's key opens the Target field for
+    /// that tool, `/` searches the list, and the letters that act on a row act on the selected
+    /// one.
     fn start_key(&mut self, key: KeyEvent) {
         let count = self.rows().len();
+        if let Some(tool) = Self::tool_of(&key) {
+            self.type_target(tool);
+            return;
+        }
+        let plain = !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         match key.code {
             // Inside a case, esc and left step back out to the cases.
             KeyCode::Esc | KeyCode::Left
                 if self.input.is_empty()
+                    && self.search.is_empty()
                     && self.case.is_some()
                     && self.section == Section::Cases =>
             {
                 self.leave_case()
             }
+            // esc takes back one thing at a time: the search, what was typed, the selection.
+            // With nothing left to take back it quits.
             KeyCode::Esc => {
-                if !self.input.is_empty() {
+                if !self.search.is_empty() {
+                    self.search.clear();
+                    self.clamp_row();
+                } else if !self.input.is_empty() {
                     self.input.clear();
                     self.row = None;
                 } else if self.row.is_some() {
@@ -1095,6 +1446,12 @@ impl App {
                     self.quit = true;
                 }
             }
+            KeyCode::Char('/') => self.open_search(),
+            KeyCode::Char(':') => {
+                let tool = self.tool;
+                self.type_target(tool);
+            }
+            KeyCode::Char('?') => self.open_help(),
             KeyCode::Down => {
                 self.row = match self.row {
                     None if count > 0 => Some(0),
@@ -1102,12 +1459,26 @@ impl App {
                     other => other,
                 };
             }
-            KeyCode::Up => {
+            KeyCode::Char('j') if plain => {
                 self.row = match self.row {
+                    None if count > 0 => Some(0),
+                    Some(row) if row + 1 < count => Some(row + 1),
+                    other => other,
+                };
+            }
+            // Up from the first row goes back to what is typed, when something is.
+            KeyCode::Up | KeyCode::Char('k') if plain => {
+                self.row = match self.row {
+                    Some(0) if !self.input.is_empty() => {
+                        self.field = true;
+                        None
+                    }
                     Some(0) | None => None,
                     Some(row) => Some(row - 1),
                 };
             }
+            KeyCode::Home | KeyCode::Char('g') if plain && count > 0 => self.row = Some(0),
+            KeyCode::End | KeyCode::Char('G') if count > 0 => self.row = Some(count - 1),
             KeyCode::PageDown if count > 0 => {
                 self.row = Some(self.row.map_or(0, |row| row + self.page).min(count - 1));
             }
@@ -1163,22 +1534,11 @@ impl App {
                     self.clamp_row();
                 }
             }
-            // Left steps back out of the list to the field.
+            // Left steps back out of the list: the selection goes.
             KeyCode::Left => self.row = None,
-            KeyCode::Tab if self.row.is_none() => {
-                // The next tool this build can run.
-                let available: Vec<Tool> = Tool::ALL
-                    .into_iter()
-                    .filter(|tool| crate::features::runs(*tool))
-                    .collect();
-                if !available.is_empty() {
-                    let current = available
-                        .iter()
-                        .position(|tool| *tool == self.tool)
-                        .unwrap_or(0);
-                    self.tool = available[(current + 1) % available.len()];
-                }
-            }
+            // With nothing selected, tab picks the tool, as it does in the field.
+            KeyCode::Tab if self.row.is_none() => self.next_tool(false),
+            KeyCode::BackTab if self.row.is_none() => self.next_tool(true),
             // Right goes into the selected entry, as Return does.
             KeyCode::Right
                 if self.row.is_none() && !(self.input.is_empty() && self.shown.is_some()) => {}
@@ -1217,28 +1577,14 @@ impl App {
                 (None, _) if self.input.is_empty() && self.shown.is_some() => {
                     self.pane = Pane::Result
                 }
-                (None, _) => self.run_input(),
+                (None, _) if !self.input.trim().is_empty() => self.run_input(),
+                // Return on an empty Console opens the field, for whoever expects to type.
+                (None, _) if key.code == KeyCode::Enter => {
+                    let tool = self.tool;
+                    self.type_target(tool);
+                }
+                (None, _) => {}
             },
-            KeyCode::Backspace => {
-                self.input.pop();
-                self.row = None;
-            }
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.input.clear();
-                self.row = None;
-            }
-            KeyCode::Char('?') if self.input.is_empty() => self.help = true,
-            // A space separates the words of a filter, or a tool from its target.
-            KeyCode::Char(' ') if !self.input.is_empty() && !self.input.ends_with(' ') => {
-                self.input.push(' ');
-                self.row = None;
-            }
-            KeyCode::Char(character)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !character.is_whitespace() =>
-            {
-                self.input.push(character);
-                self.row = None;
-            }
             _ => {}
         }
     }
@@ -1253,6 +1599,30 @@ impl App {
             let run = run.clone();
             self.open_share(run);
             return;
+        }
+        // The keys every result has: the field for a new target, help, and the search.
+        match key.code {
+            KeyCode::Char(':') => {
+                let tool = self.tool;
+                self.type_target(tool);
+                return;
+            }
+            KeyCode::Char('?') => {
+                self.open_help();
+                return;
+            }
+            KeyCode::Char('/') => {
+                if self.can_search() {
+                    self.open_search();
+                }
+                return;
+            }
+            // With the details closed, esc drops the search before it leaves the run.
+            KeyCode::Esc if !self.details && !self.search.is_empty() => {
+                self.search.clear();
+                return;
+            }
+            _ => {}
         }
         if run.is_report_only() {
             self.report_key(key);
@@ -1283,7 +1653,13 @@ impl App {
             // leaves the run.
             KeyCode::Esc | KeyCode::Left if self.details_focus => self.details_focus = false,
             KeyCode::Esc | KeyCode::Left if self.details => self.details = false,
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
+            KeyCode::Esc | KeyCode::Left => self.pane = Pane::Start,
+            // d shows the selected hop's details beside the hops, as k9s describes, and hides
+            // them again.
+            KeyCode::Char('d') if hops > 0 => {
+                self.details = !self.details;
+                self.details_focus = false;
+            }
             // f keeps a host in Favorites: the selected hop while its details are open, the
             // run's target otherwise.
             KeyCode::Char('f') if self.details && hops > 0 => self.hop_action(Action::Favorite),
@@ -1317,8 +1693,8 @@ impl App {
             KeyCode::Char('m') if hops > 0 => self.hop_action(Action::Mtr),
             KeyCode::Char('p') if hops > 0 => self.hop_action(Action::Ping),
             KeyCode::Char('b') if hops > 0 => self.hop_action(Action::Bgp),
-            // An MTR shows its figures, or gives the room to each hop's history.
-            KeyCode::Char('d') if tool == Tool::Mtr => self.mtr_history = !self.mtr_history,
+            // An MTR shows its figures, or gives the room to each hop's rounds.
+            KeyCode::Char('v') if tool == Tool::Mtr => self.mtr_history = !self.mtr_history,
             KeyCode::Char('n') if hops > 0 => self.hop_action(Action::CopyHostname),
             KeyCode::Char('w') if hops > 0 => self.hop_action(Action::Whois),
             KeyCode::Char('c') if is_ping => {
@@ -1326,14 +1702,13 @@ impl App {
                     self.copy(&address.to_string());
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') if hops > 0 => {
-                self.hop = (self.hop + 1).min(hops - 1)
-            }
-            KeyCode::Up | KeyCode::Char('k') => self.hop = self.hop.saturating_sub(1),
-            KeyCode::PageDown if hops > 0 => self.hop = (self.hop + self.page).min(hops - 1),
-            KeyCode::PageUp => self.hop = self.hop.saturating_sub(self.page),
-            KeyCode::Home | KeyCode::Char('g') => self.hop = 0,
-            KeyCode::End | KeyCode::Char('G') if hops > 0 => self.hop = hops - 1,
+            // The arrows move through the hops a search leaves, or through every hop.
+            KeyCode::Down | KeyCode::Char('j') if hops > 0 => self.step_hop(1),
+            KeyCode::Up | KeyCode::Char('k') if hops > 0 => self.step_hop(-1),
+            KeyCode::PageDown if hops > 0 => self.step_hop(self.page as isize),
+            KeyCode::PageUp if hops > 0 => self.step_hop(-(self.page as isize)),
+            KeyCode::Home | KeyCode::Char('g') if hops > 0 => self.step_hop(-(hops as isize)),
+            KeyCode::End | KeyCode::Char('G') if hops > 0 => self.step_hop(hops as isize),
             // The hop's details open beside the table, and the hops stay navigable.
             KeyCode::Enter | KeyCode::Right if hops > 0 => self.details = true,
             KeyCode::Char('R') => self.start_with(tool, &target),
@@ -1356,7 +1731,6 @@ impl App {
                     self.copy(&address.to_string());
                 }
             }
-            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
     }
@@ -1364,7 +1738,7 @@ impl App {
     /// The record the selection is on, in the tabs that list records.
     fn dns_record(&self) -> Option<Record> {
         let dns = self.run()?.dns.as_ref()?;
-        dns_records(dns, self.dns_tab, self.dns_source)
+        dns_records(dns, self.dns_tab, self.dns_source, &self.search_words())
             .into_iter()
             .nth(self.dns_row)
     }
@@ -1384,7 +1758,7 @@ impl App {
         let Some(run) = self.run() else { return };
         let (tool, target) = (run.tool, run.target.clone());
         match key.code {
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
+            KeyCode::Esc | KeyCode::Left => self.pane = Pane::Start,
             KeyCode::Char('f') => self.toggle_favorite(&target),
             KeyCode::Char('R') if crate::features::runs(tool) => self.start_with(tool, &target),
             KeyCode::Char('r') => self.open_result_launcher(),
@@ -1394,7 +1768,6 @@ impl App {
                     self.open_picker(run);
                 }
             }
-            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
     }
@@ -1409,7 +1782,7 @@ impl App {
             .unwrap_or_else(|| DnsResult::new(&run.target));
         let sources = dns.ordered_sources();
         self.dns_source = self.dns_source.min(sources.len().saturating_sub(1));
-        let records = dns_records(&dns, self.dns_tab, self.dns_source);
+        let records = dns_records(&dns, self.dns_tab, self.dns_source, &self.search_words());
         let rows = match self.dns_tab {
             DnsTab::Overview | DnsTab::Records => records.len(),
             DnsTab::Compare => sources.len(),
@@ -1437,7 +1810,12 @@ impl App {
             }
             KeyCode::Esc | KeyCode::Left if self.details_focus => self.details_focus = false,
             KeyCode::Esc | KeyCode::Left if self.details => self.details = false,
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
+            KeyCode::Esc | KeyCode::Left => self.pane = Pane::Start,
+            // d shows the selected record's details beside the records, and hides them again.
+            KeyCode::Char('d') if record.is_some() => {
+                self.details = !self.details;
+                self.details_focus = false;
+            }
             KeyCode::Down | KeyCode::Char('j') if self.details_focus => {
                 self.action = (self.action + 1).min(actions.len().saturating_sub(1));
             }
@@ -1506,7 +1884,6 @@ impl App {
                     self.open_picker(run);
                 }
             }
-            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
     }
@@ -1657,7 +2034,7 @@ impl App {
         if self.share.is_some() {
             self.draw_share(frame, area);
         }
-        if self.help {
+        if self.help.is_some() {
             self.draw_help(frame, area);
         }
     }
@@ -1719,7 +2096,7 @@ impl App {
             new_row
         });
         frame.render_widget(Paragraph::new(lines), inner);
-        if on_new && !self.help {
+        if on_new && self.help.is_none() {
             let typed = tail(&picker.name, columns.saturating_sub(lead.len() + 1));
             let row = slots as u16;
             frame.set_cursor_position(Position::new(
@@ -1731,8 +2108,19 @@ impl App {
 
     /// The keys that do something right now, most useful first.
     fn keys(&self) -> Vec<(&'static str, &'static str)> {
+        if self.help.is_some() {
+            return self.help_keys();
+        }
         if let Some(sheet) = &self.share {
             return sheet.keys();
+        }
+        if self.searching {
+            return vec![
+                ("type", "Search"),
+                ("\u{21B5}", "Keep"),
+                ("\u{2191}\u{2193}", "Move"),
+                ("esc", "Clear"),
+            ];
         }
         if self.launcher.is_some() {
             return vec![
@@ -1786,6 +2174,7 @@ impl App {
                     ("tab", "Details"),
                     ("c", "Copy Value"),
                     ("z", "Copy as Zone Line"),
+                    ("d", "Hide Details"),
                     ("\u{2190}", "Close"),
                 ]
             };
@@ -1804,6 +2193,7 @@ impl App {
                     ("\u{2191}\u{2193}", "Hop"),
                     ("tab", "Details"),
                     ("c", "Copy Address"),
+                    ("d", "Hide Details"),
                     ("\u{2190}", "Close"),
                 ]
             };
@@ -1815,6 +2205,24 @@ impl App {
             }
             return keys;
         }
+        if (self.pane == Pane::Start || self.shown.is_none()) && self.field {
+            let mut keys = vec![("\u{21B5}", "Run"), ("tab", "Tool")];
+            if self.rows().len() > 0 {
+                keys.push(("\u{2193}", "Suggestions"));
+            }
+            if self.input.is_empty() {
+                keys.push(("?", "Help"));
+            }
+            keys.push((
+                "esc",
+                if self.input.is_empty() {
+                    "Close"
+                } else {
+                    "Clear"
+                },
+            ));
+            return keys;
+        }
         if self.pane == Pane::Start || self.shown.is_none() {
             let rows = self.rows();
             let on_row = self.row.is_some();
@@ -1822,10 +2230,14 @@ impl App {
                 (Rows::Runs(_) | Rows::Cases(_), Some(_), _) => "Open",
                 (Rows::Hosts(_), Some(_), _) => "Run",
                 (_, None, true) if self.shown.is_some() => "Result",
+                (_, None, true) => "Target",
                 _ => "Run",
             };
             // Right goes in and left comes back out, everywhere in the Console.
             let mut keys = vec![(if on_row { "\u{2192}" } else { "\u{21B5}" }, enter)];
+            if rows.len() > 0 || !self.search.is_empty() {
+                keys.push(("/", "Search"));
+            }
             if rows.len() > 0 {
                 keys.push((
                     "\u{2191}\u{2193}",
@@ -1867,22 +2279,16 @@ impl App {
             }
             if self.case.is_some() && self.section == Section::Cases {
                 keys.push(("\u{2190}", "Cases"));
-            } else if on_row {
-                keys.push(("\u{2190}", "Target"));
             }
-            // The tool only matters while the Target field has the keys.
-            if self.row.is_none() {
-                keys.push(("tab", "Tool"));
-            }
-            if self.input.is_empty() {
-                keys.push(("?", "Help"));
-            }
+            keys.push(("?", "Help"));
             let in_case = self.case.is_some() && self.section == Section::Cases;
             keys.push((
                 "esc",
-                if in_case && self.input.is_empty() {
+                if !self.search.is_empty() || !self.input.is_empty() {
+                    "Clear"
+                } else if in_case {
                     "Back"
-                } else if self.input.is_empty() && self.row.is_none() {
+                } else if self.row.is_none() {
                     "Quit"
                 } else {
                     "Clear"
@@ -1896,7 +2302,8 @@ impl App {
             match self.dns_tab {
                 DnsTab::Overview | DnsTab::Records => {
                     keys.push(("\u{2191}\u{2193}", "Record"));
-                    keys.push(("\u{2192}", "Details"));
+                    keys.push(("d", "Details"));
+                    keys.push(("/", "Search"));
                     keys.push(("c", "Copy Value"));
                     if self.dns_tab == DnsTab::Records {
                         keys.push(("o", "Next Source"));
@@ -1918,13 +2325,14 @@ impl App {
         } else {
             vec![
                 ("\u{2191}\u{2193}", "Hop"),
-                ("\u{2192}", "Details"),
+                ("d", "Details"),
+                ("/", "Search"),
                 ("c", "Copy Address"),
             ]
         };
         if self.run().is_some_and(|run| run.tool == Tool::Mtr) {
             keys.push((
-                "d",
+                "v",
                 if self.mtr_history {
                     "Figures"
                 } else {
@@ -1954,6 +2362,9 @@ impl App {
             if self.can_share() {
                 keys.push(("S", "Share"));
             }
+        }
+        if !self.search.is_empty() {
+            keys.push(("esc", "Clear Search"));
         }
         keys.push(("\u{2190}", "Back"));
         keys
@@ -2192,7 +2603,7 @@ impl App {
         // The tools belong to the overview, where one is chosen. An open run has no use for them.
         let on_start = self.pane == Pane::Start || self.shown.is_none();
         // The tools belong to the Target field: they show while it has the keys.
-        let show_tools = on_start && self.row.is_none() && columns >= 92;
+        let show_tools = on_start && self.field && columns >= 92;
         let room = columns.saturating_sub(42 + usize::from(show_tools) * tools_width);
         let key_columns = wanted
             .min(room / key_width)
@@ -2286,10 +2697,11 @@ impl App {
         }
     }
 
-    /// The one field, framed like a prompt: the tool, then the target.
+    /// The one field, framed like a prompt: the tool, then the target. Until a tool's key or `:`
+    /// gives it the keys, it shows those keys.
     fn draw_prompt(&self, frame: &mut Frame, area: Rect) {
         let dim = Paint::new().add_modifier(Modifier::DIM);
-        let focused = self.row.is_none();
+        let focused = self.field;
         let block = Block::bordered()
             .border_style(if focused {
                 Paint::new().fg(ACCENT)
@@ -2305,6 +2717,30 @@ impl App {
         let lead = format!(" {}", self.tool.command());
         let room = usize::from(inner.width).saturating_sub(width(&lead) + 4);
         let typed = tail(&self.input, room);
+        if !focused && self.input.is_empty() {
+            // The keys that open the field, as k9s shows its own.
+            let mut spans = vec![
+                Span::styled(lead.clone(), dim.fg(TOOL)),
+                Span::styled("> ", dim),
+            ];
+            for tool in Tool::ALL
+                .into_iter()
+                .filter(|tool| crate::features::runs(*tool))
+            {
+                spans.push(Span::styled(
+                    format!("<{}>", run_picker::letter(tool)),
+                    Paint::new().fg(KEY).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(format!(" {}  ", tool.command()), dim));
+            }
+            spans.push(Span::styled(
+                "<:>",
+                Paint::new().fg(KEY).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(format!(" {}", self.tool.command()), dim));
+            frame.render_widget(Paragraph::new(Line::from(spans)), inner);
+            return;
+        }
         let content = Line::from(vec![
             Span::styled(
                 lead.clone(),
@@ -2325,7 +2761,7 @@ impl App {
             },
         ]);
         frame.render_widget(Paragraph::new(content), inner);
-        if focused && !self.help {
+        if focused && self.help.is_none() && !self.searching {
             let offset = (width(&lead) + 2 + width(&typed)) as u16;
             frame.set_cursor_position(Position::new(inner.x + offset, inner.y));
         }
@@ -2343,7 +2779,7 @@ impl App {
         } else {
             self.input.trim().to_lowercase()
         };
-        let block = panel(&name, &scope, &rows.len().to_string());
+        let block = panel_searched(&name, &scope, &rows.len().to_string(), true, &self.search);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         let columns = usize::from(inner.width);
@@ -2353,7 +2789,7 @@ impl App {
 
         match &rows {
             rows if rows.len() == 0 => {
-                let filtered = !self.input.trim().is_empty();
+                let filtered = !self.input.trim().is_empty() || !self.search.trim().is_empty();
                 let in_case = self.open_case().is_some();
                 let title = match (self.section, filtered) {
                     (_, true) => "Nothing matches",
@@ -2637,7 +3073,7 @@ impl App {
             } else {
                 ("Traceroute", run.path_len().to_string())
             };
-        let block = panel_with(name, &run.target, &count, table_focused);
+        let block = panel_searched(name, &run.target, &count, table_focused, &self.search);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         if let Some(Outcome::Failed(message)) = &run.outcome {
@@ -2797,7 +3233,12 @@ impl App {
                     ));
                 }
                 lines.push(Line::from(tiles));
-                let keys = dns.key_records();
+                let search = self.search_words();
+                let keys: Vec<&Record> = dns
+                    .key_records()
+                    .into_iter()
+                    .filter(|record| record_found(record, &search))
+                    .collect();
                 if !keys.is_empty() {
                     lines.push(Line::default());
                     lines.push(header("KEY RECORDS"));
@@ -2897,7 +3338,7 @@ impl App {
                         lines.push(Line::default());
                         lines.extend(sentence(error, Paint::new().fg(Color::Red)));
                     }
-                    let grouped = grouped_records(source);
+                    let grouped = grouped_records(source, &self.search_words());
                     let mut last = None;
                     for (index, (group, record)) in grouped.iter().enumerate() {
                         if last != Some(*group) {
@@ -2915,7 +3356,14 @@ impl App {
                     }
                     if grouped.is_empty() && source.error.is_none() {
                         lines.push(Line::default());
-                        lines.push(Line::styled(" No records", dim));
+                        lines.push(Line::styled(
+                            if self.search.trim().is_empty() {
+                                " No records"
+                            } else {
+                                " No record matches"
+                            },
+                            dim,
+                        ));
                     }
                     // Types the source refused or failed, each kind of failure once.
                     let mut failed: Vec<(&String, Vec<&String>)> = Vec::new();
@@ -3183,6 +3631,18 @@ impl App {
         let columns = usize::from(inner.width);
         let path = run.path();
         self.hop = self.hop.min(path.len().saturating_sub(1));
+        // The hops a search leaves, by their place in the path.
+        let words = words(&self.search);
+        let visible: Vec<usize> = path
+            .iter()
+            .enumerate()
+            .filter(|(_, hop)| hop_found(run, hop, &words))
+            .map(|(index, _)| index)
+            .collect();
+        let at = visible
+            .iter()
+            .position(|index| *index >= self.hop)
+            .unwrap_or(0);
 
         // The figures, most telling first, as many as fit. The history view keeps two of them.
         let all: [(&str, usize); 7] = [
@@ -3252,8 +3712,12 @@ impl App {
                 let index = usize::from(hop.ttl)
                     .saturating_sub(1)
                     .min(path.len().saturating_sub(1));
+                // A search can hide the hop that names the network, so each row names its own.
                 network_cells[index] = match (group.network, position) {
                     (Some(network), 0) => format!("{} {}", network.label(), network.name),
+                    (Some(network), _) if !words.is_empty() => {
+                        format!("{} {}", network.label(), network.name)
+                    }
                     (Some(_), _) => "\u{2506}".to_string(),
                     (None, _) => String::new(),
                 };
@@ -3288,14 +3752,14 @@ impl App {
             note_lines.len() + 1
         };
         let chart_hop = run.chart_hop();
-        let show_chart = chart_hop.is_some() && room > path.len() + below + chart_rows;
+        let show_chart = chart_hop.is_some() && room > visible.len() + below + chart_rows;
         let table_room = room
             .saturating_sub(below + if show_chart { chart_rows } else { 0 })
             .max(1);
-        if self.hop < self.scroll {
-            self.scroll = self.hop;
-        } else if self.hop >= self.scroll + table_room {
-            self.scroll = self.hop + 1 - table_room;
+        if at < self.scroll {
+            self.scroll = at;
+        } else if at >= self.scroll + table_room {
+            self.scroll = at + 1 - table_room;
         }
 
         // The charts sit on top of the hops, and what the run likely means under the table.
@@ -3311,7 +3775,11 @@ impl App {
             lines.splice(0..0, charts);
         }
 
-        for (index, hop) in path.iter().enumerate().skip(self.scroll).take(table_room) {
+        if visible.is_empty() && !words.is_empty() {
+            lines.push(Line::styled(" No hop matches", dim));
+        }
+        for &index in visible.iter().skip(self.scroll).take(table_room) {
+            let hop = &path[index];
             let stats = hop.stats();
             let address = hop.address();
             let host = match address {
@@ -3443,6 +3911,18 @@ impl App {
         let columns = usize::from(inner.width);
         let path = run.path();
         self.hop = self.hop.min(path.len().saturating_sub(1));
+        // The hops a search leaves, by their place in the path.
+        let words = words(&self.search);
+        let visible: Vec<usize> = path
+            .iter()
+            .enumerate()
+            .filter(|(_, hop)| hop_found(run, hop, &words))
+            .map(|(index, _)| index)
+            .collect();
+        let at = visible
+            .iter()
+            .position(|index| *index >= self.hop)
+            .unwrap_or(0);
 
         // Columns go as the terminal narrows: the bar first, then best and worst, then the network.
         let any_v6 = path
@@ -3492,8 +3972,12 @@ impl App {
                 let index = usize::from(hop.ttl)
                     .saturating_sub(1)
                     .min(path.len().saturating_sub(1));
+                // A search can hide the hop that names the network, so each row names its own.
                 network_cells[index] = match (group.network, position) {
                     (Some(network), 0) => format!("{} {}", network.label(), network.name),
+                    (Some(network), _) if !words.is_empty() => {
+                        format!("{} {}", network.label(), network.name)
+                    }
                     (Some(_), _) => "\u{2506}".to_string(),
                     (None, _) => String::new(),
                 };
@@ -3507,22 +3991,21 @@ impl App {
 
         let room = usize::from(inner.height).saturating_sub(1);
         let chart_rows = 7;
-        let table_room = if room >= path.len() + 2 + chart_rows {
+        let table_room = if room >= visible.len() + 2 + chart_rows {
             room - chart_rows
         } else {
             room
         };
-        if self.hop < self.scroll {
-            self.scroll = self.hop;
-        } else if self.hop >= self.scroll + table_room.max(1) {
-            self.scroll = self.hop + 1 - table_room.max(1);
+        if at < self.scroll {
+            self.scroll = at;
+        } else if at >= self.scroll + table_room.max(1) {
+            self.scroll = at + 1 - table_room.max(1);
         }
-        for (index, hop) in path
-            .iter()
-            .enumerate()
-            .skip(self.scroll)
-            .take(table_room.max(1))
-        {
+        if visible.is_empty() && !words.is_empty() {
+            lines.push(Line::styled(" No hop matches", dim));
+        }
+        for &index in visible.iter().skip(self.scroll).take(table_room.max(1)) {
+            let hop = &path[index];
             let stats = hop.stats();
             let address = hop.address();
             let host = match address {
@@ -3798,6 +4281,22 @@ impl App {
     /// Where you are, as chips, and what just happened beside them.
     fn draw_crumbs(&self, frame: &mut Frame, area: Rect, with_keys: bool) {
         let dim = Paint::new().add_modifier(Modifier::DIM);
+        // While a search is typed, the foot of the screen is its line, as in less and vim.
+        if self.searching {
+            let room = usize::from(area.width).saturating_sub(4);
+            let typed = tail(&self.search, room);
+            frame.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::styled(" /", Paint::new().fg(LABEL).add_modifier(Modifier::BOLD)),
+                    Span::raw(typed.clone()),
+                ])),
+                area,
+            );
+            if self.help.is_none() {
+                frame.set_cursor_position(Position::new(area.x + 2 + width(&typed) as u16, area.y));
+            }
+            return;
+        }
         let chip = |color: Color| {
             Paint::new()
                 .bg(color)
@@ -4040,151 +4539,37 @@ impl App {
         frame.render_widget(Clear, area);
         frame.render_widget(Paragraph::new(lines).block(block), area);
     }
-
-    fn draw_help(&self, frame: &mut Frame, area: Rect) {
-        let dim = Paint::new().add_modifier(Modifier::DIM);
-        let bold = Paint::new().add_modifier(Modifier::BOLD);
-        let row = |key: &str, what: &str| {
-            Line::from(vec![
-                Span::styled(
-                    format!("  {:<14}", format!("<{key}>")),
-                    Paint::new().fg(KEY),
-                ),
-                Span::raw(what.to_string()),
-            ])
-        };
-        let lines = vec![
-            Line::default(),
-            Line::styled("  TARGET", bold),
-            row("\u{21B5}", "Run the selected tool against the typed target"),
-            row("tab", "Switch between traceroute, mtr, ping, dig and bgp"),
-            row(
-                "\u{2191} \u{2193}",
-                "Move through Recent, or through suggestions while typing",
-            ),
-            row("pg up  pg dn", "Move a screen at a time"),
-            row("\u{21B5} on a run", "Open it without running it again"),
-            row(
-                "\u{2192}  \u{2190}",
-                "Go into the selected entry, and back out",
-            ),
-            row(
-                "s",
-                "On a selected run: save it, or remove it from saved runs",
-            ),
-            row("a", "On a selected run: put it in cases, or make a new one"),
-            row(
-                "S",
-                "On a run: choose what its public page shows, then generate the link",
-            ),
-            row("x", "Inside a case: take the run out of it. It stays saved"),
-            row(
-                "\u{21E7}1 to \u{21E7}4",
-                "Go to Console, Favorites, Cases, Account, the tabs in the footer",
-            ),
-            row(
-                "f",
-                "On a selected run or hop: add its host to Favorites, or remove it",
-            ),
-            row(
-                "typing",
-                "Filters the list by tool and host, as in ping example.com",
-            ),
-            row("\u{21B5} on nothing", "Back to the run that is open"),
-            row("esc", "Clear the field, then quit"),
-            Line::default(),
-            Line::styled("  RESULT", bold),
-            row("\u{2191} \u{2193} j k", "Select a hop"),
-            row("\u{2192}", "Open the hop's details beside the hops"),
-            row("tab", "Move between the hops and the details"),
-            row(
-                "t m p n w",
-                "On a hop: traceroute, MTR, ping, copy hostname, Whois",
-            ),
-            row(
-                "d",
-                "In an MTR: each hop's figures, or a wide strip of its rounds",
-            ),
-            row(
-                "1 2 3 4",
-                "In a DNS lookup: Overview, Records, Compare, Trace",
-            ),
-            row(
-                "\u{2192} z o",
-                "On a record: its details, copy as zone line. o shows the next source",
-            ),
-            row(
-                "1 2 3 4 5",
-                "In a BGP lookup: Overview, Paths, Prefixes, History, Sources",
-            ),
-            row(
-                "\u{2192} v o d",
-                "On a network or prefix: its own lookup. v shows RPKI, o the next side or filter, d the next range",
-            ),
-            row("b", "On a hop: look up the route its address falls in"),
-            row("c", "Copy the address, the record's value, or the selected row"),
-            row(
-                "r",
-                "Pick a tool to run against the selected run, hop, record or network",
-            ),
-            row("R", "Run the open run again"),
-            row(
-                "s",
-                "Stop a run. Once it has ended, save it or remove it from saved runs",
-            ),
-            row("a", "Put the run in cases"),
-            row("esc /", "Back to the target"),
-            Line::default(),
-            Line::from(vec![
-                Span::styled("  Latency  ", dim),
-                Span::styled("under 50 ms  ", Paint::new().fg(Color::Green)),
-                Span::styled("50 to 150 ms  ", Paint::new().fg(Color::Yellow)),
-                Span::styled("over 150 ms", Paint::new().fg(Color::Red)),
-            ]),
-            Line::styled(
-                "  For a result without the Console, run rvrs traceroute <target>.",
-                dim,
-            ),
-            Line::default(),
-        ];
-        let help_width = 78.min(area.width.saturating_sub(4));
-        let help_height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
-        let rect = Rect {
-            x: area.x + (area.width - help_width) / 2,
-            y: area.y + (area.height - help_height) / 2,
-            width: help_width,
-            height: help_height,
-        };
-        frame.render_widget(Clear, rect);
-        frame.render_widget(
-            Paragraph::new(lines).block(panel("Keys", "console", "?")),
-            rect,
-        );
-    }
 }
 
 /// A source's answers in the order the Records tab draws them: by group, as the app groups them.
-fn grouped_records(source: &SourceResult) -> Vec<(RecordGroup, Record)> {
+/// A search keeps the records it finds.
+fn grouped_records(source: &SourceResult, search: &[String]) -> Vec<(RecordGroup, Record)> {
     RecordGroup::ALL
         .into_iter()
         .flat_map(|group| {
             source
                 .answers()
                 .filter(move |record| RecordGroup::of(record) == group)
+                .filter(move |record| record_found(record, search))
                 .map(move |record| (group, record.clone()))
         })
         .collect()
 }
 
 /// The records a DNS tab lists, top to bottom. Compare and Trace list none.
-fn dns_records(dns: &DnsResult, tab: DnsTab, source: usize) -> Vec<Record> {
+fn dns_records(dns: &DnsResult, tab: DnsTab, source: usize, search: &[String]) -> Vec<Record> {
     match tab {
-        DnsTab::Overview => dns.key_records().into_iter().cloned().collect(),
+        DnsTab::Overview => dns
+            .key_records()
+            .into_iter()
+            .filter(|record| record_found(record, search))
+            .cloned()
+            .collect(),
         DnsTab::Records => dns
             .ordered_sources()
             .get(source)
             .map(|source| {
-                grouped_records(source)
+                grouped_records(source, search)
                     .into_iter()
                     .map(|(_, record)| record)
                     .collect()
@@ -4212,7 +4597,39 @@ fn panel(name: &str, scope: &str, count: &str) -> Block<'static> {
 
 /// The same panel, its frame bright when it has the keys and dim when the other column does.
 fn panel_with(name: &str, scope: &str, count: &str, focused: bool) -> Block<'static> {
+    panel_searched(name, scope, count, focused, "")
+}
+
+/// The panel of a list a search narrowed: the search follows the count, as k9s writes it,
+/// `Recent(all)[3] </git>`.
+fn panel_searched(
+    name: &str,
+    scope: &str,
+    count: &str,
+    focused: bool,
+    search: &str,
+) -> Block<'static> {
     let bold = Paint::new().add_modifier(Modifier::BOLD);
+    let mut title = vec![
+        Span::styled(format!(" {name}"), bold.fg(ACCENT)),
+        Span::styled(format!("({scope})"), bold.fg(TOOL)),
+        // A panel that counts nothing ends its title after the scope.
+        Span::styled(
+            if count.is_empty() {
+                " ".to_string()
+            } else {
+                format!("[{count}] ")
+            },
+            bold,
+        ),
+    ];
+    let search = search.trim();
+    if !search.is_empty() {
+        title.push(Span::styled(
+            format!("</{}> ", truncate_end(search, 24)),
+            bold.fg(LABEL),
+        ));
+    }
     Block::bordered()
         .border_style(if focused {
             Paint::new().fg(ACCENT)
@@ -4220,19 +4637,7 @@ fn panel_with(name: &str, scope: &str, count: &str, focused: bool) -> Block<'sta
             Paint::new().add_modifier(Modifier::DIM)
         })
         .title_alignment(Alignment::Center)
-        .title(Line::from(vec![
-            Span::styled(format!(" {name}"), bold.fg(ACCENT)),
-            Span::styled(format!("({scope})"), bold.fg(TOOL)),
-            // A panel that counts nothing ends its title after the scope.
-            Span::styled(
-                if count.is_empty() {
-                    " ".to_string()
-                } else {
-                    format!("[{count}] ")
-                },
-                bold,
-            ),
-        ]))
+        .title(Line::from(title))
 }
 
 /// The highlighted row: black on cyan across the whole width.
@@ -4735,7 +5140,7 @@ mod tests {
         assert!(text.contains("<s>     Sign In"), "{text}");
         assert!(text.contains("\u{21E7}4 Account"));
         // No field in this section: letters go nowhere.
-        type_text(&mut app, "abc");
+        type_text(&mut app, "xyz");
         assert!(app.input.is_empty());
 
         app.account.state = State::SignedIn {
@@ -4760,6 +5165,13 @@ mod tests {
         app.account.state = State::SignedOut;
         press(&mut app, KeyCode::Esc);
         assert_eq!(app.section, Section::Console);
+        // A tool's key goes back to the Console's field from here too.
+        press(&mut app, KeyCode::Char('$'));
+        press(&mut app, KeyCode::Char('p'));
+        assert_eq!(
+            (app.section, app.field, app.tool),
+            (Section::Console, true, Tool::Ping)
+        );
         clean(&app);
     }
 
@@ -4768,10 +5180,17 @@ mod tests {
         let mut app = app_with(Vec::new());
         let text = screen(&mut app, 150, 30).join("\n");
         assert!(text.contains("Origin:   this device"));
-        assert!(text.contains("traceroute> Host or address"));
+        // The field waits for a tool's key, and shows them.
+        assert!(!app.field);
+        assert!(
+            text.contains(
+                "traceroute> <t> traceroute  <m> mtr  <p> ping  <d> dig  <b> bgp  <:> traceroute"
+            ),
+            "{text}"
+        );
         assert!(text.contains("Recent(all)[0]"));
         assert!(text.contains("No runs yet"));
-        assert!(text.contains("<tab>   Tool"));
+        assert!(text.contains("<\u{21B5}>     Target"), "{text}");
         assert!(text.contains("===/__/__/"), "{text}");
         assert!(text.contains("\u{21E7}1 Console") && text.contains("\u{21E7}3 Cases"));
     }
@@ -4812,7 +5231,10 @@ mod tests {
         let text = screen(&mut app, 100, 18).join("\n");
         assert!(text.contains("Traceroute(one.one.one.one)[4]"));
         assert!(!text.contains("Origin:"));
-        assert!(text.contains("<R> Run Again"));
+        assert!(
+            text.contains("<d> Details") && text.contains("</> Search"),
+            "{text}"
+        );
         for line in screen(&mut app, 60, 18) {
             assert!(width(&line) <= 60);
         }
@@ -4914,14 +5336,14 @@ mod tests {
                 && text.contains("LOSS \u{00B7} 10-ROUND WINDOW")
         );
         assert!(text.contains("Status:   12 pkt \u{00B7} 0.0% loss \u{00B7} 12.2 ms avg"));
-        assert!(text.contains("<d>     Rounds"));
-        // d gives the room to the strips: the figures go, the history stays.
-        press(&mut app, KeyCode::Char('d'));
+        assert!(text.contains("<v>     Rounds"));
+        // v gives the room to the strips: the figures go, the history stays.
+        press(&mut app, KeyCode::Char('v'));
         let text = screen(&mut app, 170, 40).join("\n");
         assert!(text.contains("ROUNDS") && text.contains("LOSS") && text.contains("AVG"));
         // The table drops its JITTER column. The jitter chart under it stays.
         assert!(!text.contains("WORST") && !text.contains("NETWORK"));
-        assert!(text.contains("<d>     Figures"));
+        assert!(text.contains("<v>     Figures"));
         // The hop's details draw that hop's own latency, and offer MTR on it.
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Enter);
@@ -4951,6 +5373,12 @@ mod tests {
         assert_eq!(app.tool, Tool::Ping);
         assert!(screen(&mut app, 130, 30)
             .join("\n")
+            .contains("ping> <t> traceroute"));
+        // In the field, tab goes on through the tools.
+        press(&mut app, KeyCode::Char(':'));
+        assert!(app.field);
+        assert!(screen(&mut app, 130, 30)
+            .join("\n")
             .contains("ping> Host or address"));
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.tool, Tool::Dns);
@@ -4962,8 +5390,13 @@ mod tests {
         assert!(screen(&mut app, 130, 30)
             .join("\n")
             .contains("bgp> Host, address, prefix or AS number"));
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(app.tool, Tool::Dns);
+        press(&mut app, KeyCode::Tab);
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.tool, Tool::Traceroute);
+        press(&mut app, KeyCode::Esc);
+        assert!(!app.field);
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Enter);
         let text = screen(&mut app, 130, 36).join("\n");
@@ -5114,10 +5547,9 @@ mod tests {
     #[test]
     fn on_the_overview_s_saves_the_selected_run_and_arrows_go_in_and_out() {
         let mut app = app_with(vec![sample()]);
-        // Nothing selected: s is a letter for the field.
+        // Nothing selected: s has no run to save, and the field doesn't take it either.
         press(&mut app, KeyCode::Char('s'));
-        assert_eq!(app.input, "s");
-        press(&mut app, KeyCode::Backspace);
+        assert!(app.input.is_empty() && app.saved.runs.is_empty());
         press(&mut app, KeyCode::Down);
         assert!(screen(&mut app, 150, 30)
             .join("\n")
@@ -5126,7 +5558,7 @@ mod tests {
         assert_eq!(app.saved.runs.len(), 1);
         let text = screen(&mut app, 150, 30).join("\n");
         assert!(text.contains("\u{2605}  traceroute") && text.contains("Unsave"));
-        // Right goes into the run, left comes back, left again returns to the field.
+        // Right goes into the run, left comes back, left again leaves the row.
         press(&mut app, KeyCode::Right);
         assert_eq!(app.pane, Pane::Result);
         press(&mut app, KeyCode::Left);
@@ -5145,8 +5577,8 @@ mod tests {
         clean(&app);
     }
 
-    #[test]
-    fn typing_filters_the_list_by_tool_and_host() {
+    /// Recent's runs to example.com by traceroute and ping, and one to one.one.one.one.
+    fn three_runs() -> Vec<Run> {
         let mut other = sample();
         other.target = "example.com".into();
         other.id = "zzz999".into();
@@ -5154,35 +5586,216 @@ mod tests {
         let mut ping = crate::ping::tests::sample(&times);
         ping.target = "example.com".into();
         ping.id = "ppp111".into();
-        let mut app = app_with(vec![sample(), other, ping]);
-        for character in "exa".chars() {
-            press(&mut app, KeyCode::Char(character));
-        }
+        vec![sample(), other, ping]
+    }
+
+    #[test]
+    fn slash_searches_the_list_and_lands_on_the_first_hit() {
+        let mut app = app_with(three_runs());
+        // / opens the search line at the foot. Typing narrows Recent by tool and host.
+        press(&mut app, KeyCode::Char('/'));
+        assert!(app.searching);
+        type_text(&mut app, "exa");
         let text = screen(&mut app, 100, 26).join("\n");
-        assert!(text.contains("Recent(exa)[2]"));
+        assert!(text.contains("Recent(all)[2] </exa>"), "{text}");
         assert!(text.contains("example.com") && !text.contains("one.one.one.one"));
+        assert!(text.lines().last().unwrap().starts_with(" /exa"), "{text}");
+        assert_eq!(app.row, Some(0));
         // A second word narrows by tool.
-        for character in " ping".chars() {
-            press(&mut app, KeyCode::Char(character));
-        }
-        let text = screen(&mut app, 100, 26).join("\n");
-        assert!(text.contains("Recent(exa ping)[1]"));
-        // Return on a filtered row opens that run.
-        press(&mut app, KeyCode::Down);
+        type_text(&mut app, " ping");
+        assert!(screen(&mut app, 100, 26)
+            .join("\n")
+            .contains("Recent(all)[1] </exa ping>"));
+        // Return keeps the search and gives the keys back to the list. Return again opens the run.
+        press(&mut app, KeyCode::Enter);
+        assert!(!app.searching && app.search == "exa ping");
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.run().map(|run| run.tool), Some(Tool::Ping));
+        // The search belonged to that list. Back on it, it is gone.
         press(&mut app, KeyCode::Left);
-        press(&mut app, KeyCode::Esc);
-        assert!(app.input.is_empty() && !app.quit);
-        for character in "zzzz".chars() {
-            press(&mut app, KeyCode::Char(character));
-        }
+        assert!(app.search.is_empty());
+        // A search that finds nothing says so, and esc drops it before it quits.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "zzzz");
         assert!(screen(&mut app, 100, 26)
             .join("\n")
             .contains("Nothing matches"));
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.search.is_empty() && !app.quit);
+        // While the search line is open, esc drops it at once, and j is a letter of it.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "j");
+        assert_eq!(app.search, "j");
+        press(&mut app, KeyCode::Esc);
+        assert!(!app.searching && app.search.is_empty());
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Esc);
         assert!(app.quit);
+    }
+
+    #[test]
+    fn a_tools_letter_opens_the_field_and_typing_suggests_runs() {
+        let mut app = app_with(three_runs());
+        assert!(!app.field);
+        // p picks ping and gives the field the keys. What follows is the target.
+        press(&mut app, KeyCode::Char('p'));
+        assert_eq!((app.tool, app.field), (Tool::Ping, true));
+        type_text(&mut app, "exa");
+        assert_eq!(app.input, "exa");
+        let text = screen(&mut app, 150, 30).join("\n");
+        assert!(
+            text.contains("ping> exa") && text.contains("Recent(exa)[2]"),
+            "{text}"
+        );
+        // The tools show beside the field while it has the keys.
+        assert!(text.contains("\u{25CF} ping"), "{text}");
+        // Down goes into the runs it suggests, up comes back to the field.
+        press(&mut app, KeyCode::Down);
+        assert_eq!((app.field, app.row), (false, Some(0)));
+        press(&mut app, KeyCode::Up);
+        assert!(app.field && app.row.is_none());
+        // esc empties the field and gives the keys back to the list.
+        press(&mut app, KeyCode::Esc);
+        assert!(!app.field && app.input.is_empty() && !app.quit);
+        // A tool's key drops a search, so what is typed alone narrows the suggestions.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "zzz");
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('t'));
+        assert!(app.field && app.search.is_empty());
+        press(&mut app, KeyCode::Esc);
+        // m, d and b pick their tools the same way, and : the tool chosen last.
+        for (letter, tool) in [('m', Tool::Mtr), ('d', Tool::Dns), ('b', Tool::Bgp)] {
+            press(&mut app, KeyCode::Char(letter));
+            assert_eq!((app.tool, app.field), (tool, true));
+            press(&mut app, KeyCode::Esc);
+        }
+        press(&mut app, KeyCode::Char(':'));
+        assert_eq!((app.tool, app.field), (Tool::Bgp, true));
+        press(&mut app, KeyCode::Esc);
+        // Return on an empty list opens the field too, for whoever expects to type.
+        let mut empty = app_with(Vec::new());
+        press(&mut empty, KeyCode::Enter);
+        assert!(empty.field);
+        // From an open run, : goes back to the field for a new target.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.pane, Pane::Result);
+        press(&mut app, KeyCode::Char(':'));
+        assert_eq!((app.pane, app.field), (Pane::Start, true));
+    }
+
+    #[test]
+    fn slash_finds_hops_and_d_shows_the_one_found() {
+        // The feedback's own sequence on a saved trace: a search, a step down, the details.
+        let mut app = app_with(vec![sample()]);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "1.1");
+        // Hop 3 (198.51.100.7) and hop 4 (1.1.1.1) have it. The first is selected.
+        assert_eq!(app.hop, 2);
+        let text = screen(&mut app, 150, 40).join("\n");
+        assert!(
+            text.contains("Traceroute(one.one.one.one)[4] </1.1>"),
+            "{text}"
+        );
+        assert!(
+            text.contains("198.51.100.7") && !text.contains("fritz.box"),
+            "{text}"
+        );
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.hop, 3);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.hop, 3);
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.hop, 2);
+        press(&mut app, KeyCode::Char('G'));
+        assert_eq!(app.hop, 3);
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.details);
+        assert!(screen(&mut app, 150, 40)
+            .join("\n")
+            .contains("Hop(one.one.one.one)[4]"));
+        press(&mut app, KeyCode::Char('d'));
+        assert!(!app.details);
+        // A network's name finds its hops too.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "example net");
+        assert_eq!(app.hop, 2);
+        // esc on the search line leaves the selected hop where it is.
+        press(&mut app, KeyCode::Esc);
+        assert_eq!((app.hop, app.search.is_empty()), (2, true));
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "example net");
+        // esc drops the search and stays on the run. The next esc leaves it.
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.search.is_empty() && app.pane == Pane::Result);
+        assert!(screen(&mut app, 150, 40).join("\n").contains("fritz.box"));
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "zzz");
+        assert!(screen(&mut app, 150, 40)
+            .join("\n")
+            .contains("No hop matches"));
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.pane, Pane::Start);
+    }
+
+    #[test]
+    fn help_opens_on_the_tool_in_view_with_its_commands() {
+        let mut app = app_with(vec![sample()]);
+        // On the list, ? shows the Console's keys.
+        press(&mut app, KeyCode::Char('?'));
+        let text = screen(&mut app, 150, 50).join("\n");
+        assert!(
+            text.contains("Help(Keys)") && text.contains("THE CONSOLE"),
+            "{text}"
+        );
+        assert!(text.contains("<?> Keys  <t> traceroute  <m> mtr"), "{text}");
+        press(&mut app, KeyCode::Char('?'));
+        assert!(app.help.is_none());
+        // On a traceroute, ? shows its keys and the commands of rvrs traceroute.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('?'));
+        let text = screen(&mut app, 150, 60).join("\n");
+        for part in [
+            "Help(traceroute)",
+            "IN THE CONSOLE",
+            "Search the hops by address, name or network",
+            "ON THE COMMAND LINE",
+            "rvrs traceroute [flags] <target>",
+            "-T, --tcp",
+        ] {
+            assert!(text.contains(part), "{part}\n{text}");
+        }
+        // A tool's letter turns to its page, tab to the next one.
+        press(&mut app, KeyCode::Char('m'));
+        let text = screen(&mut app, 150, 60).join("\n");
+        assert!(
+            text.contains("Help(mtr)") && text.contains("--report-cycles"),
+            "{text}"
+        );
+        press(&mut app, KeyCode::Tab);
+        assert!(screen(&mut app, 150, 60).join("\n").contains("Help(ping)"));
+        press(&mut app, KeyCode::Char('d'));
+        assert!(screen(&mut app, 150, 60).join("\n").contains("Help(dig)"));
+        // The arrows scroll a page that is taller than the screen.
+        press(&mut app, KeyCode::Char('b'));
+        screen(&mut app, 150, 30);
+        press(&mut app, KeyCode::Char('G'));
+        let text = screen(&mut app, 150, 30).join("\n");
+        assert!(text.contains("No ROA found means"), "{text}");
+        // esc closes it, and the run is as it was.
+        press(&mut app, KeyCode::Esc);
+        assert!(app.help.is_none() && app.pane == Pane::Result);
+        for line in screen(&mut app, 60, 20) {
+            assert!(width(&line) <= 60);
+        }
     }
 
     #[test]
@@ -5229,6 +5842,7 @@ mod tests {
     #[test]
     fn two_words_that_are_not_a_tool_and_a_target_are_not_run() {
         let mut app = app_with(Vec::new());
+        press(&mut app, KeyCode::Char(':'));
         for character in "foo bar".chars() {
             press(&mut app, KeyCode::Char(character));
         }
@@ -5387,6 +6001,25 @@ mod tests {
         ] {
             assert!(text.contains(part), "{part}\n{text}");
         }
+        // / narrows the records to the ones it finds: here the MX records.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "mx");
+        let text = screen(&mut app, 150, 44).join("\n");
+        assert!(
+            text.contains("EMAIL") && !text.contains("ADDRESSES") && text.contains(" /mx"),
+            "{text}"
+        );
+        press(&mut app, KeyCode::Enter);
+        // d opens the record it found.
+        press(&mut app, KeyCode::Char('d'));
+        assert_eq!(
+            app.dns_record().map(|record| record.type_name()),
+            Some("MX".into())
+        );
+        assert!(app.details);
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.search.is_empty() && !app.details && app.pane == Pane::Result);
         press(&mut app, KeyCode::Char('o'));
         assert!(screen(&mut app, 150, 44)
             .join("\n")
@@ -5512,6 +6145,24 @@ mod tests {
         );
         assert!(text.contains("2001:db8::/32"), "{text}");
         assert!(text.contains("<v>     RPKI"), "{text}");
+        // / narrows the rows to what it finds and lands on the first.
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "2001");
+        press(&mut app, KeyCode::Enter);
+        let text = screen(&mut app, 150, 50).join("\n");
+        assert!(
+            text.contains("2001:db8::/32") && !text.contains("192.0.2.0/24   Valid"),
+            "{text}"
+        );
+        assert!(text.contains("</2001>"), "{text}");
+        press(&mut app, KeyCode::Esc);
+        assert!(app.search.is_empty() && app.pane == Pane::Result);
+        app.bgp_row = 0;
+        // d shows the selected prefix's RPKI result, as v does, and hides it again.
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.details);
+        press(&mut app, KeyCode::Char('d'));
+        assert!(!app.details);
         press(&mut app, KeyCode::Char('v'));
         let text = screen(&mut app, 150, 50).join("\n");
         assert!(text.contains("RPKI(AS64500)[Valid]"), "{text}");
@@ -5538,7 +6189,7 @@ mod tests {
             text.contains("EVENTS") && text.contains("No changes"),
             "{text}"
         );
-        press(&mut app, KeyCode::Char('d'));
+        press(&mut app, KeyCode::Char('o'));
         assert_eq!(app.bgp_days, 30);
         press(&mut app, KeyCode::Tab);
         let text = screen(&mut app, 150, 50).join("\n");
@@ -5559,6 +6210,7 @@ mod tests {
     fn an_as_number_or_a_prefix_typed_under_another_tool_goes_to_bgp() {
         let mut app = app_with(Vec::new());
         assert_eq!(app.tool, Tool::Traceroute);
+        press(&mut app, KeyCode::Char(':'));
         type_text(&mut app, "bgp nonsense words");
         press(&mut app, KeyCode::Enter);
         assert!(app.shown.is_none());
