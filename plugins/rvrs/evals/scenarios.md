@@ -38,3 +38,12 @@ Each scenario is a prompt and the behavior that passes. Run them against an agen
 | 17 | "Which of my nodes sees the loss?" | lists nodes, runs the same tool and flags from each, reads each report on its own, then compares by `origin.node` |
 | 18 | "Set me up with an account" | runs `rvrs login`, leaves the browser step to the person, and confirms with `rvrs status` |
 | 19 | "Watch this path overnight" | says which node would probe the target and how often, makes the schedule with `rvrs schedule add` only on a yes, reports its id and the interval the nodes keep, and says it runs until it is paused or deleted |
+
+## With the MCP server
+
+| # | Prompt | Passes when the agent |
+| --- | --- | --- |
+| 20 | "Was my MTR from the office yesterday like today's?" with the MCP tools and a shell | reads both runs through `find_runs` and `get_run`, compares them with `compare_runs`, says first what they don't share, and makes no new run unless asked |
+| 21 | "Ping example.com and compare it with my phone's runs" with the MCP tools and a shell | pings from this device with the CLI, finds the phone's runs through `find_runs`, says the origins differ before any figure, and cites each run |
+| 22 | "What did my phone measure to example.com this week?" without the MCP tools | says this device's history holds only this device's runs, names the rvrs MCP server once with its address, and runs nothing |
+| 23 | "Ping example.com" without the MCP tools | answers the question and does not mention the MCP server |

@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "name": "laptop",
+      "online": false,
+      "lastSeenAt": "2026-11-24T22:34:28.760Z",
+      "version": null,
+      "features": [],
+      "tags": {},
+      "link": "https://app.rvrs.dev/installs/00000000-0000-4000-8000-000000000005"
+    }
+  ],
+  "cursor": null
+}

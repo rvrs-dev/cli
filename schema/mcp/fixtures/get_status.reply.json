@@ -1,0 +1,36 @@
+{
+  "agent": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "Claude",
+    "connectedAt": "2026-11-24T22:34:28.832Z",
+    "reads": {
+      "privateNetworks": false,
+      "publicAddress": false
+    },
+    "link": "https://app.rvrs.dev/installs/00000000-0000-4000-8000-000000000001"
+  },
+  "account": {
+    "name": "Ada",
+    "workspace": "Ada’s workspace",
+    "plan": "Free"
+  },
+  "runs": {
+    "total": 3,
+    "newest": "2026-11-24T11:00:00.000Z"
+  },
+  "installs": {
+    "ios": 0,
+    "cli": 1,
+    "node": 0,
+    "mcp": 1
+  },
+  "nodes": {
+    "total": 1,
+    "online": 0
+  },
+  "links": {
+    "runs": "https://app.rvrs.dev/runs",
+    "installs": "https://app.rvrs.dev/installs",
+    "docs": "https://rvrs.dev/docs"
+  }
+}

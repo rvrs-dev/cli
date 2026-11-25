@@ -1,0 +1,12 @@
+{
+  "name": "rvrs",
+  "interface": { "displayName": "rvrs" },
+  "plugins": [
+    {
+      "name": "rvrs",
+      "source": { "source": "local", "path": "./plugins/rvrs" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}

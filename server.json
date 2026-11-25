@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.rvrs/rvrs",
+  "title": "rvrs",
+  "version": "1.0.0",
+  "description": "Reads your rvrs account: traceroute, MTR, ping and DNS runs from your devices and nodes.",
+  "websiteUrl": "https://rvrs.dev/mcp-server-network-diagnostics",
+  "repository": {
+    "url": "https://github.com/rvrs-dev/cli",
+    "source": "github",
+    "subfolder": "schema/mcp"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.rvrs.dev"
+    }
+  ]
+}

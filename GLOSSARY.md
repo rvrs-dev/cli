@@ -16,6 +16,7 @@ One word per thing, in every repo, document, screen, command and API field. The 
 | **outcome** | How a run ended: reached, exhausted, stopped or failed. A run a node was asked for and would not make ended refused. | status, result |
 | **state** | Where a run stands: requested, running, ended or expired. A run made on this device is ended as soon as it is kept. A run asked of a node waits (requested), is being made (running) and ends, or expires when the node never made it. | status, phase, progress |
 | **trigger** | How a run came to be made: manual when a person started it on a device, request when a person asked a node for it, schedule when a node made it on a schedule. | source (sources are DNS resolvers), origin (where a run was made from), cause |
+| **request** | One ask for a run, of one node or of several nodes at once. It has an id and owns the runs the nodes make, each with its own id. A run made this way has the trigger request. | job, task, order, batch |
 | **status line** | The line of facts under a result's title, while the run is live and after it has ended: "Running · 4 hops so far", "Reached 1.1.1.1 · 6 hops · 10.3 ms". | headline, subtitle |
 | **summary** | A run in one line of facts: "6 hops · 12.4 ms". | headline, title |
 | **interpretation** | What a result likely means. Always worded as an inference and kept apart from what was measured. | insight (as a noun for output), diagnosis, analysis |
@@ -122,6 +123,9 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 | **CLI** | The `rvrs` binary on macOS and Linux. | client, command-line tool (after first mention) |
 | **Console** | Where a run starts: the first tab of the app, and the screen `rvrs` opens when run without a command. | home, dashboard, TUI (in copy) |
 | **skill** | The agent skill `rvrs-network-diagnostics`: instructions that teach an AI agent with a shell to diagnose a network with the CLI and its history. It lives in the CLI repo (`plugins/rvrs`) and is also packaged as a plugin. | integration, extension, MCP (that is the server) |
+| **MCP server** | `mcp.rvrs.dev`: where an agent such as Claude or ChatGPT reads a person's rvrs account through the Model Context Protocol, signed in as that person. It reads runs, nodes and summaries and draws a run's result in the chat. | MCP (alone), connector, integration, API (that is api.rvrs.dev) |
+| **MCP tool** | What an agent calls through the MCP server, such as `get_run` or `find_runs`. The word tool alone is one of rvrs's six. | tool (alone), function, endpoint, command |
+| **drawing** | A run's result as an agent shows it in a chat: the chart, the figures and the path, drawn as the web app draws them, for a person to move over and open. An MCP App in MCP's own words. | widget, card, embed, preview (a share link's image) |
 | **web app** | rvrs.dev for people: history, favorites, run pages. | dashboard, portal |
 | **site** | The public page about rvrs: what it is and where to get it. One page, with no accounts and no runs. | web app, landing page, homepage, website |
 | **try shell** | The shell at `ssh cli.rvrs.dev`: the rvrs CLI on an rvrs server, open to anyone without an account. Its runs start from that server, and their history ends with the session. | demo, sandbox, playground |
@@ -132,16 +136,16 @@ The words of the node protocol, which is written down in the CLI repo (`schema/n
 
 | Term | Meaning | Not |
 | --- | --- | --- |
-| **install** | One copy of one product (the app, the CLI, a node) on one device, known only by a random ID made at first start. Every install is its own entry. Signing in attaches an install to an account, and the account's workspace groups them. The app and the CLI sign in with a login and act for a person: they send runs, read history and ask nodes for runs. A node signs in with a token and acts for its workspace: it sends runs and takes requests. | user, device (in counts), client |
+| **install** | One copy of one product (the app, the CLI, a node) on one device, known only by a random ID made at first start. Every install is its own entry. Signing in attaches an install to an account, and the account's workspace groups them. The app and the CLI sign in with a login and act for a person: they send runs, read history and ask nodes for runs. A node signs in with a token and acts for its workspace: it sends runs and takes requests. An agent connected through the MCP server is an install too: it signs in at the identity provider and reads for the person who allowed it. | user, device (in counts), client |
 | **small build** | rvrs without the Console, built for size, for servers and for routers with little flash. | node build, lite, minimal |
-| **product** | Which rvrs an install is: `ios`, `cli` or `node`. Pulses and reports name it. | platform, client, surface |
+| **product** | Which rvrs an install is: `ios`, `cli` or `node`, or `mcp` for an agent connected through the MCP server. Pulses and reports name the first three. | platform, client, surface |
 | **pulse** | The anonymous daily signal that an install was used: product, version, system, opens, runs per tool. Never a target, address or hostname. | telemetry event, analytics, heartbeat, ping |
 | **waitlist** | The list of email addresses waiting for accounts and nodes. | newsletter, signup |
 
 ## Rules
 
 - A word in the "Not" column is not wrong English. It means something else here, or nothing. "Probe" is the sharpest case: RIPE Atlas calls its devices probes, rvrs calls them nodes, and a probe is always a packet.
-- "Agent" means an AI agent that uses rvrs through the skill and the CLI, or later through MCP. A node is not an agent.
+- "Agent" means an AI agent that uses rvrs through the skill and the CLI, or through the MCP server. A node is not an agent.
 - "Monitoring" describes other products. rvrs has schedules and alerts.
 - Type names in code may differ from the term for historical reasons (`TraceRun` holds a run of any tool, `RecentStore` holds history). Rename them when the code is touched for another reason. Prose, UI copy, flags, API routes and JSON fields use the glossary term from the start.
 - A new concept gets a row here before it gets a screen, a flag or a route.

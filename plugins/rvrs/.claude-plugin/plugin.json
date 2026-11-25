@@ -1,8 +1,8 @@
 {
   "name": "rvrs",
   "displayName": "rvrs · Network Diagnostics",
-  "version": "0.17.0",
-  "description": "Network diagnostics for agents with the rvrs CLI: ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. Every run is a JSON report, compared with the history rvrs keeps, so an agent can say what changed and name the runs that show it.",
+  "version": "0.17.1",
+  "description": "Network diagnostics for agents with the rvrs CLI: ping, traceroute, MTR, dig for DNS, and BGP lookups with ASN and RPKI. Every run is a JSON report, compared with the history rvrs keeps, so an agent can say what changed and name the runs that show it. The rvrs MCP server adds the person's account: runs from every device and node, drawn in the chat.",
   "author": {
     "name": "rvrs",
     "url": "https://rvrs.dev"
