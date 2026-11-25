@@ -43,8 +43,9 @@ use crate::args::normalize_target;
 use crate::pretty::{self, View};
 use crate::style::{truncate_end, truncate_middle, width, Style, SPINNER};
 
-/// The Console's palette, in the terminal's own sixteen colors so it follows the person's theme:
-/// yellow labels, blue keys, a cyan frame and selection, magenta for the tool.
+/// The Console's chrome, in the terminal's own sixteen colors so it follows the person's theme:
+/// yellow labels, blue keys, a cyan frame and selection, magenta for the tool. A figure or a state
+/// takes its color from COLOR.md, and a host, a network or a count is ink.
 const LABEL: Color = Color::Yellow;
 const KEY: Color = Color::Blue;
 const ACCENT: Color = Color::Cyan;
@@ -2452,6 +2453,7 @@ impl App {
                             Some(Outcome::Reached) if !lossy => Paint::new(),
                             Some(Outcome::Stopped) if !lossy => dim,
                             Some(Outcome::Failed(_)) => Paint::new().fg(Color::Red),
+                            None => Paint::new().fg(Color::Blue),
                             _ => Paint::new().fg(Color::Yellow),
                         }
                     };
@@ -3389,17 +3391,7 @@ impl App {
             } else {
                 dim
             };
-            let mut spans = vec![
-                Span::styled(lead, base),
-                Span::styled(
-                    network,
-                    if hop.is_destination {
-                        base
-                    } else {
-                        Paint::new().fg(ACCENT)
-                    },
-                ),
-            ];
+            let mut spans = vec![Span::styled(lead, base), Span::styled(network, base)];
             for figure in &shown_figures {
                 let paint = match figure {
                     0 => loss_paint,
@@ -3600,26 +3592,21 @@ impl App {
             } else {
                 Paint::new()
             };
-            let loss_paint = if stats.received == 0 {
+            // Loss that reaches the end of the path is red. A middle hop that drops replies while
+            // later hops are clean is likely rate-limiting them, and reads yellow.
+            let loss_paint = if stats.received == 0 || stats.lost() == 0 {
                 dim
-            } else if stats.lost() > 0 {
-                Paint::new().fg(Color::Yellow)
+            } else if run.loss_carries(hop) {
+                Paint::new().fg(Color::Red)
             } else {
-                dim
+                Paint::new().fg(Color::Yellow)
             };
             let latency = stats
                 .mean
                 .map_or(dim, |mean| Paint::new().fg(latency_color(mean)));
             lines.push(Line::from(vec![
                 Span::styled(lead, base),
-                Span::styled(
-                    network,
-                    if hop.is_destination {
-                        base
-                    } else {
-                        Paint::new().fg(ACCENT)
-                    },
-                ),
+                Span::styled(network, base),
                 Span::styled(fit_right(&loss, 6), loss_paint),
                 Span::styled(figure(stats.mean), latency.add_modifier(Modifier::BOLD)),
                 Span::styled(tail, dim),
@@ -3681,7 +3668,7 @@ impl App {
                 "LOSS",
                 format::percent(stats.loss_fraction()),
                 if stats.lost() > 0 {
-                    bold.fg(Color::Yellow)
+                    bold.fg(Color::Red)
                 } else {
                     bold.fg(Color::Green)
                 },
@@ -3716,10 +3703,10 @@ impl App {
         } else if verdict.grade == Grade::Collecting {
             Line::styled(format!(" {}. {}", verdict.title, verdict.detail), dim)
         } else {
-            let color = if verdict.grade == Grade::Stable {
-                Color::Green
-            } else {
-                Color::Yellow
+            let color = match verdict.grade {
+                Grade::Stable => Color::Green,
+                Grade::Lossy => Color::Red,
+                _ => Color::Yellow,
             };
             Line::from(vec![
                 Span::styled(format!(" {}. ", verdict.title), bold.fg(color)),
@@ -3953,6 +3940,8 @@ impl App {
         };
         let loss_color = if stats.lost() == 0 {
             Color::Green
+        } else if hop.did_reply() && run.loss_carries(hop) {
+            Color::Red
         } else {
             Color::Yellow
         };
@@ -3995,10 +3984,7 @@ impl App {
         match address.map(|address| (address, run.network(address))) {
             Some((_, Some(network))) => {
                 lines.push(Line::styled("  NETWORK", bold));
-                lines.push(fact(
-                    "ASN",
-                    vec![Span::styled(network.label(), bold.fg(ACCENT))],
-                ));
+                lines.push(fact("ASN", plain(network.label())));
                 lines.push(fact("Organization", plain(network.name.clone())));
                 if let Some(location) = network.location() {
                     lines.push(fact("Location", plain(location)));
@@ -4294,7 +4280,8 @@ fn fit_right(text: &str, columns: usize) -> String {
 enum Metric {
     /// Milliseconds in the latency colors. A missing value is a loss, a red mark.
     Latency,
-    /// Milliseconds between one reply and the next. A missing value is a gap.
+    /// Milliseconds between one reply and the next, in magenta, the terminal's violet. A missing
+    /// value is a gap.
     Jitter,
     /// Percent of probes lost, in red.
     Loss,
@@ -4381,7 +4368,7 @@ fn metric_chart(
                         match metric {
                             Metric::Latency => Paint::new()
                                 .fg(latency_color(Duration::from_secs_f64(value / 1000.0))),
-                            Metric::Jitter => Paint::new().fg(ACCENT),
+                            Metric::Jitter => Paint::new().fg(Color::Magenta),
                             Metric::Loss => Paint::new().fg(Color::Red),
                         },
                     )
@@ -4668,6 +4655,30 @@ mod tests {
                     .to_string()
             })
             .collect()
+    }
+
+    /// The color of each cell where `text` first shows on screen, top to bottom.
+    fn colors_of(app: &mut App, columns: u16, rows: u16, text: &str) -> Vec<Color> {
+        let mut terminal = Terminal::new(TestBackend::new(columns, rows)).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let characters: Vec<String> = text.chars().map(String::from).collect();
+        let length = characters.len() as u16;
+        for y in 0..rows {
+            for x in 0..=columns.saturating_sub(length) {
+                let found = characters
+                    .iter()
+                    .zip(x..)
+                    .all(|(character, x)| buffer[(x, y)].symbol() == character);
+                if found {
+                    return (x..x + length).map(|x| buffer[(x, y)].fg).collect();
+                }
+            }
+        }
+        panic!(
+            "{text} is not on screen:\n{}",
+            screen(app, columns, rows).join("\n")
+        );
     }
 
     fn app_with(runs: Vec<Run>) -> App {
@@ -5749,6 +5760,79 @@ mod tests {
         assert_eq!(latency_color(Duration::from_millis(12)), Color::Green);
         assert_eq!(latency_color(Duration::from_millis(80)), Color::Yellow);
         assert_eq!(latency_color(Duration::from_millis(300)), Color::Red);
+    }
+
+    #[test]
+    fn each_figure_draws_in_its_own_color() {
+        let colors = |metric: Metric, values: &[Option<f64>]| -> Vec<Option<Color>> {
+            metric_chart(metric, values, 1, 1, 0, None, 40)[0]
+                .spans
+                .iter()
+                .skip(1)
+                .map(|span| span.style.fg)
+                .collect()
+        };
+        // COLOR.md's colors for a terminal: jitter is magenta, as p99 and upload are, and loss
+        // is red.
+        assert_eq!(
+            colors(Metric::Jitter, &[Some(4.0), Some(1.0)]),
+            [Some(Color::Magenta); 2]
+        );
+        assert_eq!(colors(Metric::Loss, &[Some(20.0)]), [Some(Color::Red)]);
+        // Latency keeps its three steps, and a probe without a reply is a red mark.
+        assert_eq!(
+            colors(
+                Metric::Latency,
+                &[Some(12.0), Some(80.0), Some(300.0), None]
+            ),
+            [
+                Some(Color::Green),
+                Some(Color::Yellow),
+                Some(Color::Red),
+                Some(Color::Red)
+            ]
+        );
+    }
+
+    #[test]
+    fn loss_that_reaches_the_destination_is_red_and_a_network_is_ink() {
+        // The sample's destination answers two probes of three.
+        let mut run = sample();
+        let destination = run.hops.iter_mut().find(|hop| hop.is_destination).unwrap();
+        destination.probes[2] = Slot::Lost;
+        let mut app = app_with(vec![run]);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        // Hop 2 selected, so the rows of hop 1 and the destination show their own colors.
+        press(&mut app, KeyCode::Down);
+        let loss = colors_of(&mut app, 150, 40, "33%");
+        assert!(loss.iter().all(|color| *color == Color::Red), "{loss:?}");
+        let network = colors_of(&mut app, 150, 40, "AS64500 Example Net");
+        assert!(
+            network.iter().all(|color| *color == Color::Reset),
+            "{network:?}"
+        );
+        clean(&app);
+
+        // Every lost packet of a ping is loss at the target: the tile and the verdict are red.
+        let times: Vec<Option<f64>> = (0..12)
+            .map(|index| (index % 6 != 3).then_some(10.0))
+            .collect();
+        let mut app = app_with(vec![crate::ping::tests::sample(&times)]);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        let tile = colors_of(&mut app, 150, 40, "LOSS 16.7%");
+        assert_eq!(tile[..5], [LABEL; 5]);
+        assert!(
+            tile[5..].iter().all(|color| *color == Color::Red),
+            "{tile:?}"
+        );
+        let verdict = colors_of(&mut app, 150, 40, "Packet loss.");
+        assert!(
+            verdict.iter().all(|color| *color == Color::Red),
+            "{verdict:?}"
+        );
+        clean(&app);
     }
 
     #[test]

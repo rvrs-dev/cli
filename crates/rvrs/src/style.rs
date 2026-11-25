@@ -1,5 +1,6 @@
 //! Color and width helpers. rvrs paints with the terminal's own sixteen colors, so it follows
-//! the person's theme in light and dark, and never says something by color alone.
+//! the person's theme in light and dark, and never says something by color alone. COLOR.md at
+//! the repo root says which color each figure and each state takes.
 
 use std::io::IsTerminal;
 

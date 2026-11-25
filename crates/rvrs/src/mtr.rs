@@ -844,10 +844,10 @@ pub fn closing_lines(
         for (index, line) in lines.iter().enumerate() {
             let painted = match &verdict {
                 Some(verdict) if index == 0 && line.starts_with(&verdict.title) => {
-                    let title = if verdict.grade == Grade::Stable {
-                        style.bold_green(&verdict.title)
-                    } else {
-                        style.yellow(&verdict.title)
+                    let title = match verdict.grade {
+                        Grade::Stable => style.bold_green(&verdict.title),
+                        Grade::Lossy => style.red(&verdict.title),
+                        _ => style.yellow(&verdict.title),
                     };
                     line.replacen(&verdict.title, &title, 1)
                 }

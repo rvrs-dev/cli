@@ -443,7 +443,8 @@ pub fn packet_line(run: &Run, seq: usize, style: Style) -> String {
                 style.yellow(&format!("{from} reports the target unreachable{note}"))
             )
         }
-        _ => format!("{number}  {}", style.yellow("no reply")),
+        // A packet the target never answered is loss that reached it, so it is red.
+        _ => format!("{number}  {}", style.red("no reply")),
     }
 }
 
@@ -573,6 +574,7 @@ pub fn closing_lines(run: &Run, style: Style, width: usize) -> Vec<String> {
     if verdict.grade != Grade::Collecting {
         let title = match verdict.grade {
             Grade::Stable => style.bold_green(&verdict.title),
+            Grade::Lossy => style.red(&verdict.title),
             _ => style.yellow(&verdict.title),
         };
         let lines = pretty::wrap(
@@ -891,6 +893,24 @@ pub(crate) mod tests {
             "    1    11.2 ms  ttl 57"
         );
         assert_eq!(packet_line(&run, 1, Style::PLAIN), "    2  no reply");
+    }
+
+    #[test]
+    fn loss_at_the_target_is_red_and_occasional_loss_yellow() {
+        let painted = Style { color: true };
+        let mut times: Vec<Option<f64>> = vec![Some(10.0); 20];
+        times[3] = None;
+        times[9] = None;
+        let run = sample(&times);
+        // A packet without a reply is loss that reached the target.
+        assert!(packet_line(&run, 3, painted).ends_with("\x1b[31mno reply\x1b[0m"));
+        let text = closing_lines(&run, painted, 100).join("\n");
+        assert!(text.contains("\x1b[31mPacket loss\x1b[0m"), "{text}");
+        // Under 5% the verdict is worth a look, in yellow.
+        let mut times: Vec<Option<f64>> = vec![Some(10.0); 40];
+        times[7] = None;
+        let text = closing_lines(&sample(&times), painted, 100).join("\n");
+        assert!(text.contains("\x1b[33mOccasional loss\x1b[0m"), "{text}");
     }
 
     #[test]
