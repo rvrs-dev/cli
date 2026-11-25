@@ -35,7 +35,7 @@ pub(super) fn tools_for(target: &str) -> Vec<Tool> {
 }
 
 /// The letter that runs a tool from the picker.
-fn letter(tool: Tool) -> char {
+pub(super) fn letter(tool: Tool) -> char {
     match tool {
         Tool::Traceroute => 't',
         Tool::Mtr => 'm',

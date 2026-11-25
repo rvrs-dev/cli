@@ -174,6 +174,8 @@ struct Screen {
     at: usize,
     row: usize,
     columns: usize,
+    /// The words of a search: a selectable row that lacks one is left out.
+    search: Vec<String>,
 }
 
 impl Screen {
@@ -203,9 +205,13 @@ impl Screen {
 
     /// A selectable row. The selected one is drawn across the whole width.
     fn item(&mut self, spans: Vec<Span<'static>>, item: Item) {
+        let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
+        let copied = item.text().unwrap_or_default();
+        if !found(&self.search, &format!("{text} {copied}")) {
+            return;
+        }
         if self.items.len() == self.row {
             self.at = self.lines.len();
-            let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
             self.lines
                 .push(Line::styled(fit(&text, self.columns), selected()));
         } else {
@@ -327,7 +333,7 @@ impl App {
     /// What opens beside the list for the selected row, if it has details.
     fn bgp_detail(&self) -> Option<Detail> {
         let run = self.run()?;
-        let screen = self.bgp_screen(run, 100);
+        let screen = self.bgp_screen(run, self.bgp_columns.get());
         match screen.items.into_iter().nth(self.bgp_row)? {
             Item::Path(path) => Some(Detail::Path(path)),
             Item::GlassPath(glass, path) => Some(Detail::GlassPath(glass, path)),
@@ -340,7 +346,7 @@ impl App {
 
     /// The host the selected row names, for the run picker.
     pub(super) fn bgp_selected_host(&self) -> Option<String> {
-        let screen = self.bgp_screen(self.run()?, 100);
+        let screen = self.bgp_screen(self.run()?, self.bgp_columns.get());
         match screen.items.into_iter().nth(self.bgp_row)? {
             Item::Network(asn) => Some(format!("AS{asn}")),
             Item::Prefix(prefix, _) => Some(prefix),
@@ -457,7 +463,7 @@ impl App {
         let empty = BgpResult::new(TargetKind::Host, &run.target);
         let bgp = run.bgp.as_ref().unwrap_or(&empty);
         let tab = self.bgp_shown_tab(bgp);
-        let screen = self.bgp_screen(run, 100);
+        let screen = self.bgp_screen(run, self.bgp_columns.get());
         let enter = match screen.items.get(self.bgp_row) {
             Some(Item::Network(_)) => Some("Open Network"),
             Some(Item::Prefix(..)) => Some("Open Prefix"),
@@ -474,7 +480,14 @@ impl App {
         if let Some(enter) = enter {
             keys.push(("\u{2192}", enter));
         }
+        if matches!(
+            screen.items.get(self.bgp_row),
+            Some(Item::Validation(_) | Item::Path(_) | Item::GlassPath(..))
+        ) {
+            keys.push(("d", "Details"));
+        }
         keys.push(("tab", "Next Tab"));
+        keys.push(("/", "Search"));
         match tab {
             BgpTab::Neighbors => keys.push(("o", "Next Side")),
             BgpTab::Prefixes => {
@@ -486,7 +499,7 @@ impl App {
                     keys.push(("v", "RPKI"));
                 }
             }
-            BgpTab::History => keys.push(("d", "Next Range")),
+            BgpTab::History => keys.push(("o", "Next Range")),
             _ => {}
         }
         keys.push(("c", "Copy"));
@@ -521,7 +534,7 @@ impl App {
         let bgp = run.bgp.clone().unwrap_or(empty);
         let tabs = BgpTab::of(&bgp);
         let tab = self.bgp_shown_tab(&bgp);
-        let screen = self.bgp_screen(run, 100);
+        let screen = self.bgp_screen(run, self.bgp_columns.get());
         let rows = screen.items.len();
         self.bgp_row = self.bgp_row.min(rows.saturating_sub(1));
         let item = screen.items.get(self.bgp_row).cloned();
@@ -552,7 +565,26 @@ impl App {
             }
             KeyCode::Esc | KeyCode::Left if self.details_focus => self.details_focus = false,
             KeyCode::Esc | KeyCode::Left if self.details => self.details = false,
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('/') => self.pane = Pane::Start,
+            KeyCode::Esc | KeyCode::Left => self.pane = Pane::Start,
+            // d shows the selected path's or RPKI result's details beside the list, and hides
+            // them again.
+            KeyCode::Char('d') if self.details => {
+                self.details = false;
+                self.details_focus = false;
+            }
+            KeyCode::Char('d')
+                if matches!(
+                    item,
+                    Some(
+                        Item::Prefix(_, Some(_))
+                            | Item::Validation(_)
+                            | Item::Path(_)
+                            | Item::GlassPath(..)
+                    )
+                ) =>
+            {
+                self.details = true;
+            }
             KeyCode::Down | KeyCode::Char('j') if self.details_focus => {
                 self.action = (self.action + 1).min(detail_networks.len().saturating_sub(1));
             }
@@ -633,7 +665,7 @@ impl App {
                 self.details = false;
                 self.details_focus = false;
             }
-            KeyCode::Char('d') if tab == BgpTab::History => {
+            KeyCode::Char('o') if tab == BgpTab::History => {
                 self.bgp_days = match self.bgp_days {
                     7 => 30,
                     30 => 90,
@@ -675,7 +707,6 @@ impl App {
                     self.open_picker(run);
                 }
             }
-            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
     }
@@ -708,7 +739,9 @@ impl App {
         let bgp = run.bgp.as_ref().unwrap_or(&empty);
         let [tabs, body] =
             Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(inner);
-        let screen = self.bgp_screen(run, usize::from(body.width).max(20));
+        // The keys read the rows at the width they are drawn at, so a search finds the same ones.
+        self.bgp_columns.set(usize::from(body.width).max(20));
+        let screen = self.bgp_screen(run, self.bgp_columns.get());
         let offset = (screen.at + 3).saturating_sub(usize::from(body.height));
         frame.render_widget(Paragraph::new(self.bgp_tabs(bgp)), tabs);
         frame.render_widget(
@@ -761,6 +794,7 @@ impl App {
             at: 0,
             row: self.bgp_row,
             columns,
+            search: self.search_words(),
         };
         if bgp.is_empty() {
             screen.lines.push(Line::styled(

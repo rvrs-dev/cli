@@ -1,6 +1,13 @@
 # The Console
 
-`rvrs` on its own opens the Console: the target field on top, Recent below it, and the result once a run starts.
+`rvrs` on its own opens the Console: the target field on top, Recent below it, and the result once a run starts. Keys come first, as in k9s: every key is a command until a tool's key opens the field.
+
+```
+t example.com ↵   trace the path to example.com
+/ 64500 ↵         keep the hops with 64500 in an address, a name or a network
+j                 the next of them
+d                 its details beside the hops
+```
 
 ```
  Origin:  this device                     ● traceroute   <↑↓>    Hop
@@ -25,19 +32,24 @@ Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the n
 
 | Key | Does |
 | --- | --- |
-| Return | Runs the selected tool against the target. `ping example.com` picks the tool too |
-| typing | Filters Recent by tool and host: `ping git` |
-| tab | Switches between traceroute, MTR, ping, dig and bgp, or between the hops and a hop's details. In a DNS or BGP lookup it goes to the next tab |
+| t, m, p, d, b | On a list: picks traceroute, MTR, ping, dig or BGP and opens the target field. In a result they act on the selected hop or record instead |
+| : | Opens the target field for the tool chosen last, from a list or a result |
+| Return | In the field: runs the tool against the target. `ping example.com` picks the tool too. With nothing typed, the field closes |
+| typing | In the field: the target, and Recent narrows to runs that match it. ↓ goes into them |
+| / | Searches the list on screen: Recent, Favorites, Cases, a trace's or an MTR's hops (address, name or network), a DNS lookup's records, a BGP lookup's rows. The selection lands on the first hit, Return keeps the search, esc drops it |
+| tab | In the field: the next tool. In a result: between the hops and a hop's details. In a DNS or BGP lookup: the next tab |
 | 1 2 3 4 | In a DNS lookup: Overview, Records, Compare, Trace |
 | o, z | In a DNS lookup: shows the next source's records, copies the selected record as a zone line |
 | 1 2 3 4 5 | In a BGP lookup: Overview, Paths, Prefixes, History, Sources. For a network: Overview, Neighbors, Prefixes, Sources |
-| o, d, v | In a BGP lookup: the next side of Neighbors or filter of Prefixes, the next range of History, the RPKI result of the selected prefix |
-| ↑ ↓ or j k | Moves through the list or the hops |
+| o, v | In a BGP lookup: the next side of Neighbors, filter of Prefixes or range of History, the RPKI result of the selected prefix |
+| ↑ ↓ or j k | Moves through the list, the hops a search left or a lookup's rows |
+| g G | The first row, the last row |
 | PgUp PgDn | Moves a screen at a time through the list, the hops or a lookup's rows |
 | → or Return | Opens a run, a hop's details, a record's details, a case or a favorite. In a BGP lookup it opens the selected network's or prefix's own lookup, or an AS path's details |
-| ← or esc | Goes back one level. esc in the empty field quits |
+| d | In a result: shows the selected hop's, record's, AS path's or RPKI result's details, and hides them again |
+| ← or esc | Goes back one level. esc drops a search first, and on a list with nothing to take back it quits |
 | t, m, p, b, n, w | On a hop: Run Traceroute, Run MTR, Run Ping, Run BGP, Copy Hostname, Whois |
-| d | In an MTR: switches between each hop's figures and a wide strip of its rounds |
+| v | In an MTR: switches between each hop's figures and a wide strip of its rounds |
 | c | Copies the address of the selected hop or the ping target, the selected record's value, or the selected row of a BGP lookup |
 | r | Opens the run picker with every tool that can take the selected run's target, hop, record, network or prefix. Return runs the selected tool, and its letter (t, m, p, d, b) runs it at once |
 | R | Runs the open run again |
@@ -47,7 +59,7 @@ Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the n
 | f | Adds the host to Favorites or removes it |
 | x | Takes a run out of the open case |
 | ⇧1 ⇧2 ⇧3 ⇧4 | Console, Favorites, Cases, Account |
-| ? | Shows every key and the latency colors |
+| ? | Opens the help on the page for what is on screen. A tool's page has the keys its result takes and the commands `rvrs <tool> --help` lists. tab turns the page, a tool's letter opens its page, `?` the Console's keys, esc closes it |
 
 ⇧4 Account shows who this install is signed in as, also in the header. `s` signs in: the Console shows a code and a link, opens the link, and waits while you confirm the code in the browser, as `rvrs login` does. `o` opens the link again, `c` copies it, esc cancels. Signed in, `q` signs out and revokes this install's credential. With `RVRS_TOKEN` set, the token is the sign-in and the section only says so.
 
