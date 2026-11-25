@@ -10,7 +10,7 @@ Status: version 1, the first of three releases. It reads and draws. It makes no 
 - MCP `2026-07-28` first: `server/discover`, and every request on its own with its `_meta`. An agent on the 2025 handshake (`2025-11-25`, `2025-06-18`, `2025-03-26`) gets its `initialize` answered and each later request served without a session.
 - Every request carries a bearer token from the identity provider the server names. Without one the answer is 401 with `WWW-Authenticate: Bearer resource_metadata="<server>/.well-known/oauth-protected-resource", scope="openid email profile offline_access"`. The metadata names the provider as the one authorization server.
 - The token must be one the provider issued for this server's address (RFC 8707), signed with the provider's keys. A token for anything else is refused.
-- The token's subject is the person and its OAuth client is the agent. An agent reads nothing until the person allows it on its page in the web app. Until then every MCP tool answers with that page's link, as an error result.
+- The token's subject is the person and its OAuth client is the agent. A token that names no OAuth client (`client_id` or `azp`) is refused. An agent reads nothing until the person allows it on its page in the web app, which shows the name the agent gave itself beside its OAuth client. Until then every MCP tool answers with that page's link, as an error result.
 
 ## The MCP tools
 
@@ -47,6 +47,7 @@ An agent reads what the server leaves in a report after one rule, applied before
 
 - At the start it reads figures, outcomes, interpretations, paths and the names a workspace gave its installs, nodes and tags. The two parts of [What points to a home](../README.md#what-points-to-a-home) are both left out: a hop of the private network the run started in keeps its figures and loses its address and its name, and the line's public address, what gives it away and the origin's location are gone.
 - The person turns either part on, for one agent, on its page in the web app: Private Networks and Public Address.
+- The sentences go by the same rule. `summary`, `error`, `interpretation` and `sentence`, and a run's summary in a list, lose every address and name the cut took off, matched whole, and while Private Networks is off any private or link-local address they name. What was taken out reads `(left out)`.
 
 ## The drawing
 
