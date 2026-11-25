@@ -252,6 +252,7 @@ pub fn history_lines(
         let summary = match run.outcome {
             Some(Outcome::Reached) if !lossy => summary,
             Some(Outcome::Stopped) if !lossy => style.dim(&summary),
+            Some(Outcome::Failed(_)) => style.red(&summary),
             _ => style.yellow(&summary),
         };
         let mut line = format!(

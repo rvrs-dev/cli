@@ -21,7 +21,7 @@
   ⇧1 Console   ⇧2 Favorites   ⇧3 Cases   ⇧4 Account  ›  traceroute
 ```
 
-Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the number always beside the color.
+Latency is green under 50 ms, yellow from 50 to 150 ms and red above, with the number always beside the color. In an MTR's charts jitter is magenta and loss is red. Loss in a table is red only where it reaches the destination. A middle hop that drops replies while later hops are clean is likely rate-limiting them.
 
 | Key | Does |
 | --- | --- |

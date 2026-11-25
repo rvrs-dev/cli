@@ -377,9 +377,9 @@ fn schedule_lines(schedules: &[Value], style: Style, now: u64) -> Vec<String> {
     for row in &rows {
         let mut shown = line(row);
         if !row[6].is_empty() {
-            // The state is the last word of its line.
+            // The state is the last word of its line, dim as COLOR.md has a paused schedule.
             let at = shown.len() - row[6].len();
-            shown = format!("{}{}", &shown[..at], style.yellow(&row[6]));
+            shown = format!("{}{}", &shown[..at], style.dim(&row[6]));
         }
         lines.push(shown);
     }
@@ -425,7 +425,7 @@ fn detail_lines(schedule: &Value, style: Style, now: u64) -> Vec<String> {
         row("Last run", last_run(schedule, now)),
     ];
     if schedule["paused"].as_bool() == Some(true) {
-        lines.push(row("State", style.yellow("Paused")));
+        lines.push(row("State", style.dim("Paused")));
     }
     lines
 }
@@ -980,6 +980,13 @@ mod tests {
                 "c4d8e1f2  mtr 192.0.2.53  20m (5m asked)  isp=telia,line in (ftth,cable)  12000  2h ago",
                 "7a1c9e52  Evening jitter  1m              cpe-4471, fra-1                 2      2h ago    Paused",
             ]
+        );
+        // Paused is a state with nothing going on, so it is dim.
+        let painted = schedule_lines(&paused, Style { color: true }, now);
+        assert!(
+            painted[2].ends_with("\x1b[2mPaused\x1b[0m"),
+            "{}",
+            painted[2]
         );
         // A schedule on every node says so, and one that never ran says that.
         let mut fleet = schedules[0].clone();

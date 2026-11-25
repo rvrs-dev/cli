@@ -1377,7 +1377,8 @@ fn history_part(
                 header(style, "Peers seeing it"),
                 style.dim(&format!("up to {}", top as u64))
             ),
-            format!("  {}", style.blue(&spark(&peers))),
+            // A count of peers, so it is ink.
+            format!("  {}", spark(&peers)),
             axis(),
         ]);
     }
@@ -1445,16 +1446,13 @@ fn history_part(
                 header(style, "BGP updates, 7 days"),
                 style.dim(&format!("{} total", count(bgp.updates())))
             ),
+            // Counts of updates, so both rows are ink and their labels tell them apart.
             format!(
                 "  {}  {}",
                 style.dim("Announcements"),
-                style.blue(&scaled(&announcements))
+                scaled(&announcements)
             ),
-            format!(
-                "  {}    {}",
-                style.dim("Withdrawals"),
-                style.red(&scaled(&withdrawals))
-            ),
+            format!("  {}    {}", style.dim("Withdrawals"), scaled(&withdrawals)),
         ]);
     }
     sections
@@ -2152,6 +2150,36 @@ pub(crate) mod tests {
         for line in &lines {
             assert!(visible_width(line) <= 64, "{line}");
         }
+        // Peers and updates are counts, so their sparks are ink. The lanes keep their states.
+        let painted = result_lines(&View {
+            run: &run,
+            trace: None,
+            parts: Parts {
+                history: true,
+                ..Parts::default()
+            },
+            days: 7,
+            style: Style { color: true },
+            width: 64,
+            frame: 0,
+            now: 1_800_000_000,
+        });
+        let peers = painted
+            .iter()
+            .position(|line| line.contains("Peers seeing it"))
+            .unwrap()
+            + 1;
+        assert!(!painted[peers].contains('\x1b'), "{}", painted[peers]);
+        for label in ["Announcements", "Withdrawals"] {
+            let line = painted.iter().find(|line| line.contains(label)).unwrap();
+            assert!(!line.contains("\x1b[3"), "{line}");
+        }
+        let lane = painted
+            .iter()
+            .position(|line| line.contains("AS64500 \u{00B7}"))
+            .unwrap()
+            + 1;
+        assert!(painted[lane].contains("\x1b[32m"), "{}", painted[lane]);
     }
 
     #[test]

@@ -1482,10 +1482,10 @@ impl App {
                 Span::styled(" PEERS SEEING IT", bold()),
                 Span::styled(format!("  up to {}", top as u64), dim()),
             ]));
-            screen.lines.push(Line::styled(
-                format!(" {}", cli::spark(&peers)),
-                Paint::new().fg(Color::Blue),
-            ));
+            // A count of peers, so it is ink.
+            screen
+                .lines
+                .push(Line::raw(format!(" {}", cli::spark(&peers))));
             axis(screen);
         }
 
@@ -1546,13 +1546,14 @@ impl App {
                 Span::styled(" BGP UPDATES, 7 DAYS", bold()),
                 Span::styled(format!("  {} total", count(bgp.updates())), dim()),
             ]));
+            // Counts of updates, so both rows are ink and their labels tell them apart.
             screen.lines.push(Line::from(vec![
                 Span::styled(" Announcements  ", dim()),
-                Span::styled(scaled(&announcements), Paint::new().fg(Color::Blue)),
+                Span::raw(scaled(&announcements)),
             ]));
             screen.lines.push(Line::from(vec![
                 Span::styled(" Withdrawals    ", dim()),
-                Span::styled(scaled(&withdrawals), Paint::new().fg(Color::Red)),
+                Span::raw(scaled(&withdrawals)),
             ]));
         }
     }
