@@ -16,7 +16,8 @@ $ rvrs mtr example.com
   3 ● 93.184.216.34                          0.0%   16   23.3   21.4   19.8   24.9    1.7  ▆▆▆▆▇▆▆▇▆▆▆▆▆▆▆▇
 
 16 pkt · 0.0% loss · 21.4 ms avg · 3 hops · 2 networks · 16 s
-min 19.8 · max 24.9 · jitter 1.7 · p50 20.7 · p95 24.9 ms
+● p50 20.7  ● p95 24.9  ● p99 24.9  ● loss 0.0%
+min 19.8 · max 24.9 · jitter 1.7 ms
 Stable. No loss over 16 packets. p95 24.9 ms, jitter 1.7 ms.
 Hop 1 answers fewer probes than the hops after it. Routers often rate-limit these replies, so the
 path itself is likely fine.

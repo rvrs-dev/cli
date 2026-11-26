@@ -94,6 +94,11 @@ impl Style {
         self.paint("34", text)
     }
 
+    /// The p99's, jitter's and upload's color in a terminal (COLOR.md).
+    pub fn magenta(self, text: &str) -> String {
+        self.paint("35", text)
+    }
+
     /// Latency in its tone: green, yellow or red. The number itself is always the text.
     pub fn latency(self, latency: std::time::Duration, text: &str) -> String {
         match latency_tone(latency) {

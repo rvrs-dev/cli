@@ -201,6 +201,8 @@ impl Reported {
             jitter: figure(self.jitter, own.jitter),
             p50: figure(self.p50, own.p50),
             p95: figure(self.p95, own.p95),
+            // No report states a p99, so it comes from the samples alone.
+            p99: figure(None, own.p99),
             reported_loss: self.loss_percent.map(|percent| percent / 100.0),
         }
     }
@@ -275,6 +277,8 @@ pub struct HopStats {
     pub jitter: Option<Duration>,
     pub p50: Option<Duration>,
     pub p95: Option<Duration>,
+    /// Worked out from the replies only. A report carries no p99.
+    pub p99: Option<Duration>,
     /// The loss a report states, as a fraction, when the run came as one.
     pub reported_loss: Option<f64>,
 }
@@ -314,6 +318,7 @@ impl HopStats {
             jitter,
             p50: percentile(0.5),
             p95: percentile(0.95),
+            p99: percentile(0.99),
             reported_loss: None,
         }
     }

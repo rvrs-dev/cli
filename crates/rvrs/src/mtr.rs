@@ -15,6 +15,7 @@ use rvrs_core::session::{Lookups, Session};
 use rvrs_core::FamilyChoice;
 
 use crate::args::{normalize_target, Common};
+use crate::chips;
 use crate::pretty::{self, View};
 use crate::style::{
     truncate_end, truncate_middle, visible_width, width, ColorChoice, Style, SPINNER,
@@ -812,6 +813,9 @@ pub fn closing_lines(
     }
 
     if let Some(stats) = run.destination_hop().map(Hop::stats) {
+        // The destination's p50, p95, p99 and loss, as the chips above every surface's chart
+        // read them (PARITY.md, pattern 8). The table above holds each hop's rounds.
+        out.push(chips::line(&stats, style));
         let figure = |name: &str, value: Option<Duration>| {
             value.map(|value| format!("{name} {}", format::ms_bare(value)))
         };
@@ -819,8 +823,6 @@ pub fn closing_lines(
             figure("min", stats.min),
             figure("max", stats.max),
             figure("jitter", stats.jitter),
-            figure("p50", stats.p50),
-            figure("p95", stats.p95),
         ]
         .into_iter()
         .flatten()
@@ -1281,7 +1283,17 @@ pub(crate) mod tests {
             "// mtr example.com  93.184.216.34 \u{00B7} IPv4 \u{00B7} this device"
         );
         assert!(text.contains("12 pkt \u{00B7} 0.0% loss \u{00B7} 12.2 ms avg \u{00B7} 4 hops \u{00B7} 2 networks \u{00B7} 12 s"));
-        assert!(text.contains("min 12.0 \u{00B7} max 12.4"));
+        // The destination's chips, then the rest of its figures.
+        let chips = lines
+            .iter()
+            .position(|line| line.starts_with("p50 "))
+            .expect(&text);
+        assert_eq!(lines[chips], "p50 12.0  p95 12.4  p99 12.4  loss 0.0%");
+        assert!(lines[chips - 1].starts_with("12 pkt"), "{text}");
+        assert_eq!(
+            lines[chips + 1],
+            "min 12.0 \u{00B7} max 12.4 \u{00B7} jitter 0.4 ms"
+        );
         assert!(text.contains("Stable. No loss over 12 packets."));
         assert!(text.contains("Hop 2 answers fewer probes than the hops after it."));
     }
