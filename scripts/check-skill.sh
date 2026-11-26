@@ -85,5 +85,29 @@ if [ -n "${RVRS:-}" ]; then
   done
 fi
 
+# The skill the MCP server serves (schema/mcp/skills): a name that is its folder's, a description,
+# links that resolve, and addresses from the documentation ranges only. The app's tests load it
+# as the Skills extension does, with every rule it has.
+for served in "$root"/schema/mcp/skills/*/; do
+  served_name=$(basename "$served")
+  served_front=$(awk 'NR>1 && /^---$/ {exit} NR>1 {print}' "$served/SKILL.md")
+  [ "$(printf '%s\n' "$served_front" | sed -n 's/^name: //p')" = "$served_name" ] || fail "schema/mcp/skills/$served_name/SKILL.md must be named $served_name"
+  served_description=$(printf '%s\n' "$served_front" | sed -n 's/^description: //p')
+  [ -n "$served_description" ] && [ "${#served_description}" -le 1024 ] || fail "$served_name needs a description of 1024 characters at most"
+  for doc in "$served/SKILL.md" "$served"/references/*.md; do
+    dir=$(dirname "$doc")
+    grep -o '](\([^)#]*\)' "$doc" | sed 's/^](//' | while read -r link; do
+      case "$link" in
+        http*|"") ;;
+        *) [ -e "$dir/$link" ] || echo "check-skill: $served_name/$(basename "$doc") links to $link, which is missing" >&2 ;;
+      esac
+    done
+  done | grep . && failed=1
+  if grep -rhoE '\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b' "$served" |
+    grep -vE '^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|1\.1\.1\.1$|8\.8\.8\.8$|9\.9\.9\.9$)' | grep .; then
+    fail "an address outside the documentation ranges is in $served_name"
+  fi
+done
+
 [ "$failed" = 0 ] || exit 1
 echo "check-skill: $name $version is in order"
