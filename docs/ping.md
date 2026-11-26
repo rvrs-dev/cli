@@ -12,10 +12,11 @@ $ rvrs ping -i 0.2 github.com
     2    23.6 ms  ttl 58
     3    21.4 ms  ttl 58
 
+  ● p50 22.0  ● p95 26.2  ● p99 26.2  ● loss 0.0%
   ▇▇▇▇█▇▇▇▇▆▇▇█▇▇▇
 
 16 pkt · 0.0% loss · 22.7 ms avg
-min 20.2 · max 26.2 · jitter 2.0 · p50 22.0 · p95 26.2 ms
+min 20.2 · max 26.2 · jitter 2.0 ms
 Stable. No loss over 16 packets. p95 26.2 ms, jitter 2.0 ms.
 ```
 

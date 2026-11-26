@@ -22,7 +22,7 @@ use rvrs_core::dns::{self, Diff, DnsResult, Dnssec, Record, SourceResult};
 use rvrs_core::engine::{MtrOptions, Options, PingOptions};
 use rvrs_core::favorites::Favorites;
 use rvrs_core::history::History;
-use rvrs_core::model::{groups, Grade, Hop, Outcome, Run, Slot, Tool, Verdict};
+use rvrs_core::model::{groups, Grade, Hop, HopStats, Outcome, Run, Slot, Tool, Verdict};
 use rvrs_core::session::{Lookups, Session};
 use rvrs_core::{format, is_private, FamilyChoice};
 
@@ -42,6 +42,7 @@ use share_sheet::Sheet;
 
 use crate::account;
 use crate::args::normalize_target;
+use crate::chips::{self, Hue};
 use crate::pretty::{self, View};
 use crate::style::{truncate_end, truncate_middle, width, Style, SPINNER};
 
@@ -3905,7 +3906,8 @@ impl App {
         // Latency, jitter and loss side by side on a wide panel, one under the other on a
         // narrow one when it is tall enough, else latency alone.
         let wide = columns >= 120;
-        let chart_rows = if wide { 7 } else { 17 };
+        // The caption, the chips and the charts.
+        let chart_rows = if wide { 8 } else { 18 };
         let below = if note_lines.is_empty() {
             0
         } else {
@@ -3929,7 +3931,7 @@ impl App {
             } else {
                 format!(" AT THE FARTHEST REPLY \u{00B7} HOP {}", hop.ttl)
             };
-            let mut charts = vec![Line::styled(caption, bold)];
+            let mut charts = vec![Line::styled(caption, bold), chip_line(&hop.stats(), " ")];
             charts.extend(mtr_charts(hop, " ", if wide { 4 } else { 3 }, columns));
             charts.push(Line::default());
             lines.splice(0..0, charts);
@@ -4324,8 +4326,6 @@ impl App {
             ("MIN", ms(stats.min), bold),
             ("MAX", ms(stats.max), bold),
             ("JITTER", ms(stats.jitter), bold),
-            ("P50", ms(stats.p50), bold),
-            ("P95", ms(stats.p95), bold),
         ];
         let mut spans = vec![Span::raw(" ")];
         let mut used = 1;
@@ -4382,6 +4382,7 @@ impl App {
             .collect();
         if !values.is_empty() && inner.height >= 16 {
             lines.push(Line::styled(" LATENCY BY PACKET", bold));
+            lines.push(chip_line(&stats, " "));
             lines.extend(column_chart(&values, 5, 1, 0, None, columns));
             lines.push(Line::default());
         }
@@ -4631,6 +4632,7 @@ impl App {
         lines.push(Line::default());
         // An MTR has rounds enough to draw this hop's own latency, and it follows the selection.
         if run.tool == Tool::Mtr && !latency_series(hop).is_empty() {
+            lines.push(chip_line(&stats, "  "));
             lines.extend(mtr_charts(
                 hop,
                 "  ",
@@ -4957,6 +4959,33 @@ fn metric_chart(
         lines.push(Line::styled(text, dim));
     }
     lines
+}
+
+/// The chips above a latency chart, as every surface has them (PARITY.md, pattern 8): p50, p95,
+/// p99 and loss, each after a dot in its figure's color, the name dim and the value bold.
+fn chip_line(stats: &HopStats, lead: &str) -> Line<'static> {
+    let mut spans = vec![Span::raw(lead.to_string())];
+    for (index, chip) in chips::chips(stats).into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::raw("  "));
+        }
+        let color = match chip.hue {
+            Hue::Green => Color::Green,
+            Hue::Blue => Color::Blue,
+            Hue::Magenta => Color::Magenta,
+            Hue::Red => Color::Red,
+        };
+        spans.push(Span::styled("\u{25CF} ", Paint::new().fg(color)));
+        spans.push(Span::styled(
+            format!("{} ", chip.name),
+            Paint::new().add_modifier(Modifier::DIM),
+        ));
+        spans.push(Span::styled(
+            chip.value,
+            Paint::new().add_modifier(Modifier::BOLD),
+        ));
+    }
+    Line::from(spans)
 }
 
 /// Each round's latency, in milliseconds. A lost probe is `None`.
@@ -5490,6 +5519,18 @@ mod tests {
         assert!(text.contains("Hop 2 answers fewer probes than the hops after it."));
         assert!(text.contains("Stable. No loss over 12 packets."));
         assert!(text.contains("AT THE DESTINATION \u{00B7} HOP 4"));
+        // The destination's chips sit under the caption, above its charts.
+        let lines: Vec<&str> = text.lines().collect();
+        let caption = lines
+            .iter()
+            .position(|line| line.contains("AT THE DESTINATION"))
+            .expect(&text);
+        assert!(
+            lines[caption + 1].contains(
+                "\u{25CF} p50 12.0  \u{25CF} p95 12.4  \u{25CF} p99 12.4  \u{25CF} loss 0.0%"
+            ),
+            "{text}"
+        );
         assert!(
             text.contains("LATENCY")
                 && text.contains("JITTER")
@@ -5509,6 +5550,16 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         let text = screen(&mut app, 170, 44).join("\n");
         assert!(text.contains("Hop(ae1.core2.fra.example.net)[2]"));
+        // Its own chips, above its own charts.
+        let lines: Vec<&str> = text.lines().collect();
+        let chips = lines
+            .iter()
+            .rposition(|line| line.contains("\u{25CF} p50 "))
+            .expect(&text);
+        assert!(lines[chips].contains("\u{25CF} loss 33.3%"), "{text}");
+        assert!(lines[chips + 1..]
+            .iter()
+            .any(|line| line.contains("  LATENCY")));
         assert!(
             text.contains("  LATENCY") && text.contains("  JITTER") && text.contains("  LOSS"),
             "{text}"
@@ -5561,11 +5612,20 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         let text = screen(&mut app, 130, 36).join("\n");
         assert!(text.contains("Ping(one.one.one.one)[12 pkt]"));
-        assert!(
-            text.contains("SENT 12") && text.contains("LOSS 0.0%") && text.contains("P95 10.4")
-        );
+        assert!(text.contains("SENT 12") && text.contains("LOSS 0.0%") && !text.contains("P95"));
         assert!(text.contains("Stable. No loss over 12 packets."));
-        assert!(text.contains("LATENCY BY PACKET"));
+        // The chips sit between the chart's caption and the chart (PARITY.md, pattern 8).
+        let lines: Vec<&str> = text.lines().collect();
+        let caption = lines
+            .iter()
+            .position(|line| line.contains("LATENCY BY PACKET"))
+            .expect(&text);
+        assert!(
+            lines[caption + 1].contains(
+                "\u{25CF} p50 10.0  \u{25CF} p95 10.4  \u{25CF} p99 10.4  \u{25CF} loss 0.0%"
+            ),
+            "{text}"
+        );
         assert!(text.contains("SEQ") && text.contains("TTL"));
         assert!(!text.contains("Details"));
     }
@@ -6593,6 +6653,44 @@ mod tests {
             })
             .collect();
         assert_eq!(text[1], "      0% \u{2524}\u{2581}\u{2581}");
+    }
+
+    #[test]
+    fn the_chips_are_the_figures_in_their_colors() {
+        let stats =
+            crate::ping::tests::sample(&[Some(10.0), Some(10.4), None, Some(10.0)]).ping_stats();
+        let line = chip_line(&stats, " ");
+        let text: String = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert_eq!(
+            text,
+            " \u{25CF} p50 10.0  \u{25CF} p95 10.4  \u{25CF} p99 10.4  \u{25CF} loss 25.0%"
+        );
+        // COLOR.md for a terminal: p50 green, p95 blue, p99 magenta, loss red. The names are
+        // dim and the values are ink.
+        let dots: Vec<Option<Color>> = line
+            .spans
+            .iter()
+            .filter(|span| span.content.starts_with('\u{25CF}'))
+            .map(|span| span.style.fg)
+            .collect();
+        assert_eq!(
+            dots,
+            [
+                Some(Color::Green),
+                Some(Color::Blue),
+                Some(Color::Magenta),
+                Some(Color::Red)
+            ]
+        );
+        assert!(line
+            .spans
+            .iter()
+            .filter(|span| !span.content.starts_with('\u{25CF}') && !span.content.trim().is_empty())
+            .all(|span| span.style.fg.is_none()));
     }
 
     #[test]

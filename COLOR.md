@@ -16,7 +16,7 @@ A figure keeps its color on every chart, legend, tooltip and chip that names it.
 | download                                    | blue   | `--figure-download` | `.blue`   | blue     |
 | upload                                      | violet | `--figure-upload`   | `.purple` | magenta  |
 
-- Figures that share a color never share a chart. A run's chart draws jitter and leaves the p99 out, and the hop panel draws the p99 and leaves jitter out. An iperf3 chart draws no percentiles.
+- Figures that share a color never share a chart. The latency chart of a run or of a hop draws the p99 and leaves jitter out, as the app's always has, since the chips above it name the p99 (PARITY.md). Jitter is drawn on a chart of its own, as in the Console, or on a chart over time, such as the Overview's or a schedule's, which draws no p99. An iperf3 chart draws no percentiles.
 - A percentile drawn as a level across the chart is a dashed line.
 - The area under a line is the line's own color, faint.
 - A probe without a reply is a red mark on the baseline, and the line breaks there.

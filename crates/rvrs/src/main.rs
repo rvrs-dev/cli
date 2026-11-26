@@ -4,6 +4,7 @@
 mod account;
 mod args;
 mod bgp;
+mod chips;
 mod classic;
 mod commands;
 mod completions;

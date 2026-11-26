@@ -15,6 +15,7 @@ use rvrs_core::session::{Lookups, Session};
 use rvrs_core::FamilyChoice;
 
 use crate::args::{normalize_target, Common};
+use crate::chips;
 use crate::classic::unreachable_note;
 use crate::pretty::{self, View};
 use crate::style::{ColorChoice, Style, SPINNER};
@@ -519,6 +520,8 @@ pub fn closing_lines(run: &Run, style: Style, width: usize) -> Vec<String> {
         .map_or_else(|| run.target.clone(), |address| address.to_string());
     let mut out = vec![String::new(), pretty::title(&view), String::new()];
     if !run.packets().is_empty() {
+        // The figures above the chart, as every surface has them (PARITY.md, pattern 8).
+        out.push(format!("  {}", chips::line(&stats, style)));
         out.push(format!("  {}", sparkline(run, style, chart_cells(width))));
         out.push(String::new());
     }
@@ -554,8 +557,6 @@ pub fn closing_lines(run: &Run, style: Style, width: usize) -> Vec<String> {
         figure("min", stats.min),
         figure("max", stats.max),
         figure("jitter", stats.jitter),
-        figure("p50", stats.p50),
-        figure("p95", stats.p95),
     ]
     .into_iter()
     .flatten()
@@ -928,18 +929,25 @@ pub(crate) mod tests {
         let times: Vec<Option<f64>> = (0..12)
             .map(|index| Some(10.0 + f64::from(index % 2) * 0.4))
             .collect();
-        let lines = closing_lines(&sample(&times), Style::PLAIN, 80);
+        let run = sample(&times);
+        let lines = closing_lines(&run, Style::PLAIN, 80);
         assert_eq!(
             lines[1],
             "// ping one.one.one.one  1.1.1.1 \u{00B7} IPv4 \u{00B7} this device"
         );
-        assert_eq!(lines[5], "12 pkt \u{00B7} 0.0% loss \u{00B7} 10.2 ms avg");
+        // The chips sit directly above the sparkline.
+        assert_eq!(lines[3], "  p50 10.0  p95 10.4  p99 10.4  loss 0.0%");
         assert_eq!(
-            lines[6],
-            "min 10.0 \u{00B7} max 10.4 \u{00B7} jitter 0.4 \u{00B7} p50 10.0 \u{00B7} p95 10.4 ms"
+            lines[4],
+            format!("  {}", sparkline(&run, Style::PLAIN, chart_cells(80)))
         );
+        assert_eq!(lines[6], "12 pkt \u{00B7} 0.0% loss \u{00B7} 10.2 ms avg");
         assert_eq!(
             lines[7],
+            "min 10.0 \u{00B7} max 10.4 \u{00B7} jitter 0.4 ms"
+        );
+        assert_eq!(
+            lines[8],
             "Stable. No loss over 12 packets. p95 10.4 ms, jitter 0.4 ms."
         );
     }
@@ -948,10 +956,14 @@ pub(crate) mod tests {
     fn a_silent_target_says_what_it_can_and_cant_mean() {
         let lines = closing_lines(&sample(&[None, None, None]), Style::PLAIN, 100);
         assert_eq!(
-            lines[5],
+            lines[3],
+            "  p50 \u{2013}  p95 \u{2013}  p99 \u{2013}  loss 100.0%"
+        );
+        assert_eq!(
+            lines[6],
             "No reply from 1.1.1.1 \u{00B7} 3 pkt \u{00B7} 100.0% loss"
         );
-        assert_eq!(lines[6], SILENT_TARGET);
+        assert_eq!(lines[7], SILENT_TARGET);
     }
 
     #[test]
