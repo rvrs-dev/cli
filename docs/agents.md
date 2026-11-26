@@ -48,9 +48,9 @@ Every run starts from this device. The skill tells the agent to say so when a qu
 claude mcp add --transport http rvrs https://mcp.rvrs.dev
 ```
 
-The first call opens a sign-in to rvrs in the browser. The agent then reads nothing until the person allows it on its page at app.rvrs.dev, where two switches add the private network and the public address to what it reads. An agent that opens pages for its person opens that page itself, and its call goes on once the person chose Allow. Any other agent passes the link on.
+The first call opens a sign-in to rvrs in the browser. The agent then reads nothing until the person allows it on its page at app.rvrs.dev, where two switches add the private network and the public address to what it reads. An agent that opens pages for its person opens that page itself, and its call goes on once the person chooses Allow. Any other agent passes the link on.
 
-The server also serves a skill, [`rvrs-network-diagnostics-mcp`](../schema/mcp/skills/rvrs-network-diagnostics-mcp/SKILL.md), through MCP's Skills extension: the loop with the MCP tools, the same rules of evidence as the skill here, the answer, and a playbook for each kind of question. An agent loads it from the server when a question needs it, so nothing is installed.
+The server also serves a skill, [`rvrs-network-diagnostics-mcp`](../schema/mcp/skills/rvrs-network-diagnostics-mcp/SKILL.md), through MCP's Skills extension: the loop with the MCP tools, the same rules of evidence as the skill here, the answer, and a playbook for each kind of question. An agent loads it from the server when a question needs it.
 
 With both, the skill reads the account through the MCP tools and makes new runs with the CLI. Its section The MCP server lists which MCP tool stands for which command. A run made with the CLI reaches the account once `rvrs login` signed the install in.
 

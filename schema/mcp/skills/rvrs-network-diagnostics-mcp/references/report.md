@@ -1,6 +1,6 @@
 # The report
 
-`get_run` answers with a run's `report`: the run as data, as the device or node that made it wrote it, cut by what you read. Every rvrs surface reads the same report. Fields are only added, and a reader ignores the ones it doesn't know.
+`get_run` answers with a run's `report`: the run as data, written by the device or node that made it and cut by what you read. Every rvrs surface reads the same report. Fields are only added, and a reader ignores the ones it doesn't know.
 
 ## Every tool
 
@@ -36,7 +36,7 @@ A field the maker didn't fill is absent, never zero. An older CLI or a node that
 
 ## Traceroute
 
-The same shape as MTR, with about three probes per hop. Too few probes for loss figures to mean much: read it for the path, and an MTR for loss.
+The same shape as MTR, with about three probes per hop. That is too few for its loss figures to mean much, so read it for the path and an MTR for loss.
 
 A traceroute to a TCP port also has `probe`: `protocol` (`tcp`), `port`, and `state`, which is `open` (a SYN-ACK came back), `closed` (a reset came back) or `filtered` (nothing came back from the destination). An open port adds `connect` (ms) and `mss` (bytes) to `measured`. A filtered port ends the hops at the last router that answered, and `interpretation` names it.
 
@@ -53,7 +53,7 @@ The maker asked its own resolver, public resolvers and the name's authoritative 
 
 ## BGP
 
-Read from RIPE RIS route collectors. Nothing was probed.
+The maker read it from RIPE RIS route collectors and sent no probe.
 
 - `measured`: `peers seeing` and `peers total` (the collector peers that see the prefix), `distinct paths`, `origin asn`, and for the origin network `ipv4 prefixes` and `ipv6 prefixes`.
 - `summary`: `AS13335 · Valid · 270/271 peers`. The middle word is the origin validation, one of Valid, Invalid, Unknown and Not Found.
@@ -61,7 +61,7 @@ Read from RIPE RIS route collectors. Nothing was probed.
 
 ## iperf3
 
-From the iPhone app. `measured` holds the throughput in Mbps by direction, such as `download peak` and `upload peak`, and `target` names the server and its port. Always say the direction and the server, and never call it internet speed.
+The iPhone app makes these. `measured` holds the throughput in Mbps by direction, such as `download peak` and `upload peak`, and `target` names the server and its port. Always say the direction and the server, and never call it internet speed.
 
 ## In a list
 
