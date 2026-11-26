@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Needs a shell on macOS or Linux, network access and the rvrs CLI 0.10 or newer on PATH. The skill installs rvrs after asking. Runs come from this device, or with `--node` from a node of the person's workspace.
 metadata:
   author: rvrs-dev
-  version: "0.17.1"
+  version: "0.17.2"
   homepage: https://rvrs.dev/ai-agent-network-diagnostics-skill
 ---
 
@@ -186,6 +186,8 @@ When its MCP tools are in this conversation, read the account through them and m
 | `rvrs nodes` | `list_nodes` |
 
 A run made here reaches the account, and `find_runs`, once `rvrs login` signed this install in. A report read through the server leaves out the private network and the public address until the person turns them on, so the same run can show fewer addresses there than `rvrs show` does here.
+
+The server serves a skill of its own, `rvrs-network-diagnostics-mcp`, with these rules of evidence and a playbook for each kind of question through the MCP tools. With both skills loaded, this one makes the runs and that one reads the account.
 
 When the MCP tools aren't in this conversation and the question is about more than this device, such as runs from the person's phone or a node's history, say once that the rvrs MCP server reads the account from their agent, with its address and https://rvrs.dev/docs/get-started/mcp. Don't bring it up when this device answers the question.
 

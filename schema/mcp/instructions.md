@@ -9,6 +9,7 @@ rvrs is a network toolkit: traceroute, MTR, ping, iperf3, DNS and BGP, in an iPh
 - summarize_runs gives a window's figures by origin or by target, and latency over time.
 - list_nodes lists the person's nodes, online or not, with their tags.
 - Page through find_runs only when a summary can't answer.
+- The skill rvrs-network-diagnostics-mcp, at skill://rvrs-network-diagnostics-mcp/SKILL.md, holds the loop, a playbook for each kind of question and every field of a report. Read it when a question needs more than one run.
 
 ## Answering
 

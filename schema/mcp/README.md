@@ -1,6 +1,6 @@
 # The MCP server
 
-How an agent reads a person's rvrs account through the Model Context Protocol. `tools.json` is every MCP tool as the server lists it, with its input and output schemas, `instructions.md` is what the server tells every agent, and `fixtures/` holds one reply per MCP tool. This page says what each MCP tool answers and what holds for all of them.
+How an agent reads a person's rvrs account through the Model Context Protocol. `tools.json` is every MCP tool as the server lists it, with its input and output schemas, `instructions.md` is what the server tells every agent, `skills/` holds the skill it serves, and `fixtures/` holds one reply per MCP tool. This page says what each MCP tool answers and what holds for all of them.
 
 Status: version 1, the first of three releases. It reads and draws. It makes no runs and changes nothing. The rvrs API repository serves it at `https://mcp.rvrs.dev`, and a self-hosted install serves it at its own address. Anyone may build an agent that speaks it.
 
@@ -10,7 +10,8 @@ Status: version 1, the first of three releases. It reads and draws. It makes no 
 - MCP `2026-07-28` first: `server/discover`, and every request on its own with its `_meta`. An agent on the 2025 handshake (`2025-11-25`, `2025-06-18`, `2025-03-26`) gets its `initialize` answered and each later request served without a session.
 - Every request carries a bearer token from the identity provider the server names. Without one the answer is 401 with `WWW-Authenticate: Bearer resource_metadata="<server>/.well-known/oauth-protected-resource", scope="openid email profile offline_access"`. The metadata names the provider as the one authorization server.
 - The token must be one the provider issued for this server's address (RFC 8707), signed with the provider's keys. A token for anything else is refused.
-- The token's subject is the person and its OAuth client is the agent. A token that names no OAuth client (`client_id` or `azp`) is refused. An agent reads nothing until the person allows it on its page in the web app, which shows the name the agent gave itself beside its OAuth client. Until then every MCP tool answers with that page's link, as an error result.
+- The token's subject is the person and its OAuth client is the agent. A token that names no OAuth client (`client_id` or `azp`) is refused. An agent reads nothing until the person allows it on its page in the web app, which shows the name the agent gave itself beside its OAuth client and shows Allow to that person alone.
+- Until then an MCP tool answers an agent whose request declares `elicitation.url` with `input_required`: an `elicitation/create` in URL mode, keyed `allow`, for the agent's page with `?via=agent`. The agent opens it for the person. Its retry with `allow` accepted waits up to 50 seconds for the person's Allow and then answers the call. A decline, a cancel or a wait that runs out answers with the page's link as an error result, and so does every call of an agent that declares no `elicitation.url`, which includes every agent on the 2025 handshake.
 
 ## The MCP tools
 
@@ -53,9 +54,13 @@ An agent reads what the server leaves in a report after one rule, applied before
 
 `get_run` names `ui://rvrs/run.html` in `_meta.ui.resourceUri`. It is an MCP App (`io.modelcontextprotocol/ui`, `2026-01-26`) with the type `text/html;profile=mcp-app`: one HTML file that loads nothing from the network and asks for no address in its policy. An agent that draws shows the run as the web app does: the status line, the figures, the latency chart with p50 and p95, jitter and loss to switch off, the path by network with each hop opening for its figures, rounds and network, and a DNS run's sources and records. It takes the agent's theme, colors and fonts and keeps rvrs's colors for the data. Open Run asks the agent to open the run's page. An agent that draws nothing shows the text.
 
+## The skill
+
+The server serves one skill through the Skills extension (`io.modelcontextprotocol/skills`): [`rvrs-network-diagnostics-mcp`](skills/rvrs-network-diagnostics-mcp/SKILL.md), with a reference for the report and one of playbooks. It holds the loop with the MCP tools, the rules of evidence of the CLI's skill, the answer, what an agent reads, and when no run answers. `skills/list` lists it, `resources/read` reads its files at `skill://rvrs-network-diagnostics-mcp/<path>`, and `resources/list` lists its `SKILL.md` for agents without the extension. It is served to every agent that signed in, also before the person allowed it, since the same files are here.
+
 ## Instructions and prompts
 
-`instructions.md` goes to every agent with `server/discover` and `initialize`. It holds the skill's rules for reading a report and for evidence, and what to say when no run in the account answers a question: which run would, with the command that makes it on the person's own machine, in the iPhone and iPad app or from a node.
+`instructions.md` goes to every agent with `server/discover` and `initialize`. It holds the skill's rules for reading a report and for evidence, and what to say when no run in the account answers a question: which run would, with the command that makes it on the person's own machine, in the iPhone and iPad app or from a node. It names the skill above, which holds the rest.
 
 Three prompts a person picks in their agent, each taking a `target`: `was_it_like_this_yesterday`, `compare_origins` and `collect_evidence`.
 
@@ -63,7 +68,7 @@ Three prompts a person picks in their agent, each taking a `target`: `was_it_lik
 
 - Changes are additive. A field, an MCP tool or a value is added and never renamed or given another meaning. A new shape is a new MCP tool.
 - A reader ignores fields it doesn't know.
-- The app repository copies these files to `packages/schema/fixtures/mcp`, and its tests fail while the server's `tools/list` or its instructions differ from them. Change them here first.
+- The app repository copies these files to `packages/schema/fixtures/mcp`, and its tests fail while the server's `tools/list`, its instructions or the skill it serves differ from them. Change them here first.
 
 ## Planned
 
