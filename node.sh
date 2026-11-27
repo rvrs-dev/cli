@@ -2,7 +2,7 @@
 # Sets this machine up as an rvrs node: installs the small build, keeps the node's token and runs
 # `rvrs node` as a service that starts again after a crash and at boot.
 #
-#   wget -qO- https://rvrs.dev/node.sh | RVRS_TOKEN=<token> sh
+#   curl -fsSL https://rvrs.dev/node.sh | RVRS_TOKEN=<token> sh
 #   curl -fsSL https://rvrs.dev/node.sh | sudo RVRS_TOKEN=<token> sh
 #
 # The token is made at app.rvrs.dev under Installs, New Token. It goes in the environment of sh,
