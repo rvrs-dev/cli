@@ -2,7 +2,7 @@ name: Release
 
 # A tag v<VERSION>.<patch> on main releases that commit: two static binaries per target, the full
 # build and the small build without the Console (docs/build-features.md), a .deb and an .rpm of the full
-# build for x86_64 and arm64 Linux, SHA256SUMS and install.sh, then the node's container image
+# build for x86_64 and arm64 Linux, SHA256SUMS, install.sh and node.sh, then the node's container image
 # (ghcr.io/rvrs-dev/rvrs, from the small builds) and the Homebrew formula.
 # Actions > Release > Run workflow tags and releases the newest commit on main.
 #
@@ -118,7 +118,7 @@ jobs:
           merge-multiple: true
       - run: |
           mkdir -p dist
-          cp artifacts/* install.sh dist/
+          cp artifacts/* install.sh node.sh dist/
           cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Publish
         run: |
