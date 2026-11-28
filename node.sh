@@ -11,7 +11,8 @@
 #
 # It needs root, Linux, and OpenRC (Alpine) or systemd (Debian, Ubuntu, Fedora, Arch and most
 # others). Running it again updates rvrs and restarts the node, and keeps the token unless
-# RVRS_TOKEN gives another one.
+# RVRS_TOKEN gives another one. The node logs to the system log, or to /var/log/rvrs-node.log
+# where OpenRC is older than 0.52, which hands a service's output to no logger.
 #
 #   --uninstall  stop the node and remove it, with its token, its outbox and its schedules
 #
@@ -81,7 +82,7 @@ if [ "$uninstall" = 1 ]; then
   else
     rc-service "$service" stop >/dev/null 2>&1 || true
     rc-update del "$service" default >/dev/null 2>&1 || true
-    rm -f /etc/init.d/rvrs-node
+    rm -f /etc/init.d/rvrs-node /etc/logrotate.d/rvrs-node /var/log/rvrs-node.log
   fi
   rm -rf /var/lib/rvrs /etc/rvrs
   # node.sh writes the file only where no group could open ICMP sockets, so that is undone too.
@@ -237,6 +238,41 @@ EOF
   systemctl restart "$service"
   log_hint="journalctl -u rvrs-node"
 else
+  # supervise-daemon hands a service's output to a logger from OpenRC 0.52 (Alpine 3.19) on.
+  # Before that it drops the output, so there the node writes to a file of its own, which a
+  # service run as rvrs can only open when it is rvrs's already.
+  logs_to=file
+  if command -v logger >/dev/null 2>&1; then
+    for support in /usr/libexec/rc/sh/supervise-daemon.sh /lib/rc/sh/supervise-daemon.sh; do
+      if [ -f "$support" ] && grep -q output_logger "$support"; then
+        logs_to=syslog
+        break
+      fi
+    done
+  fi
+  log_file=/var/log/rvrs-node.log
+  if [ "$logs_to" = syslog ]; then
+    output='output_logger="logger -t rvrs-node -p daemon.info"
+error_logger="logger -t rvrs-node -p daemon.err"'
+  else
+    output="output_log=$log_file
+error_log=$log_file"
+    touch "$log_file"
+    chown "$user:$user" "$log_file"
+    chmod 640 "$log_file"
+    if [ -d /etc/logrotate.d ]; then
+      cat >/etc/logrotate.d/rvrs-node <<EOF
+$log_file {
+	weekly
+	rotate 4
+	compress
+	missingok
+	notifempty
+	copytruncate
+}
+EOF
+    fi
+  fi
   cat >/etc/init.d/rvrs-node <<'EOF'
 #!/sbin/openrc-run
 # Written by node.sh (rvrs.dev/node.sh). Running node.sh again writes it anew.
@@ -250,10 +286,9 @@ command_user=rvrs:rvrs
 capabilities="^cap_net_raw"
 respawn_delay=5
 respawn_max=0
-if command -v logger >/dev/null 2>&1; then
-	output_logger="logger -t rvrs-node -p daemon.info"
-	error_logger="logger -t rvrs-node -p daemon.err"
-fi
+EOF
+  printf '%s\n' "$output" >>/etc/init.d/rvrs-node
+  cat >>/etc/init.d/rvrs-node <<'EOF'
 
 export RVRS_HOME=/var/lib/rvrs
 if [ -f /etc/rvrs/node.env ]; then
@@ -270,16 +305,22 @@ depend() {
 EOF
   chmod 755 /etc/init.d/rvrs-node
   rc-update add "$service" default >/dev/null 2>&1
+  if [ "$logs_to" = syslog ]; then
+    log=/var/log/messages
+    log_hint="grep rvrs-node /var/log/messages"
+  else
+    log="$log_file"
+    log_hint="tail $log_file"
+  fi
   offset=0
-  [ -f /var/log/messages ] && offset="$(wc -c </var/log/messages | tr -d ' ')"
+  [ -f "$log" ] && offset="$(wc -c <"$log" | tr -d ' ')"
   rc-service "$service" stop >/dev/null 2>&1 || true
   rc-service "$service" start >/dev/null
-  log_hint="grep rvrs-node /var/log/messages"
 fi
 echo "Started the service rvrs-node"
 
-# Without a system log to read, there is nothing to wait for.
-if [ "$init" = openrc ] && [ ! -f /var/log/messages ]; then
+# Without a log to read, there is nothing to wait for.
+if [ "$init" = openrc ] && [ ! -f "$log" ]; then
   exit 0
 fi
 
@@ -288,7 +329,12 @@ said() {
   if [ "$init" = systemd ]; then
     journalctl _SYSTEMD_INVOCATION_ID="$invocation" -o cat --no-pager 2>/dev/null
   else
-    tail -c +"$((offset + 1))" /var/log/messages 2>/dev/null | grep rvrs-node
+    # The system log holds every service's lines. The node's own file holds only its own.
+    if [ "$log" = /var/log/messages ]; then
+      tail -c +"$((offset + 1))" "$log" 2>/dev/null | grep rvrs-node
+    else
+      tail -c +"$((offset + 1))" "$log" 2>/dev/null
+    fi
   fi
 }
 invocation=""
